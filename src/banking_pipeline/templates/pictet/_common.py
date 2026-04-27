@@ -522,23 +522,35 @@ def resolve_account_number(
     """Pick the most useful account identifier present in the document.
 
     Order of preference:
-        1. Validated IBAN — only kept when ``stdnum`` accepts the checksum.
-           Anonymised fixtures fail validation here, so this branch typically
-           fires on real PDFs only.
-        2. Pictet's internal portfolio ID (``P-123456.789`` etc.). Always
-           present and stable across fixtures.
+        1. Pictet's internal portfolio ID (``P-123456.789`` etc.) — read
+           from the document header's ``N° de cuenta`` / ``Account no.``
+           line. Always present and stable across every Pictet advice
+           type, regardless of whether the document carries an IBAN.
+        2. Validated IBAN — kept only when ``stdnum`` accepts the
+           checksum. Used as a fallback when the portfolio header is
+           missing or doesn't match the expected format (rare).
 
     Returning the Pictet ID rather than the raw IBAN keeps downstream
-    beancount postings keyed on the portfolio identity rather than on a
-    representation that may or may not be a valid IBAN.
+    beancount postings keyed on the user's portfolio identity rather
+    than on a bank-side IBAN whose validity (and stability across the
+    bank's own renumbering) we shouldn't rely on. Earlier the order
+    here was reversed — IBAN-first, portfolio-fallback — and the only
+    reason existing tests passed was that anonymised fixtures' IBANs
+    failed the mod-97 checksum, so the fallback branch always fired.
+    On real PDFs with real valid IBANs that branch returned the IBAN,
+    which contradicted both this docstring's intent and every per-template
+    test's expected ``account_number`` value.
     """
 
+    portfolio = find_pictet_account(text, labels)
+    if portfolio is not None:
+        return portfolio
     iban = find_iban(text)
     if iban is not None:
         validated = normalise_iban(iban)
         if validated:
             return validated
-    return find_pictet_account(text, labels)
+    return None
 
 
 # ---------------------------------------------------------------------------

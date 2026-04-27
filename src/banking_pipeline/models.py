@@ -148,6 +148,13 @@ class DocumentType(StrEnum):
     COMPRA = "compra"
     SUSCRIPCION = "suscripcion"
     REEMBOLSO = "reembolso"
+    # Spanish-locale final redemption — Pictet's structured-product maturity
+    # payout, analogous to the EN ``FINAL_REDEMPTION``. Issued under
+    # ``HECHOS RELEVANTES / REEMBOLSO / Reembolso final`` (security event,
+    # not a stock-exchange trade), so the document carries no
+    # ``Tipo de operación`` / ``Plaza bursátil`` and uses ``Cantidad`` /
+    # ``Precio de rembolso`` instead of the trade-advice labels.
+    REEMBOLSO_FINAL = "reembolso_final"
 
     UNKNOWN = "unknown"
 

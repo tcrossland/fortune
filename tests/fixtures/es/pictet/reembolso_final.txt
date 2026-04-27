@@ -1,0 +1,40 @@
+--- page 1/1 ---
+HECHOS RELEVANTES
+REEMBOLSO
+Reembolso final
+ARCHIVE
+0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 783667101 | Fecha de publicación: 03.06.2022
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 03.06.2022
+Fecha valor 03.06.2022
+Fecha contable 03.06.2022
+Hechos relevantes
+Fecha Ex 03.06.2022
+Fecha de pago 03.06.2022
+Reembolso - EUR PWM LG VOL BALANC (PICTET)21/22
+Cantidad -604
+Precio de rembolso EUR 28.881061
+Importe bruto EUR 17'444.16
+Otro
+Depósito PCO GVA DEPGE.C SWITZERLAND
+CANTIDAD DETENIDA en la cartera K-123456.001
+EUR PWM LG VOL BALANC (PICTET)21/22 604
+ISIN: CH0559896136 N° Telekurs: ZZZAB32A5 
+SALIDA de la cartera K-123456.001
+EUR PWM LG VOL BALANC (PICTET)21/22 604
+ISIN: CH0559896136 N° Telekurs: ZZZAB32A5 
+EFECTO CASH en la cartera K-123456.001
+Importe bruto EUR 17'444.16
+Costes EUR 0.00
+Importe neto EUR 17'444.16
+Cuenta corriente K-123456.001.00.EUR/Ordinario IBAN?LU901980012345600100

@@ -1,0 +1,5 @@
+2022-06-03 * "Reembolso final" "Reembolso - EUR PWM LG VOL BALANC (PICTET)21/22"
+  Assets:Pic:EUR                                   17444.16 EUR
+  Assets:Pic:CH0559896136                              -604 CH0559896136 {} @ 28.881061 EUR
+  Income:Pic:CH0559896136:Realized
+  no: 783667101

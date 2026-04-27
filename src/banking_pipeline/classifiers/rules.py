@@ -553,6 +553,32 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
+        doc_type=DocumentType.REEMBOLSO_FINAL,
+        template_id="pictet.reembolso_final.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Banner — distinguishes from the trade-advice family which uses
+            # ``BOLSA DE VALORES``. ``HECHOS RELEVANTES`` is Pictet's
+            # security-event banner (matches the EN ``SECURITY EVENT``).
+            re.compile(r"^\s*HECHOS\s+RELEVANTES\s*$", re.M | re.I),
+            # Subtitle — the load-bearing discriminator from REEMBOLSO,
+            # which also has ``Reembolso`` standalone but no ``final``
+            # qualifier. Anchored to a full line so the section banner
+            # ``REEMBOLSO`` (uppercase) doesn't accidentally match.
+            re.compile(r"^Reembolso\s+final\s*$", re.M | re.I),
+            # Pictet's apparent typo: ``Precio de rembolso`` (missing the
+            # second ``e`` after the first one). Tolerant pattern handles
+            # both spellings so corrected documents continue to match.
+            re.compile(r"\bPrecio\s+de\s+re?embolso\b", re.I),
+            # Held-quantity section unique to this advice type.
+            re.compile(r"\bCANTIDAD\s+DETENIDA\b"),
+            # Units leaving the portfolio. Shared with REEMBOLSO and
+            # SWITCH_SALIDA, but the four patterns above already separate
+            # this rule from both.
+            re.compile(r"\bSALIDA\s*de\s+la\s+cartera\b", re.I),
+        ),
+    ),
+    Rule(
         doc_type=DocumentType.DEBITO_DE_GASTOS,
         template_id="pictet.debito_de_gastos.v1",
         bank=BankId.PICTET,

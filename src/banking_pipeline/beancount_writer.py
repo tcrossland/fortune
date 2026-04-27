@@ -74,6 +74,7 @@ _SECURITY_SELL_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.FINAL_REDEMPTION,
     DocumentType.REDEMPTION_NOTICE,
     DocumentType.REEMBOLSO,
+    DocumentType.REEMBOLSO_FINAL,
     DocumentType.SWITCH_SALIDA,
 })
 
@@ -335,13 +336,24 @@ def _render_security_trade(
     lines: list[str] = [header]
 
     # --- Asset leg ------------------------------------------------------
+    # Buys carry a literal cost basis ``{<price> <sec_ccy>}`` — the new
+    # units enter inventory at that price. Sells use the empty-cost
+    # ``{}`` + ``@ <price> <sec_ccy>`` form: ``{}`` reduces the position
+    # at its existing inventory cost basis (per the per-account booking
+    # method), and ``@ <price>`` records the per-unit market price for
+    # capital-gains computation. Setting a literal cost basis on a sell
+    # would tell beancount to treat the sale as creating a new lot,
+    # which is semantically wrong; the elastic ``Income:...Realized``
+    # leg below absorbs the gain/loss the empty-cost form produces.
     isin = tx.isin or "Unknown"
     qty_str = _format_amount(tx.quantity) if tx.quantity is not None else "0"
-    cost_basis = (
-        f" {{{_format_amount(tx.price)} {sec_ccy}}}"
-        if tx.price is not None
-        else ""
-    )
+    if tx.price is not None:
+        if doc_type in _SECURITY_BUY_TYPES:
+            cost_basis = f" {{{_format_amount(tx.price)} {sec_ccy}}}"
+        else:
+            cost_basis = f" {{}} @ {_format_amount(tx.price)} {sec_ccy}"
+    else:
+        cost_basis = ""
     asset_line = _align(
         f"Assets:{prefix}:{isin}", qty_str, isin, extras=cost_basis
     )
@@ -382,6 +394,16 @@ def _render_security_trade(
         if fees_line is not None:
             lines.append(fees_line)
         lines.append(asset_line)
+        # Elastic ``Income:<prefix>:<ISIN>:Realized`` posting on every
+        # sell — beancount auto-balances it against the difference
+        # between the cost basis pulled from inventory (via ``{}``) and
+        # the cash proceeds, so the leg ends up carrying the realised
+        # gain/loss for these units. Skipped when the ISIN is unknown
+        # (the leg's account name would degrade to ``...:Unknown:Realized``,
+        # which is uglier than just leaving the entry to balance via
+        # whichever leg picks up the slack).
+        if tx.isin:
+            lines.append(f"  Income:{prefix}:{tx.isin}:Realized")
 
     # --- Trailing reference comment ------------------------------------
     if tx.transaction_number:
