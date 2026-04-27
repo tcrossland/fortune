@@ -32,6 +32,7 @@ from banking_pipeline.models import RawDocument, Transaction
 from banking_pipeline.templates.pictet._common import (
     ES_LABELS,
     extract_simple_trade_advice,
+    find_switch_fund_name,
 )
 
 # Title line: ``Cambio ("switch") de fondos (entrada)``. Match the
@@ -47,11 +48,17 @@ class PictetSwitchEntradaTemplate:
         if not _SWITCH_ENTRADA_TITLE_RE.search(doc.text):
             return []
 
+        # Same narration shape as switch_salida — see that module's
+        # comment. ``ENTRADA <fund>`` is the form the writer's switch
+        # path expects on the entrada leg.
+        fund = find_switch_fund_name(doc.text, "ENTRADA")
+        narration = f"ENTRADA {fund}" if fund else "Pictet switch (entrada)"
+
         tx = extract_simple_trade_advice(
             doc,
             expected_operations=("Compra",),
-            fallback_narration="Pictet switch (entrada)",
+            fallback_narration=narration,
             labels=ES_LABELS,
-            title="Cambio (entrada)",
+            title="Switch",
         )
         return [tx] if tx else []

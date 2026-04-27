@@ -390,6 +390,42 @@ def find_exchange_rate(
     return Decimal(m.group(1))
 
 
+def find_switch_fund_name(text: str, side: str) -> str | None:
+    """Extract the fund name from a Pictet switch advice's portfolio block.
+
+    Pictet switch documents identify each leg with a portfolio header and
+    a fund-name line directly below it::
+
+        SALIDA de la cartera K-123456.001
+        MSIF-GLOBAL QUALITY FUND ZH EUR-ACC 1'177.000
+
+    ``side`` selects which leg to read — ``"SALIDA"`` (outgoing) or
+    ``"ENTRADA"`` (incoming). The helper handles both ``de la cartera``
+    (used by salida) and ``en la cartera`` (used by entrada and most
+    other ES advices) prepositions, returns the fund-name line with the
+    trailing Swiss-formatted quantity stripped, and is used by the
+    switch templates to compose the ``"<side> <fund>"`` narration —
+    switch advices carry no ``Compra``/``Venta`` headline line, so the
+    standard :func:`find_headline` returns ``None`` on them.
+    """
+
+    portfolio_re = re.compile(
+        rf"^{re.escape(side)}\s+(?:de|en)\s+la\s+cartera\b", re.I
+    )
+    quantity_tail_re = re.compile(
+        rf"\s+-?\d{{1,3}}(?:'\d{{3}})*(?:\.\d+)?\s*$"
+    )
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if portfolio_re.match(line.strip()):
+            if i + 1 >= len(lines):
+                return None
+            fund_line = lines[i + 1].strip()
+            stripped = quantity_tail_re.sub("", fund_line)
+            return stripped or None
+    return None
+
+
 def find_headline(text: str, labels: PictetLabels = EN_LABELS) -> str | None:
     """The one-line transaction summary Pictet prints near the top of every
     single-event advice (e.g. ``Purchase 469.00 ELEVA-... at EUR 255.63``,

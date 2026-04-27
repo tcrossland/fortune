@@ -22,6 +22,7 @@ from banking_pipeline.models import RawDocument, Transaction
 from banking_pipeline.templates.pictet._common import (
     ES_LABELS,
     extract_simple_trade_advice,
+    find_switch_fund_name,
 )
 
 _SWITCH_SALIDA_TITLE_RE = re.compile(r"Cambio.*\(salida\)", re.I)
@@ -35,11 +36,19 @@ class PictetSwitchSalidaTemplate:
         if not _SWITCH_SALIDA_TITLE_RE.search(doc.text):
             return []
 
+        # Switch advices carry no ``Compra``/``Venta`` headline line, so
+        # ``find_headline`` returns ``None`` and the helper falls back to
+        # ``fallback_narration``. Compose ``"SALIDA <fund>"`` from the
+        # portfolio block instead — that's the narration the writer's
+        # switch path expects.
+        fund = find_switch_fund_name(doc.text, "SALIDA")
+        narration = f"SALIDA {fund}" if fund else "Pictet switch (salida)"
+
         tx = extract_simple_trade_advice(
             doc,
             expected_operations=("Venta",),
-            fallback_narration="Pictet switch (salida)",
+            fallback_narration=narration,
             labels=ES_LABELS,
-            title="Cambio (salida)",
+            title="Switch",
         )
         return [tx] if tx else []

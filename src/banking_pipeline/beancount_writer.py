@@ -79,6 +79,19 @@ _SECURITY_SELL_TYPES: frozenset[DocumentType] = frozenset({
 
 _SECURITY_TRADE_TYPES = _SECURITY_BUY_TYPES | _SECURITY_SELL_TYPES
 
+# Switches are *also* members of the buy/sell sets above (entrada is a buy,
+# salida is a sell at the security-leg level), so ``render_open_directives``
+# still finds their ISINs and emits the right ``Assets:<prefix>:<ISIN>``
+# opens. The dispatcher in ``_render_transaction`` checks this set first so
+# switch advices route to the switch builder rather than the regular trade
+# builder — the cash-leg shape, the ``{} @`` cost form, the Switch holding
+# account, the ``^<txn>`` link, and the elastic Unrealized leg are all
+# distinctive enough to warrant their own builder.
+_SWITCH_TYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.SWITCH_SALIDA,
+    DocumentType.SWITCH_ENTRADA,
+})
+
 
 _FEE_TEMPLATE = _ENV.from_string(
     """\
@@ -314,6 +327,99 @@ def _render_security_trade(
     return "\n".join(lines) + "\n"
 
 
+def _render_switch_trade(
+    tx: Transaction, doc_type: DocumentType, prefix: str
+) -> str:
+    """Render a Pictet switch leg as a beancount entry.
+
+    Switch advices have **no cash effect**: the proceeds (salida) or
+    cost (entrada) land in an intermediate ``Assets:<prefix>:Switch:<ccy>``
+    holding account that the paired leg later debits or credits, so the
+    pair nets to zero across the two-document switch.
+
+    Salida (sale) layout::
+
+        <booking_date> * "<title>" "<narration>" ^<txn_no>
+          Assets:<prefix>:<ISIN>          <quantity> <ISIN> {} @ <price> <ccy>
+          Assets:<prefix>:Switch:<ccy>    <amount>   <ccy>
+          Income:<prefix>:<ISIN>:Unrealized
+          no: <txn_no>
+
+    The empty ``{}`` cost-braces tell beancount to reduce the position
+    at its existing inventory cost basis (FIFO/etc., per the per-account
+    booking method). The single-``@`` form records the per-unit market
+    price for capital-gains computation, distinct from the ``@@`` total
+    form the FX cash leg uses. The ``Income:...:Unrealized`` posting
+    has no amount: it's an *elastic* leg, and beancount fills in the
+    balance — which equals the realised gain/loss on the units. The
+    user labels it ``Unrealized`` because economically a switch rotates
+    the position into a different fund rather than truly liquidating it.
+
+    Entrada (buy) layout omits the Unrealized leg and uses the standard
+    ``{<price> <ccy>}`` cost-basis braces — new units enter the
+    inventory at the purchase price.
+
+    Header link
+    -----------
+    The ``^<txn_no>`` after the narrations is a beancount link (not a
+    tag — those use ``#``). Switches receive a link in addition to the
+    ``no:`` comment so cross-reference queries in ``bean-query`` can
+    find the entry without parsing comments.
+    """
+
+    sec_ccy = tx.security_currency or tx.currency
+
+    # --- Header ---------------------------------------------------------
+    entry_date = tx.booking_date or tx.trade_date
+    parts: list[str] = [str(entry_date), "*"]
+    if tx.title:
+        parts.append(f'"{_escape(tx.title)}"')
+    parts.append(f'"{_escape(tx.narration)}"')
+    if tx.transaction_number:
+        parts.append(f"^{tx.transaction_number}")
+    lines: list[str] = [" ".join(parts)]
+
+    # --- Asset leg ------------------------------------------------------
+    # Salida uses ``{} @ <price>`` (reduce-from-inventory at market price);
+    # entrada uses ``{<price> <ccy>}`` (new units enter at purchase cost).
+    isin = tx.isin or "Unknown"
+    qty_str = _format_amount(tx.quantity) if tx.quantity is not None else "0"
+    if tx.price is not None:
+        if doc_type == DocumentType.SWITCH_SALIDA:
+            cost_extras = f" {{}} @ {_format_amount(tx.price)} {sec_ccy}"
+        else:
+            cost_extras = f" {{{_format_amount(tx.price)} {sec_ccy}}}"
+    else:
+        cost_extras = ""
+    lines.append(
+        _align(f"Assets:{prefix}:{isin}", qty_str, isin, extras=cost_extras)
+    )
+
+    # --- Switch holding leg --------------------------------------------
+    # Pictet prints ``Importe neto`` in the security currency on switch
+    # advices (no FX leg — there's no cash conversion). The sign is as
+    # printed: positive on salida (proceeds in), negative on entrada
+    # (cost out), which matches beancount's convention.
+    lines.append(
+        _align(
+            f"Assets:{prefix}:Switch:{tx.currency}",
+            _format_amount(tx.amount),
+            tx.currency,
+        )
+    )
+
+    # --- Unrealized gain/loss (salida only) ----------------------------
+    if doc_type == DocumentType.SWITCH_SALIDA:
+        # Elastic posting — no amount, beancount fills in the balance.
+        lines.append(f"  Income:{prefix}:{isin}:Unrealized")
+
+    # --- Trailing reference comment ------------------------------------
+    if tx.transaction_number:
+        lines.append(f"  no: {tx.transaction_number}")
+
+    return "\n".join(lines) + "\n"
+
+
 def render(result: ExtractionResult) -> str:
     """Render all transactions in ``result`` as beancount entries."""
 
@@ -362,9 +468,13 @@ def _render_header(result: ExtractionResult) -> str:
 def _render_transaction(
     tx: Transaction, doc_type: DocumentType, prefix: str
 ) -> str:
-    # Security trades go through the Python builder — see
-    # ``_render_security_trade`` for why. Everything else continues to use
-    # Jinja templates from ``_TEMPLATES``.
+    # Switches first — they're members of the buy/sell sets too (so that
+    # ``render_open_directives`` finds their ISINs) but their entry shape
+    # is distinct enough to need its own builder. Then regular security
+    # trades. Everything else falls through to the Jinja templates in
+    # ``_TEMPLATES``.
+    if doc_type in _SWITCH_TYPES:
+        return _render_switch_trade(tx, doc_type, prefix)
     if doc_type in _SECURITY_TRADE_TYPES:
         return _render_security_trade(tx, doc_type, prefix)
     template = _TEMPLATES.get(doc_type, _DEFAULT_TEMPLATE)
