@@ -390,6 +390,74 @@ def find_exchange_rate(
     return Decimal(m.group(1))
 
 
+def find_fee_breakdown(
+    text: str,
+    *,
+    costs_label: str = "Costes",
+    total_label: str = "Total",
+) -> list["FeeItem"]:
+    """Walk the ``Costes`` / ``Costs`` block and extract per-line fee items.
+
+    Pictet quarterly fee advices print a costs block with one line per
+    fee component followed by a ``Total`` summary::
+
+        Costes
+        Honorarios de gestión EUR -8'467.20
+        IVA extranjero EUR -1'778.11
+        Total EUR -10'245.31
+
+    The helper enters the block at the standalone ``costs_label`` line,
+    yields one :class:`~banking_pipeline.models.FeeItem` per single-line
+    ``<label> <CCY> <amount>`` row, and stops when it hits ``Total`` or
+    a non-matching line (section change). Amounts are stored signed as
+    printed (negative for cash-out); the writer flips signs at render.
+
+    Limitation: multi-line label wrapping (where Pictet splits long fee
+    names across two or three lines before the currency+amount line)
+    isn't handled — affects the 2023 ES and the 2026 EN ``debit_of_fees``
+    fixtures. Add a multi-line accumulator when those fixtures get their
+    own goldens; the 2021 ES fixture this helper targets has all fee
+    items on a single line.
+    """
+
+    from banking_pipeline.models import FeeItem  # avoid import cycle
+
+    items: list[FeeItem] = []
+    in_block = False
+    inline_re = re.compile(
+        rf"^(.+?)\s+([A-Z]{{3}})\s+({_NUMBER})\s*$"
+    )
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not in_block:
+            if stripped == costs_label:
+                in_block = True
+            continue
+        if not stripped:
+            # Blank line inside the block — skip without ending; Pictet
+            # occasionally pads vertical space between fee items.
+            continue
+        m = inline_re.match(stripped)
+        if not m:
+            # Multi-line label or section change — stop at the first
+            # non-matching line. The single-line-only contract is
+            # documented above; revisit when fixtures with multi-line
+            # labels need to round-trip through the writer.
+            break
+        label, ccy, amount_str = m.groups()
+        if label.strip().lower() == total_label.lower():
+            break
+        items.append(
+            FeeItem(
+                description=label.strip(),
+                amount=parse_pictet_amount(amount_str),
+                currency=ccy,
+            )
+        )
+    return items
+
+
 def find_switch_fund_name(text: str, side: str) -> str | None:
     """Extract the fund name from a Pictet switch advice's portfolio block.
 

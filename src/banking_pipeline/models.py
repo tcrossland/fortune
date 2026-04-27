@@ -208,6 +208,28 @@ class Classification(BaseModel):
     language: LanguageClassification | None = None
 
 
+class FeeItem(BaseModel):
+    """One line item from a multi-component fee advice.
+
+    Pictet's quarterly fee advices (``Débito de gastos`` / ``Debit of fees``
+    / ``Factura``) carry a ``Costes`` block with one line per fee component
+    — management fees, account-maintenance fees, foreign VAT, etc. — plus
+    a ``Total`` summary line. Each line maps to one ``FeeItem`` here, and
+    the writer renders one ``Expenses:<prefix>:Fees:<ccy>`` posting per
+    item with the item's description as an inline beancount comment so
+    the audit detail isn't lost when the fees roll up into a single cash
+    leg.
+
+    ``amount`` is stored signed-as-printed (Pictet writes fees negative
+    because they're cash-out); the writer flips to ``abs(amount)`` for
+    the expense leg since beancount expense-account postings are positive.
+    """
+
+    description: str
+    amount: Decimal
+    currency: str  # ISO-4217
+
+
 class Transaction(BaseModel):
     """A single economic event extracted from a document.
 
@@ -263,6 +285,13 @@ class Transaction(BaseModel):
     # either ``currency`` or ``security_currency``.
     fees: Decimal | None = None
     fees_currency: str | None = None
+    # Per-line breakdown of a multi-component fee advice's ``Costes`` block.
+    # Empty for documents that don't carry one (every trade and switch
+    # advice today rolls fees into a single ``fees`` line above; only
+    # standalone fee advices like ``Débito de gastos`` populate this).
+    # The writer iterates this when present and emits one expense leg per
+    # item; otherwise it falls back to a single aggregate expense leg.
+    fee_breakdown: list[FeeItem] = Field(default_factory=list)
 
     # --- FX bridge (only set when security_currency != currency) --------
     # Pre-FX subtotal in the security currency: gross + fees, before

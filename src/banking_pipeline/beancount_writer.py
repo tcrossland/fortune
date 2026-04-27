@@ -92,6 +92,17 @@ _SWITCH_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.SWITCH_ENTRADA,
 })
 
+# Fee-advice doctypes routed through ``_render_fee_advice``. Currently
+# scoped to the Spanish-locale ``Débito de gastos`` because that's the
+# only fixture with a golden file in the new format. ``DEBIT_OF_FEES``
+# (EN) and ``FACTURA`` keep their existing Jinja-template render until
+# they get their own goldens — those advices use multi-line fee labels
+# that the breakdown helper doesn't yet handle, and ``Factura`` carries
+# additional invoice metadata we'd want to render too.
+_FEE_ADVICE_TYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.DEBITO_DE_GASTOS,
+})
+
 
 _FEE_TEMPLATE = _ENV.from_string(
     """\
@@ -156,9 +167,12 @@ _TEMPLATES = {
     DocumentType.INTEREST_PAYMENT: _INTEREST_TEMPLATE,
     DocumentType.INTEREST_SCALE: _INTEREST_TEMPLATE,
     # --- Fees ---
+    # ``DEBITO_DE_GASTOS`` routes through ``_render_fee_advice`` (the
+    # Python builder) for the new bank-prefixed multi-leg shape; the
+    # other fee doctypes stay on the legacy Jinja path until they get
+    # their own goldens.
     DocumentType.FEE_NOTICE: _FEE_TEMPLATE,
     DocumentType.DEBIT_OF_FEES: _FEE_TEMPLATE,
-    DocumentType.DEBITO_DE_GASTOS: _FEE_TEMPLATE,
     # FACTURA stores amount as -gross_total (already negative), so flip signs
     # vs the standard fee template to get Expenses positive, Cash negative.
     DocumentType.FACTURA: _ENV.from_string(
@@ -447,6 +461,74 @@ def _render_switch_trade(
     return "\n".join(lines) + "\n"
 
 
+def _render_fee_advice(
+    tx: Transaction, doc_type: DocumentType, prefix: str
+) -> str:
+    """Render a multi-component fee advice as a beancount entry.
+
+    Layout::
+
+        <booking_date> * "<title>" "<narration>"
+          [Expenses:<prefix>:Fees:<ccy>  <abs_amount> <ccy> ; <description>]
+          ... (one per fee_breakdown item)
+          Assets:<prefix>:<currency>     <signed_amount> <ccy>
+          no: <transaction_number>
+
+    When ``fee_breakdown`` is empty the function falls back to a single
+    aggregate expense leg using ``abs(tx.amount)`` so advices that don't
+    carry a per-line breakdown (or where the breakdown helper hasn't
+    been extended to parse them yet) still render correctly.
+
+    Sign conventions match the rest of the writer: the cash leg's
+    ``amount`` flows through unchanged (Pictet prints negative for
+    cost-out, which matches beancount), and each fee item's ``amount``
+    is run through ``abs()`` because beancount expense legs are positive.
+    """
+
+    entry_date = tx.booking_date or tx.trade_date
+    parts: list[str] = [str(entry_date), "*"]
+    if tx.title:
+        parts.append(f'"{_escape(tx.title)}"')
+    parts.append(f'"{_escape(tx.narration)}"')
+    lines: list[str] = [" ".join(parts)]
+
+    # --- Expense legs ---------------------------------------------------
+    if tx.fee_breakdown:
+        for item in tx.fee_breakdown:
+            lines.append(
+                _align(
+                    f"Expenses:{prefix}:Fees:{item.currency}",
+                    _format_amount(abs(item.amount)),
+                    item.currency,
+                    extras=f" ; {item.description}",
+                )
+            )
+    else:
+        # No per-line breakdown — fall back to a single aggregate leg.
+        lines.append(
+            _align(
+                f"Expenses:{prefix}:Fees:{tx.currency}",
+                _format_amount(abs(tx.amount)),
+                tx.currency,
+            )
+        )
+
+    # --- Cash leg -------------------------------------------------------
+    lines.append(
+        _align(
+            f"Assets:{prefix}:{tx.currency}",
+            _format_amount(tx.amount),
+            tx.currency,
+        )
+    )
+
+    # --- Trailing reference comment ------------------------------------
+    if tx.transaction_number:
+        lines.append(f"  no: {tx.transaction_number}")
+
+    return "\n".join(lines) + "\n"
+
+
 def render(result: ExtractionResult) -> str:
     """Render all transactions in ``result`` as beancount entries."""
 
@@ -495,13 +577,16 @@ def _render_header(result: ExtractionResult) -> str:
 def _render_transaction(
     tx: Transaction, doc_type: DocumentType, prefix: str
 ) -> str:
-    # Switches first — they're members of the buy/sell sets too (so that
-    # ``render_open_directives`` finds their ISINs) but their entry shape
-    # is distinct enough to need its own builder. Then regular security
+    # Dispatch order: switches first (their shape is distinct enough to
+    # need their own builder, even though they're also in the buy/sell
+    # sets so ``render_open_directives`` finds their ISINs), then fee
+    # advices (multi-leg per-component breakdown), then regular security
     # trades. Everything else falls through to the Jinja templates in
     # ``_TEMPLATES``.
     if doc_type in _SWITCH_TYPES:
         return _render_switch_trade(tx, doc_type, prefix)
+    if doc_type in _FEE_ADVICE_TYPES:
+        return _render_fee_advice(tx, doc_type, prefix)
     if doc_type in _SECURITY_TRADE_TYPES:
         return _render_security_trade(tx, doc_type, prefix)
     template = _TEMPLATES.get(doc_type, _DEFAULT_TEMPLATE)
