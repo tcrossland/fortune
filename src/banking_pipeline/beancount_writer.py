@@ -368,21 +368,38 @@ def _render_switch_trade(
     """
 
     sec_ccy = tx.security_currency or tx.currency
+    isin = tx.isin or "Unknown"
+    entry_date = tx.booking_date or tx.trade_date
+
+    lines: list[str] = []
+
+    # --- Inline open directive (entrada only) --------------------------
+    # Switch entrada brings a fund leg into the portfolio. The user wants
+    # the matching ``open`` directive emitted inline so the entry is
+    # self-contained for bean-check — distinct from the regular trade
+    # path, where opens are typically managed elsewhere in the ledger.
+    # Salida doesn't need this: by definition the position already
+    # exists from a prior buy/entrada that opened the account.
+    if doc_type == DocumentType.SWITCH_ENTRADA and tx.isin:
+        lines.append(f"{entry_date} open Assets:{prefix}:{isin} {isin}")
 
     # --- Header ---------------------------------------------------------
-    entry_date = tx.booking_date or tx.trade_date
+    # Link precedence: ``link_id`` wins (set by a future pairing layer
+    # that can resolve the salida↔entrada cross-reference); otherwise
+    # fall back to ``transaction_number`` so a switch leg processed in
+    # isolation still carries a discoverable link.
     parts: list[str] = [str(entry_date), "*"]
     if tx.title:
         parts.append(f'"{_escape(tx.title)}"')
     parts.append(f'"{_escape(tx.narration)}"')
-    if tx.transaction_number:
-        parts.append(f"^{tx.transaction_number}")
-    lines: list[str] = [" ".join(parts)]
+    link = tx.link_id or tx.transaction_number
+    if link:
+        parts.append(f"^{link}")
+    lines.append(" ".join(parts))
 
     # --- Asset leg ------------------------------------------------------
     # Salida uses ``{} @ <price>`` (reduce-from-inventory at market price);
     # entrada uses ``{<price> <ccy>}`` (new units enter at purchase cost).
-    isin = tx.isin or "Unknown"
     qty_str = _format_amount(tx.quantity) if tx.quantity is not None else "0"
     if tx.price is not None:
         if doc_type == DocumentType.SWITCH_SALIDA:
@@ -396,15 +413,22 @@ def _render_switch_trade(
     )
 
     # --- Switch holding leg --------------------------------------------
-    # Pictet prints ``Importe neto`` in the security currency on switch
-    # advices (no FX leg — there's no cash conversion). The sign is as
-    # printed: positive on salida (proceeds in), negative on entrada
-    # (cost out), which matches beancount's convention.
+    # Sign is as printed by Pictet's ``Importe neto``: positive on salida
+    # (proceeds into the holding), negative on entrada (cost leaving the
+    # holding to fund the buy). When the underlying is in a different
+    # currency than the Switch holding (FX entrada / FX salida), append
+    # ``@@ <subtotal> <sec_ccy>`` so beancount sees the conversion.
+    cash_extras = ""
+    if tx.is_fx and tx.subtotal_security is not None:
+        cash_extras = (
+            f" @@ {_format_amount(abs(tx.subtotal_security))} {sec_ccy}"
+        )
     lines.append(
         _align(
             f"Assets:{prefix}:Switch:{tx.currency}",
             _format_amount(tx.amount),
             tx.currency,
+            extras=cash_extras,
         )
     )
 
@@ -414,6 +438,9 @@ def _render_switch_trade(
         lines.append(f"  Income:{prefix}:{isin}:Unrealized")
 
     # --- Trailing reference comment ------------------------------------
+    # The ``no:`` comment carries the document's own transaction number,
+    # which differs from the link on entrada when pairing is wired up
+    # (link = salida's txn, no: = entrada's own txn).
     if tx.transaction_number:
         lines.append(f"  no: {tx.transaction_number}")
 

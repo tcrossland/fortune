@@ -1,0 +1,46 @@
+--- page 1/1 ---
+BOLSA DE VALORES
+CAMBIO ("SWITCH") DE FONDOS (ENTRADA)
+ARCHIVE
+0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 722909789 | Fecha de publicación: 29.09.2021
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 28.09.2021
+Fecha valor 01.10.2021
+Fecha contable 29.09.2021
+Transacción
+Switch entre MSIF-GLOBAL QUALITY FUND ZH
+EUR-ACC
+y SISF-QEP GLOBAL ESG C USD
+-ACC.-
+Instrucción
+Fecha de la orden 27.09.2021 a las 10:16:52
+Tipo de orden A mercado
+Ejecución
+Tipo de operación Compra
+Plaza bursátil All Funds
+Fecha de ejecución 27.09.2021 a las 10:48:53
+Cantidad ejecutada 383.66
+Precio de ejecución USD 183.5393
+Importe bruto USD -70'416.69
+Otro
+Depositario ALLFUNDS BANK INTERNATIONAL
+SA
+ENTRADA en la cartera K-123456.001
+SISF-QEP GLOBAL ESG C USD -ACC.- 383.66
+ISIN: LU1528092635 N° Telekurs: 34832289 
+EFECTO CASH 
+Importe bruto USD -70'416.69
+Costes USD 0.00
+Subtotal USD -70'416.69
+Tipo de cambio (EUR/USD): 1.16689941
+Importe neto EUR -60'345.12

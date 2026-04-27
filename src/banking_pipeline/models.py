@@ -282,6 +282,16 @@ class Transaction(BaseModel):
     # Pictet's per-document reference (``N° de transacción``). Emitted by
     # the writer as a trailing ``  no: <number>`` comment on the entry.
     transaction_number: str | None = None
+    # Beancount link (``^<id>`` after the narration). Used to thread
+    # related entries together — most prominently the salida + entrada
+    # legs of a switch, which share a single link so ``bean-query`` can
+    # retrieve both with one filter. The extractor doesn't fill this from
+    # the document alone (the legs reference each other through external
+    # pairing, not through any in-document field); a higher pipeline layer
+    # sets it after detecting a salida/entrada pair. When ``None`` the
+    # writer falls back to ``transaction_number`` for switches and emits
+    # no link at all for non-switch entries.
+    link_id: str | None = None
 
     # --- Provenance -----------------------------------------------------
     source_path: Path
