@@ -209,22 +209,98 @@ class Classification(BaseModel):
 
 
 class Transaction(BaseModel):
-    """A single economic event extracted from a document."""
+    """A single economic event extracted from a document.
 
+    Currency semantics
+    ------------------
+    ``currency`` is the **cash-leg currency** — the currency the client's
+    current account is debited or credited in. ``security_currency`` is the
+    **trade-execution currency** for the asset itself. On non-FX trades the
+    two are equal; on FX trades (e.g. a EUR-denominated client account
+    buying a USD-denominated fund) Pictet bills the gross + fees in the
+    security currency, converts via an FX leg inside the same advice, and
+    prints the converted ``net`` in the cash currency. The writer emits a
+    beancount ``@@ <subtotal> <ccy>`` annotation on the cash leg to record
+    that conversion.
+
+    Most fields default to ``None`` so non-security documents (fees,
+    interest, payments) and pre-FX-aware extractors continue to construct
+    a valid ``Transaction`` without filling fields that don't apply.
+    """
+
+    # --- Dates ----------------------------------------------------------
     trade_date: date
     settlement_date: date | None = None
+    # Pictet ES: ``Fecha contable`` / EN: ``Booking date``. The writer uses
+    # this rather than ``trade_date`` for the entry-date posting on advices
+    # that carry one — booking is when the cash actually moved.
+    booking_date: date | None = None
+
+    # --- Narration ------------------------------------------------------
     narration: str
-    currency: str  # ISO-4217 (e.g. "EUR", "USD")
-    amount: Decimal
-    # Securities fields (optional: only present for trade/dividend docs).
+    # Document title (``Suscripción``, ``Trade confirmation``, etc.).
+    # Beancount entries can carry two narration strings (payee + narration);
+    # the writer uses ``title`` as the first and ``narration`` as the
+    # second when both are present.
+    title: str | None = None
+
+    # --- Cash leg -------------------------------------------------------
+    currency: str  # ISO-4217 cash-account currency (e.g. "EUR", "USD")
+    amount: Decimal  # signed, in ``currency``
+
+    # --- Security leg ---------------------------------------------------
     isin: str | None = None
     quantity: Decimal | None = None
     price: Decimal | None = None
-    # Account identifiers (optional: IBAN, broker account, etc.).
-    account_number: str | None = None
-    # Where it came from — useful for diffing and audit.
+    # The trade-execution currency for the asset. ``None`` for non-security
+    # documents. When this differs from ``currency`` the document is an FX
+    # trade and ``subtotal_security`` / ``fees`` should also be populated.
+    security_currency: str | None = None
+
+    # --- Fees -----------------------------------------------------------
+    # Pictet bills fees in the security currency, not the cash currency, so
+    # the explicit ``fees_currency`` is kept rather than assuming it equals
+    # either ``currency`` or ``security_currency``.
+    fees: Decimal | None = None
+    fees_currency: str | None = None
+
+    # --- FX bridge (only set when security_currency != currency) --------
+    # Pre-FX subtotal in the security currency: gross + fees, before
+    # conversion to the cash-account currency. Printed verbatim by Pictet
+    # as ``Subtotal <ccy> <amount>``; preserved explicitly so the writer
+    # doesn't have to re-derive it (and risk rounding drift on documents
+    # that round at different stages).
+    subtotal_security: Decimal | None = None
+    # Documentation field — beancount derives the effective rate from
+    # ``amount`` / ``subtotal_security`` when forming ``@@``, so the writer
+    # doesn't strictly need this. Keeping it lets diagnostics flag drift
+    # between Pictet's printed rate and the implied one.
+    exchange_rate: Decimal | None = None
+
+    # --- Account identifiers --------------------------------------------
+    account_number: str | None = None  # IBAN, broker account, etc.
+    # Pictet's per-document reference (``N° de transacción``). Emitted by
+    # the writer as a trailing ``  no: <number>`` comment on the entry.
+    transaction_number: str | None = None
+
+    # --- Provenance -----------------------------------------------------
     source_path: Path
     source_page: int | None = None
+
+    @property
+    def is_fx(self) -> bool:
+        """True when the security and cash-account currencies differ.
+
+        The writer branches on this to choose between the simple two-posting
+        template and the FX template that splits fees out and emits a
+        beancount ``@@`` annotation on the cash leg. Returns ``False`` when
+        ``security_currency`` is unset (non-security documents).
+        """
+
+        return (
+            self.security_currency is not None
+            and self.security_currency != self.currency
+        )
 
 
 class ExtractionResult(BaseModel):
