@@ -1,0 +1,39 @@
+--- page 1/1 ---
+PAYMENT TRANSACTIONS
+Incoming payment
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: P-999999.999
+Transaction no.: 1165960303 | Publication date: 16.02.2026
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 16.02.2026
+Value date 16.02.2026
+Booking date 16.02.2026
+Order date 16.02.2026 at 07:10:37 am
+Payment
+Instructing party Nilufer Keskin
+Bank BERLINER SPARKASSE - BSK 1818
+AG
+ALEXANDERPLATZ 2
+10178 BERLIN
+Deutschland
+Bank clearing no SWIFT(BELADEBE)
+Country Germany
+Payment reference NOTPROVIDED
+Gross amount EUR 200'000.00
+Comment
+UVZ Nr. 1445/2025
+CASH EFFECTin portfolio P-999999.999
+Gross amount EUR 200'000.00
+Costs EUR 0.00
+Net amount EUR 200'000.00
+Current account P-999999.999.00.EUR/Ordinary IBAN?LU091980012345600200

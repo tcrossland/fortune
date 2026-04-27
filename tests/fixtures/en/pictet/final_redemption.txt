@@ -1,0 +1,41 @@
+--- page 1/1 ---
+SECURITY EVENT
+Redemption
+Final redemption
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: P-999999.999
+Transaction no.: 1178982635 | Publication date: 30.03.2026
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 30.03.2026
+Value date 30.03.2026
+Booking date 30.03.2026
+Security event
+Ex date 30.03.2026
+Payment date 30.03.2026
+Redemption - EUR PWM LG VOL BALANC (PICTET)25/26
+Quantity -423
+Redemption price EUR 60.99250934
+Gross amount EUR 25'799.83
+Other
+Deposit PCO GVA DEPGE.C SWITZERLAND
+REFERENCE HOLDINGin portfolio P-999999.999
+EUR PWM LG VOL BALANC (PICTET)25/26 423
+ISIN: ZZ00AB97OD 0 Telekurs ID: ZZZAB97OD 
+OUT of portfolio P-999999.999
+EUR PWM LG VOL BALANC (PICTET)25/26 423
+ISIN: ZZ00AB97OD 0 Telekurs ID: ZZZAB97OD 
+CASH EFFECTin portfolio P-999999.999
+Gross amount EUR 25'799.83
+Costs EUR 0.00
+Net amount EUR 25'799.83
+Current account P-999999.999.00.EUR/Ordinary IBAN?LU901980012345600100

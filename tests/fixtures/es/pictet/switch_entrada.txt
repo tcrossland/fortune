@@ -1,0 +1,45 @@
+--- page 1/1 ---
+BOLSA DE VALORES
+Cambio ("switch") de fondos (entrada)
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG / Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: P-999999.999
+N° de transacción: 889193126 | Fecha de publicación: 01.08.2023
+S.E. & O.
+Atentamente
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 01.08.2023
+Fecha valor 04.08.2023
+Fecha contable 01.08.2023
+Transacción
+Switch entre MIROVA-GBL GREEN BD SI/A
+EUR-ACC.
+y ABRDN II-EUR C.BD S&R INV-D
+EUR-ACC
+Instrucción
+Fecha de la orden 27.07.2023 a las 13:21:41
+Tipo de orden A mercado
+Ejecución
+Tipo de operación Compra
+Plaza bursátil All Funds
+Fecha de ejecución 27.07.2023 a las 13:23:41
+Cantidad ejecutada 3'940.078
+Precio de ejecución EUR 11.369
+Importe bruto EUR -44'794.75
+Otro
+Depositario ALLFUNDS BANK S.A.U.,
+LUXEMBOURG BRANCH
+ENTRADAen la cartera P-999999.999
+ABRDN II-EUR C.BD S&R INV-D EUR-ACC 3'940.078
+ISIN: LU0767911984 N° Telekurs: 19785371 
+EFECTO CASH
+Importe bruto EUR -44'794.75
+Costes EUR 0.00
+Importe neto EUR -44'794.75

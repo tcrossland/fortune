@@ -1,0 +1,46 @@
+--- page 1/1 ---
+BOLSA DE VALORES
+Suscripción
+Compra 1'296.000 AB SICAV I-SUST.US THEM.I USD-ACC a USD 44.44
+ARCHIVE
+0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: P-999999.999
+N° de transacción: 840115426 | Fecha de publicación: 24.01.2023
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 23.01.2023
+Fecha valor 26.01.2023
+Fecha contable 24.01.2023
+Instrucción
+Fecha de la orden 23.01.2023 a las 16:58:48
+Tipo de orden A mercado
+Ejecución
+Tipo de operación Compra
+Plaza bursátil All Funds
+Fecha de ejecución 23.01.2023 a las 17:08:24
+Cantidad ejecutada 1'296.000
+Precio de ejecución USD 44.44
+Importe bruto USD -57'594.24
+Costes
+Spread USD -172.78
+Total USD -172.78
+Otro
+Depositario ALLFUNDS BANK INTERNATIONAL
+SA
+ENTRADAen la cartera P-999999.999
+AB SICAV I-SUST.US THEM.I USD-ACC 1'296.000
+ISIN: LU0128316170 N° Telekurs: 1230260 
+EFECTO CASHen la cartera P-999999.999
+Importe bruto USD -57'594.24
+Costes USD -172.78
+Subtotal USD -57'767.02
+Tipo de cambio (EUR/USD): 1.08581991
+Importe neto EUR -53'201.29
+Cuenta corriente P-999999.999.00.EUR/Ordinario IBAN?LU901980012345600100

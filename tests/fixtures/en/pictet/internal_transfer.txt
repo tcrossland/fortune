@@ -1,0 +1,35 @@
+--- page 9/9 ---
+PAYMENT TRANSACTIONS
+Internal money transfer
+ARCHIVE
+9A99 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 99A, avenue J.F. Kennedy / L-9999 Luxembourg / B.P. 999 / L-9999 Luxembourg
+Tel. +999 99 99 99-9 / Fax +999 99 99 99 / pictet.com
+9/9 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-999999.999
+Transaction no.: 9999999999 | Publication date: 01.01.2022
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 01.01.2022
+Value date 01.01.2022
+Booking date 01.01.2022
+Order date 01.01.2022 at 11:11:11 pm
+Transfer
+Gross amount EUR 99'999.99
+CASH EFFECTin portfolio K-999999.999
+Gross amount EUR -99'999.99
+Costs EUR 9.99
+Net amount EUR -99'999.99
+Current account K-999999.999.99.EUR/Ordinary IBAN?LU999999999999999999
+CASH EFFECTin portfolio K-999999.999
+Gross amount EUR 99'999.99
+Costs EUR 9.99
+Sub-total EUR 99'999.99
+Exchange rate (EUR/GBP): 9.99999999
+Net amount GBP 99'999.99
+Current account K-999999.999.99.GBP/Ordinary IBAN?LU999999999999999999

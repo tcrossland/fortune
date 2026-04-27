@@ -1,0 +1,36 @@
+--- page 1/1 ---
+GASTOS
+Débito de gastos
+ARCHIVE
+0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: P-999999.999
+N° de transacción: 855093717 | Fecha de publicación: 20.03.2023
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 20.03.2023
+Fecha valor 31.03.2023
+Fecha contable 20.03.2023
+Costes
+Honorarios de
+administración
+EUR -3'088.36
+Comisiones de
+mantenimiento de cuenta
+EUR -400.00
+Total EUR -3'488.36
+Información gastos
+Período 01.01.2023 - 31.03.2023
+Comentario
+Honorarios de administración 1° trimestre 2023
+EFECTO CASHen la cartera P-999999.999
+Importe bruto EUR 0.00
+Costes EUR -3'488.36
+Importe neto EUR -3'488.36
+Cuenta corriente P-999999.999.00.EUR/Ordinario IBAN?LU901980012345600100

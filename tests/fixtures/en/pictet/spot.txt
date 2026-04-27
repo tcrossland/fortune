@@ -1,0 +1,48 @@
+--- page 1/1 ---
+FOREIGN EXCHANGE
+Spot
+Sell USD 69'920.99 - Buy EUR at 1.151695
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: P-999999.999
+Transaction no.: 1174874179 | Publication date: 16.03.2026
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 16.03.2026
+Value date 18.03.2026
+Booking date 16.03.2026
+Execution
+Operation type Sell
+Market place Over the counter
+Execution date 16.03.2026 at 05:35:52 pm
+Buy amount EUR 60'711.38
+Sell amount USD 69'920.99
+Execution rate (EUR/USD) 1.151695
+Trading capacity Principal
+Other
+Counterparty Bank Pictet & Cie (Europe) AG,
+succursale de Luxembourg
+Unique trade ID 549300GSSPQ1QSKI1376SPOTLUX
+1174874179
+CASH EFFECTin portfolio P-999999.999
+Gross amount USD -69'920.99
+Net amount USD -69'920.99
+Current account P-999999.999.00.USD/Ordinary IBAN?LU901980012345600100
+CASH EFFECTin portfolio P-999999.999
+Gross amount EUR 60'711.38
+Net amount EUR 60'711.38
+Current account P-999999.999.00.EUR/Ordinary IBAN?LU901980012345600100
+Please note:
+This document constitutes and/or supplements the Confirmation or (as applicable) the transaction
+advice, as referred to in the documentation pertaining to the above-mentioned transaction. Please refer
+to the documentation applying to the transaction such as, but not limited to, the TOFF, the Master
+Agreement (for over-the-counter derivatives transactions), the Long Form Confirmation and the Bank's
+General Business Conditions (each, if applicable).

@@ -1,0 +1,40 @@
+--- page 1/1 ---
+LIMIT
+Extension
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: P-999999.999
+Transaction no.: 1168719651 | Publication date: 25.02.2026
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 25.02.2026
+Value date 26.02.2026
+Booking date 25.02.2026
+Contract
+No. 43193651
+Opening date 26.02.2025
+Modification date 26.02.2026
+Maturity date 26.02.2027
+Interest
+Rate Interest rate as set out in the Credit
+Agreement of 13.12.2022
+Margin 1%
+REFERENCE HOLDINGin portfolio P-999999.999
+C/a limit GBP, 26.02.2025-26.02.2026 - BP
+level GBP 2'400'000.00
+ISIN: ZZ00XAX1QR 0 Telekurs ID: ZZZXAX1QR 
+CASH EFFECTin portfolio P-999999.999
+Gross amount GBP 0.00
+Costs GBP 0.00
+Net amount GBP 0.00
+Current account P-999999.999.00.GBP/Ordinary IBAN?LU091980012345600200
+Please note:
+According to your instructions

@@ -1,0 +1,46 @@
+--- page 1/1 ---
+BOLSA DE VALORES
+Compra
+Compra 3'401 UBS(LUX)-SUSTAI.DEVEL.BANK BD A USD a USD 11.098
+ARCHIVE
+0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: P-999999.999
+N° de transacción: 840115443 | Fecha de publicación: 23.01.2023
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 23.01.2023
+Fecha valor 25.01.2023
+Fecha contable 23.01.2023
+Instrucción
+Fecha de la orden 23.01.2023 a las 16:58:48
+Tipo de orden A mercado
+Ejecución
+Tipo de operación Compra
+Plaza bursátil SIX Swiss Exchange (XSWX)
+Fecha de ejecución 23.01.2023 a las 17:00:28
+Cantidad ejecutada 3'401
+Precio de ejecución USD 11.098
+Importe bruto USD -37'744.30
+Costes
+Corretaje y/o spread USD -283.61
+Tasa bursátil USD -7.29
+Total USD -290.90
+Otro
+Depositario SIX SIS AG
+ENTRADAen la cartera P-999999.999
+UBS(LUX)-SUSTAI.DEVEL.BANK BD A USD 3'401
+ISIN: LU1852211215 N° Telekurs: 42819030 
+EFECTO CASHen la cartera P-999999.999
+Importe bruto USD -37'744.30
+Costes USD -290.90
+Subtotal USD -38'035.20
+Tipo de cambio (EUR/USD): 1.08442474
+Importe neto EUR -35'074.08
+Cuenta corriente P-999999.999.00.EUR/Ordinario IBAN?LU901980012345600100

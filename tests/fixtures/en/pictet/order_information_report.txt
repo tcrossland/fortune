@@ -1,0 +1,167 @@
+--- page 9/9 ---
+Order information report | 99.99.9999 - 99:99 9/9
+Order information report
+As at 99.99.9999 in GBP
+999999.999
+999999999
+
+--- page 9/9 ---
+Order information report | 99.99.9999 - 99:99 9/9
+General information
+999999.999
+Please find attached the document as per our discussion by phone on 99.99.9999
+GENERAL INFORMATION
+Participant(s) Pictet SURNAMES, FIRSTNAME
+Account number 999999.999
+Client classification Private client (retail)
+Risk profile High risk
+Client's investment horizon More than 9 years
+Client’s general investment
+objectives and attitude
+towards risk
+average
+Moderate risk appetite: Keen to combine performance and
+capital growth. Willing to place a significant percentage of
+assets in high-risk investments. Annual rates of return and loss
+likely to be average.
+Referency currency GBP
+
+--- page 9/9 ---
+Order information report | 99.99.9999 - 99:99 9/9
+Your trade instruction
+999999.999
+As at 99.99.9999 in GBP
+BUY
+Currency Order type Quantity Description Last indicative
+Quote
+Valuation
+Val. orig.
+% of total
+portfolio
+DKK Buy 999 NOVO NORDISK 'B' 999.99 99,999.99 9.99%
+ISIN DK9999999999 999,999.99
+Execution type: At market
+Based on the information available to us, you have the necessary knowledge and/or
+experience with this type of financial instrument.
+Quotes and valuation are gross of any fees
+IMPACT ON CASH IN GBP
+Disinvested Amount 9.99
+Invested Amount 99,999.99
+Expected Result -99,999.99
+
+--- page 9/9 ---
+Order information report | 99.99.9999 - 99:99 9/9
+Transaction type
+Quantity
+Description
+Order type
+Last indicative Quote
+Valuation
+Orders information
+Costs simulation (GBP)
+Entry costs (incl. taxes)
+Services costs9
+Instruments costs9
+Recurring costs
+Services costs9
+Instruments costs9
+Exit costs (incl. taxes)
+Services costs9
+Instruments costs9
+Total costs over holding period9
+Investment Period9
+Total
+Services costs
+Instruments costs
+Explanation:
+The actual costs can vary depending on the investment period which depends on several factors
+and the performance of the product. The Simulation does not account for any expected performance
+or return on investment as it assumes that the prices of the financial instruments in which the
+portfolio is invested remain constant. In order to calculate the cumulative effect of the total costs
+and charges on the investment return, you may deduct this total amount from your return.
+Depending on the instrument, transaction-related taxes may apply.
+9 Entry service costs include handling fees and brokerage fees, third-party correspondent
+brokerage and settlement fees. Amounts may vary in function of markets and counterparties, and
+are not always known in advance. For simulation purposes, we include amounts based on the
+average costs per market and on the standard fee schedule for the specific client’s account. For
+some financial instruments traded over-the-counter (OTC), a spread is charged instead of
+brokerage fees. Exceptionally, for certain OTC derivatives (for example, some exotic options), you
+may be charged up to 9% of the investment amount. Where a transaction in a financial instrument
+leads to a currency conversion, you are charged a brokerage fee on the financial instrument, and a
+spread on the foreign exchange transaction. Information on these costs may be found in the Private
+Banking Fee Schedule and its Addendum.
+9 / 9 Entry / exit costs and charges charged at the discretion of the product manufacturers.
+9 Annual service costs include advisory (if applicable), administration fees, third-party custody
+charges and VAT, where applicable.
+9 Instrument costs during investment include on-going costs, transaction costs related to the
+issuance and management of financial instruments and incidental costs. Some structured
+products, such as certificates, have other specific inherent instrument costs. Private equity and
+real estate funds are subject to special conditions. Information on the fees related to these funds
+can be found in the Alternative Investments Fee Schedule. The costs and associated charges
+related to the issuance and management of financial instruments are calculated on a best effort
+basis using data and information available from product manufacturers and reliable financial data
+providers.
+9 In principle, exit service costs are equal to entry service costs described in point 9. Some
+financial instruments, such as bonds, structured products and derivatives, do not carry any exit
+costs if held until maturity. Other instruments such as options carry additional exit costs if
+exercised at maturity.
+9 To standardize information, investment period is assumed to be 9 & 9 years except if the
+instrument has a specific maturity
+9 The total transaction costs and the costs of the financial instrument (if applicable) have a direct
+impact on the return of the investment. If this financial instrument is bought, held and resold over
+a 99-month period, the performance is reduced by the costs shown in the table. With a longer
+holding period of, for example, three years, the annual cost effect on the return is reduced.
+Regulatory information
+999999.999
+This document shows a simulation (“Simulation”) of the costs and charges related to the investment services and the financial instruments in which you invest. The simulation is based on 
+the latest available information specific to your
+situation at the time of this reporting. It is no guarantee of the costs and charges that will actually be incurred, which could be higher or lower depending on specific trading 
+conditions.
+Order #9 (999999)
+DKK
+Buy
+999
+NOVO NORDISK 'B'
+ISIN DK9999999999
+Buy
+999.99
+99,999.99 GBP
+999.99 (9.99%)
+99.99 (9.99%)
+999.99 (9.99%)
+99 months
+999.99 (9.99%)
+999.99 (9.99%)
+9.99 (9.99%)
+99 months
+999.99 (9.99%)
+999.99 (9.99%)
+9.99 (9.99%)
+
+--- page 9/9 ---
+Order information report | 99.99.9999 - 99:99 9/9
+Disclaimer
+This document concerns the transactions you have carried out on your account at Bank Pictet & Cie (Europe) AG and its Branches (the “Bank”) which are subject to the Bank's General
+Business Conditions or any other contractual arrangement with the Bank. It may also contain general marketing information on the investment services and activities of the Bank.
+The Bank has taken into account your knowledge, experience and your sustainability preferences, as the case may be. This notwithstanding, it is for you and not for the Bank, to make any
+investment decision in relation to the financial instrument(s) referred to and, where applicable, enter into the relevant transaction(s) or other related agreement(s) with the Bank or 
+any other
+financial institution(s) or intermediary of your choice. Before making any investment, you are recommended to take advice from a legal and tax expert, as well as to read the relevant
+documentation (issuance program, final terms, prospectus, simplified prospectus and any available Key Information Document of Packaged Retail and Insurance-based Investment Product
+(“PRIIP KID”) or an Undertaking for Collective Investment in Transferable Securities (“UCITS KIID”)) containing information about the product, the prospects for profits and losses and 
+the
+risks. You are fully responsible for any investment you might make.
+The Bank may rely on these acknowledgements and sign, on your behalf, any documents or certificates needed to subscribe to the product(s). Further, by subscribing to the product(s), you
+agree to indemnify and hold harmless the Bank for any and all claims, losses and damages it may incur in connection with the investment in the product(s).
+You are warned that, generally, the market value of financial instruments may vary on the basis of economic, financial or political changes, the remaining term, market conditions, the
+volatility and solvency of the issuer or the benchmark issuer, as well as exchange rate fluctuations. Further, past performance must not be considered an indicator or guarantee of future
+performance.
+You agree to comply with the laws and regulations applicable in your jurisdiction, particularly in the field of copyright law. This document and its content may not be transmitted to any
+other person without the consent in writing of the Bank. You must respect all claims of the Bank flowing from its copyright on this document. Any form of reproduction, copying, 
+disclosure,
+modification and/or publication of its content is under your sole liability , and no liability whatsoever could be incurred by the Bank in this connection. This document is sent to you 
+for
+information only and is subject to change. The Bank reserves the right to correct any errors.
+Bank Pictet & Cie (Europe) AG, Sucursal en España, is authorised and regulated by the Federal Financial Supervisory Authority (Bundesanstalt für Finanzdienstleistungsaufsicht / "BaFin")
+and is subject to limited regulation by the Bank of Spain and CNMV (Comisión Nacional del Mercado de Valores).
+All rights reserved. Copyright 9999.

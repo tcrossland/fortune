@@ -1,0 +1,17 @@
+; Starter chart of accounts. Adjust to match your own ledger, then reference
+; these accounts from the templates in src/banking_pipeline/beancount_writer.py.
+;
+; Per-ISIN accounts (Assets:Investments:<ISIN> and Income:Dividends:<ISIN>)
+; are generated automatically by render_open_directives() in beancount_writer.py
+; and do not need to be listed here by hand.
+
+2020-01-01 open Assets:Bank:Checking                  EUR
+2020-01-01 open Assets:Bank:Savings                   EUR
+2020-01-01 open Assets:Broker:Cash                    EUR, USD, GBP
+2020-01-01 open Income:Interest
+2020-01-01 open Expenses:Banking:Fees
+2020-01-01 open Equity:Uncategorized
+
+; Examples of per-ISIN accounts produced automatically at render time:
+; 2020-01-01 open Assets:Investments:LU2096759431  LU2096759431
+; 2020-01-01 open Income:Dividends:LU2096759431

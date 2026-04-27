@@ -1,0 +1,39 @@
+--- page 1/1 ---
+FACTURA
+Servicios financieros
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Sucursal en España / José Ortega y Gasset, 29 / 28006 Madrid / España
+Tel. +34 91 538 2550 / Fax +34 91 578 3954 / pictet.com
+Número de la empresa : W0032377D
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: P-999999.999
+N° de factura: 80 | Fecha de publicación: 23.03.2026
+N° de transacción: 1177002958
+NIF: XXXXXXXXX
+Bank Pictet & Cie (Europe) AG
+Sucursal en España
+Importe bruto GBP 0.00
+Costes GBP 5'140.70
+Total GBP 5'140.70
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 23.03.2026
+Fecha valor 31.03.2026
+Fecha contable 23.03.2026
+Costes
+Honorarios de gestión (no
+sujetos a IVA)
+GBP 5'140.70
+Total GBP 5'140.70
+Base de cálculo
+Período 01.01.2026 - 31.03.2026
+Valor medio de la cartera de
+valores
+GBP 4'283'918.37
+Débito
+Cuenta corriente P-999999.999.00.GBP/Ordinario
+Fecha valor 31.03.2026
+Comentario
+Basados sobre la media de los finales de mes de la cartera de
+Diciembre 2025 a Febrero 2026

@@ -1,0 +1,36 @@
+--- page 1/1 ---
+FEES
+Debit of fees
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: P-999999.999
+Transaction no.: 1177002942 | Publication date: 23.03.2026
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 23.03.2026
+Value date 31.03.2026
+Booking date 23.03.2026
+Precision
+Reference object FIRST MIDDLE LASTNAMES
+Period 01.01.2026 - 31.03.2026
+Costs
+Administration flat fee
+(subject to VAT)
+GBP -3'427.14
+Account maintenance fees GBP -390.52
+Total GBP -3'817.66
+Comment
+Flat fees 1st quarter 2026
+CASH EFFECTin portfolio P-999999.999
+Gross amount GBP 0.00
+Costs GBP -3'817.66
+Net amount GBP -3'817.66
+Current account P-999999.999.00.GBP/Ordinary IBAN?LU901980012345600100

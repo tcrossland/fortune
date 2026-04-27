@@ -1,0 +1,44 @@
+--- page 1/1 ---
+STOCK EXCHANGE
+Redemption
+Sale 261.00000 GLOB ENVIR OPP-I USD at USD 458.29
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE SURNAME
+Account no.: P-999999.999
+Transaction no.: 1129889273 | Publication date: 20.10.2025
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 17.10.2025
+Value date 21.10.2025
+Booking date 20.10.2025
+Instruction
+Order date 17.10.2025 at 10:11:49 am
+Order type Good till cancel
+Order validity 31.12.2027 at 11:59:59 pm
+Execution
+Operation type Sale
+Market place All Funds
+Execution date 17.10.2025 at 10:15:25 am
+Executed quantity -261.00000
+Execution price USD 458.29
+Gross amount USD 119'613.69
+Trading capacity Agent
+Other
+Custodian ALLFUNDS BANK S.A.U.,
+LUXEMBOURG BRANCH
+OUT of portfolio P-999999.999
+GLOB ENVIR OPP-I USD 261.00000
+ISIN/Internal ref.: LU0503632100 Telekurs ID/Internal ref.: 11215736 
+CASH EFFECTin portfolio P-999999.999
+Gross amount USD 119'613.69
+Costs USD 0.00
+Net amount USD 119'613.69
+Current account P-999999.999.00.USD/Ordinary IBAN?LU901980012345600100

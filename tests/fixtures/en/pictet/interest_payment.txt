@@ -1,0 +1,36 @@
+--- page 1/1 ---
+CURRENT ACCOUNT
+Interest payment
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: P-999999.999
+Transaction no.: 1180262700 | Publication date: 31.03.2026
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 31.03.2026
+Value date 31.03.2026
+Booking date 31.03.2026
+Related position
+Current account P-999999.999.00.GBP/Ordinary
+Interest
+Period 31.12.2025 - 31.03.2026
+Effective days 90
+Calculation basis English (actual/365)
+Rate Variable
+Interest (on credit balance) GBP 0.00
+Interest (on debit balance) GBP -16'858.14
+Total GBP -16'858.14
+CASH EFFECTin portfolio P-999999.999
+Gross amount GBP 0.00
+Interest GBP -16'858.14
+Costs GBP 0.00
+Net amount GBP -16'858.14
+Current account P-999999.999.00.GBP/Ordinary IBAN?LU091980012345600200

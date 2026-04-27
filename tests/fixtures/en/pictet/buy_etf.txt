@@ -1,0 +1,44 @@
+--- page 9/9 ---
+SECURITY
+Buy Exchange Traded Fund
+Buy 9'999 Multi Units Luxembourg SICAV - Amundi Euro Government Bond 9-99Y ETF -Acc.- at EUR 999.9999
+ARCHIVE
+9A99 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 99A, avenue J.F. Kennedy / L-9999 Luxembourg / B.P. 999 / L-9999 Luxembourg
+Tel. +999 99 99 99-9 / Fax +999 99 99 99 / pictet.com
+9/9 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-999999.999
+Transaction no.: 9999999999 | Publication date: 10.04.2026
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 09.04.2026
+Value date 13.04.2026
+Booking date 10.04.2026
+Instruction
+Order type At Market
+Execution
+Operation type Buy
+Market place Italie Mercato Continuo (MTAA)
+Execution date 09.04.2026 at 02:31:17 pm
+Executed quantity 9'999
+Execution price EUR 999.9999
+Gross amount EUR -999'999.99
+Costs
+Commission/Fee EUR -9'999.99
+Total EUR -9'999.99
+Product details
+Asset type Exchange Traded Fund
+Asset sub-type Investment fund - Bonds
+INportfolio K-999999.999
+MULTI-AMUNDI EUR GOV BD 9-99Y-ETF 9'999
+ISIN/Internal ref.: LU9999999999 Telekurs ID/Internal ref.: 99999999 
+CASH EFFECTin portfolio K-999999.999
+Gross amount EUR -999'999.99
+Costs EUR -9'999.99
+Net amount EUR -999'999.99
+Current account K-999999.999.99.EUR/Ordinary IBAN?LU999999999999999999

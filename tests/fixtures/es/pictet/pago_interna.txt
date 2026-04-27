@@ -1,0 +1,40 @@
+--- page 9/9 ---
+TRÁFICO DE PAGOS
+PAGO ENTRANTE
+ARCHIVE
+9A99 Pictet & Cie (Europe) S.A. / 99A, avenue J.F. Kennedy / L-9999 Luxembourg / B.P. 999 / L-9999 Luxembourg
+Tel. +999 99 99 99-9 / Fax +999 99 99 99 / grupo.pictet
+9/9 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-999999.999
+N° de transacción: 999999999 | Fecha de publicación: 99.99.9999
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 99.99.9999
+Fecha valor 99.99.9999
+Fecha contable 99.99.9999
+Fecha de la orden 99.99.9999 a las 99:99:99
+Pago
+Ordenante FIRSTNAMES LASTNAMES
+CALLE STREETNAME 99, 9A
+MADRID, MADRID, 99999
+España
+Banco REVOLUT PAYMENTS UAB
+VILNIUS
+No de clearing bancario SWIFT(REVOLT99)
+Pais Lituania
+Referencia de pago IP99999999999999
+Importe bruto EUR 9'999.99
+Comentario
+SENT FROM REVOLUT
+EFECTO CASH en la cartera K-999999.999
+Importe bruto EUR 9'999.99
+Costes EUR 9.99
+Importe neto EUR 9'999.99
+Cuenta corriente K-999999.999.99.EUR/Ordinario IBAN?LU999999999999999999
+Nota:
+Salvo buen fin

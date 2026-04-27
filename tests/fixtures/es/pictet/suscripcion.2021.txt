@@ -1,0 +1,41 @@
+--- page 1/1 ---
+BOLSA DE VALORES
+SUSCRIPCIÓN
+Compra 1'615.00000 PICTET TR-DIVERSIFIED ALPHA-I EUR a EUR 114.40
+ARCHIVE
+0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 717848921 | Fecha de publicación: 10.09.2021
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 09.09.2021
+Fecha valor 14.09.2021
+Fecha contable 10.09.2021
+Referencia
+Fecha de la orden 02.09.2021 a las 13:17:10
+Tipo de orden Válido hasta revocación
+Fecha de expiración 29.12.2023 a las 23:59:59
+Ejecución
+Tipo de ejecución Compra
+Plaza bursátil All Funds
+Fecha de ejecución 02.09.2021 a las 13:33:22
+Cantidad ejecutada 1'615.00000
+Precio de ejecución EUR 114.40
+Importe bruto EUR -184'756.00
+Otro
+Contrapartida PTR D ALPHA
+ENTRADA en la cartera K-123456.001
+PICTET TR-DIVERSIFIED ALPHA-I EUR 1'615.00000
+ISIN: LU1055714379 N° Telekurs: 24258141 
+EFECTO CASH en la cartera K-123456.001
+Importe bruto EUR -184'756.00
+Costes EUR 0.00
+Importe neto EUR -184'756.00
+Cuenta corriente K-123456.001.00.EUR/Ordinario IBAN?LU901980012345600100
