@@ -31,7 +31,11 @@ from banking_pipeline.templates.pictet._common import (
 # Standalone ``Compra`` title (line on its own). The headline line also
 # starts with ``Compra`` but carries quantity + asset name + price after
 # it, so it doesn't match this anchored regex.
-_COMPRA_TITLE_RE = re.compile(r"^Compra\s*$", re.M)
+#
+# Case-insensitive: 2023+ advices print the title as ``Compra`` (mixed
+# case), 2022-era advices print it as ``COMPRA`` (all caps). No other
+# line in the document is just this word, so loosening case is safe.
+_COMPRA_TITLE_RE = re.compile(r"^Compra\s*$", re.M | re.I)
 
 
 @dataclass

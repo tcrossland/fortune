@@ -518,14 +518,21 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
         bank=BankId.PICTET,
         patterns=(
             re.compile(r"\bBOLSA\s+DE\s+VALORES\b", re.I),
+            # Standalone ``Compra`` title line — the load-bearing
+            # discriminator from SUSCRIPCION (whose title is
+            # ``Suscripción``). Anchored to a full line via ``^...$ +
+            # re.M`` so the headline ``Compra 567 ...`` doesn't match,
+            # and case-insensitive so 2022-era fixtures that print the
+            # title as ``COMPRA`` still hit. Earlier this rule relied on
+            # ``Corretaje`` / ``Tasa bursátil`` for separation, but those
+            # lines are absent on zero-fee stock buys (Costes EUR 0.00),
+            # which let SUSCRIPCION beat COMPRA on the 2022 fixture.
+            re.compile(r"^Compra\s*$", re.M | re.I),
             re.compile(
                 r"\btipo\s+de\s+(?:operaci[oó]n|ejecuci[oó]n)\s+compra\b", re.I
             ),
-            # Stock-trading cost lines — absent from SUSCRIPCION (fund), which
-            # uses a simpler ``Spread`` cost instead.
-            re.compile(r"\bCorretaje\b", re.I),
-            re.compile(r"\bTasa\s+burs[aá]til\b", re.I),
             re.compile(r"\bENTRADA\s*en\s+la\s+cartera\b", re.I),
+            re.compile(r"\bcantidad\s+ejecutada\b", re.I),
         ),
     ),
     Rule(

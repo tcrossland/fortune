@@ -103,6 +103,50 @@ _FEE_ADVICE_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.DEBITO_DE_GASTOS,
 })
 
+# Doctypes that emit an inline ``open Assets:<prefix>:<ISIN> <ISIN>``
+# directive at the top of the entry. Stock-purchase / structured-product
+# / ETF / switch-into-new-fund advices typically introduce a position
+# the user hasn't held before, so opening the account inline keeps the
+# entry self-contained for bean-check.
+#
+# Fund subscriptions (``SUSCRIPCION``, ``SUBSCRIPTION_NOTICE``) are
+# *excluded* on purpose: the user typically holds the same fund across
+# many subscription transactions, and inline opens on every recurring
+# subscription would just be noise. The batch-output path
+# (:func:`render_open_directives`) deduplicates and handles those.
+#
+# Sells (``REDEMPTION_NOTICE`` etc.) never emit — by definition the
+# account already exists from the prior buy that opened it.
+_OPEN_EMITTING_TYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.TRADE_CONFIRMATION,
+    DocumentType.BUY_STRUCTURED_PRODUCTS,
+    DocumentType.BUY_ETF,
+    DocumentType.COMPRA,
+    DocumentType.SWITCH_ENTRADA,
+})
+
+
+def _inline_open_directive(
+    tx: Transaction, doc_type: DocumentType, prefix: str
+) -> str:
+    """Return the inline ``open`` directive line for advices that need
+    one, or an empty string when they don't.
+
+    Output format: ``<date> open Assets:<prefix>:<ISIN> <ISIN>\\n``
+    (single-space separator — matches the project's golden files;
+    distinct from :func:`render_open_directives` which uses double-space
+    for batch-output formatting). The trailing newline is included so
+    callers can prepend the result directly to their entry text without
+    juggling separators.
+    """
+
+    if doc_type not in _OPEN_EMITTING_TYPES:
+        return ""
+    if not tx.isin:
+        return ""
+    entry_date = tx.booking_date or tx.trade_date
+    return f"{entry_date} open Assets:{prefix}:{tx.isin} {tx.isin}\n"
+
 
 _FEE_TEMPLATE = _ENV.from_string(
     """\
@@ -272,6 +316,11 @@ def _render_security_trade(
 
     sec_ccy = tx.security_currency or tx.currency
 
+    # --- Optional inline open directive --------------------------------
+    # Stock-purchase / structured-product / ETF advices emit one;
+    # fund subscriptions don't. See ``_OPEN_EMITTING_TYPES``.
+    out = _inline_open_directive(tx, doc_type, prefix)
+
     # --- Header ---------------------------------------------------------
     # Booking date (when the cash actually moved) is preferred over
     # ``trade_date`` for the entry date when the document carries it.
@@ -338,7 +387,7 @@ def _render_security_trade(
     if tx.transaction_number:
         lines.append(f"  no: {tx.transaction_number}")
 
-    return "\n".join(lines) + "\n"
+    return out + "\n".join(lines) + "\n"
 
 
 def _render_switch_trade(
@@ -385,17 +434,12 @@ def _render_switch_trade(
     isin = tx.isin or "Unknown"
     entry_date = tx.booking_date or tx.trade_date
 
-    lines: list[str] = []
+    # --- Optional inline open directive --------------------------------
+    # ``SWITCH_ENTRADA`` is in ``_OPEN_EMITTING_TYPES``, salida is not.
+    # See that constant's docstring for the full rule across doctypes.
+    out = _inline_open_directive(tx, doc_type, prefix)
 
-    # --- Inline open directive (entrada only) --------------------------
-    # Switch entrada brings a fund leg into the portfolio. The user wants
-    # the matching ``open`` directive emitted inline so the entry is
-    # self-contained for bean-check — distinct from the regular trade
-    # path, where opens are typically managed elsewhere in the ledger.
-    # Salida doesn't need this: by definition the position already
-    # exists from a prior buy/entrada that opened the account.
-    if doc_type == DocumentType.SWITCH_ENTRADA and tx.isin:
-        lines.append(f"{entry_date} open Assets:{prefix}:{isin} {isin}")
+    lines: list[str] = []
 
     # --- Header ---------------------------------------------------------
     # Link precedence: ``link_id`` wins (set by a future pairing layer
@@ -458,7 +502,7 @@ def _render_switch_trade(
     if tx.transaction_number:
         lines.append(f"  no: {tx.transaction_number}")
 
-    return "\n".join(lines) + "\n"
+    return out + "\n".join(lines) + "\n"
 
 
 def _render_fee_advice(

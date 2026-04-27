@@ -1,0 +1,40 @@
+--- page 1/1 ---
+BOLSA DE VALORES
+COMPRA
+Compra 567 EUR PWM LG VOL BALANC (PICTET)22/23 a EUR 49.99
+ARCHIVE
+0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 785203590 | Fecha de publicación: 08.06.2022
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 08.06.2022
+Fecha valor 10.06.2022
+Fecha contable 08.06.2022
+Instrucción
+Fecha de la orden 08.06.2022 a las 12:36:30
+Tipo de orden A mercado
+Ejecución
+Tipo de operación Compra
+Plaza bursátil Fuera de bolsa
+Fecha de ejecución 08.06.2022 a las 17:18:49
+Cantidad ejecutada 567
+Precio de ejecución EUR 49.99
+Importe bruto EUR -28'344.33
+Otro
+Depositario PCO GVA DEPGE.C SWITZERLAND
+ENTRADA en la cartera K-123456.001
+EUR PWM LG VOL BALANC (PICTET)22/23 567
+ISIN: CH1117356522 N° Telekurs: ZZZAB4HJH 
+EFECTO CASH en la cartera K-123456.001
+Importe bruto EUR -28'344.33
+Costes EUR 0.00
+Importe neto EUR -28'344.33
+Cuenta corriente K-123456.001.00.EUR/Ordinario IBAN?LU901980012345600100
