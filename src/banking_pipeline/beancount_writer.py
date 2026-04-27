@@ -76,6 +76,7 @@ _SECURITY_SELL_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.REEMBOLSO,
     DocumentType.REEMBOLSO_FINAL,
     DocumentType.SWITCH_SALIDA,
+    DocumentType.VENTA,
 })
 
 _SECURITY_TRADE_TYPES = _SECURITY_BUY_TYPES | _SECURITY_SELL_TYPES
@@ -286,6 +287,105 @@ def _align(account: str, amount: str, currency: str, extras: str = "") -> str:
     return f"{prefix}{' ' * pad}{amount} {currency}{extras}"
 
 
+def _render_security_sell_with_breakdown(
+    tx: Transaction, doc_type: DocumentType, prefix: str
+) -> str:
+    """Render a security sell that carries a multi-item fee breakdown.
+
+    Used for stock-exchange sales where Pictet prints a per-line ``Costes``
+    block (``Corretaje y/o spread`` + ``Tasa bursátil`` etc.). The shape
+    differs from the simpler sell path on four points:
+
+      - Inline ``open Income:<prefix>:<ISIN>`` directive at the top —
+        this is the first realized gain/loss event for this position,
+        so the income account needs opening.
+      - Asset leg first (mirroring the switch_salida convention),
+        followed by the fee legs, the FX-aware cash leg, and the
+        elastic income leg.
+      - One ``Expenses:<prefix>:Fees:<ccy>`` posting per breakdown item
+        with the item's description as an inline ``; <description>``
+        comment — preserves the audit detail Pictet prints rather than
+        collapsing to a single aggregate fees leg.
+      - Income leg uses ``Income:<prefix>:<ISIN>`` (no ``:Realized``
+        suffix) — matches the convention the user's golden file
+        establishes for this shape.
+
+    The existing :func:`_render_security_trade` sell path stays in
+    place for sells without a breakdown (e.g. ``reembolso_final`` with
+    its ``Costes EUR 0.00`` non-FX layout); switching shapes based on
+    breakdown presence avoids disturbing those goldens.
+    """
+
+    sec_ccy = tx.security_currency or tx.currency
+    isin = tx.isin or "Unknown"
+    entry_date = tx.booking_date or tx.trade_date
+
+    # Inline open for the realized-income account.
+    out = ""
+    if tx.isin:
+        out = f"{entry_date} open Income:{prefix}:{isin}\n"
+
+    # Header (two-string narration when title is set).
+    narration = _escape(tx.narration)
+    if tx.title:
+        header = f'{entry_date} * "{_escape(tx.title)}" "{narration}"'
+    else:
+        header = f'{entry_date} * "{narration}"'
+    lines: list[str] = [header]
+
+    # Asset leg — sell-from-inventory with empty cost-braces and
+    # ``@ <price>`` market-price annotation.
+    qty_str = _format_amount(tx.quantity) if tx.quantity is not None else "0"
+    cost_basis = (
+        f" {{}} @ {_format_amount(tx.price)} {sec_ccy}"
+        if tx.price is not None
+        else ""
+    )
+    lines.append(
+        _align(f"Assets:{prefix}:{isin}", qty_str, isin, extras=cost_basis)
+    )
+
+    # Per-item expense legs. Each fee item becomes its own posting with
+    # the item's description as an inline beancount comment, so the
+    # rendered entry preserves the audit detail Pictet printed.
+    for item in tx.fee_breakdown:
+        lines.append(
+            _align(
+                f"Expenses:{prefix}:Fees:{item.currency}",
+                _format_amount(abs(item.amount)),
+                item.currency,
+                extras=f" ; {item.description}",
+            )
+        )
+
+    # Cash leg — FX-aware ``@@ <subtotal> <sec_ccy>`` annotation when
+    # the security and cash-account currencies differ.
+    cash_extras = ""
+    if tx.is_fx and tx.subtotal_security is not None:
+        cash_extras = (
+            f" @@ {_format_amount(abs(tx.subtotal_security))} {sec_ccy}"
+        )
+    lines.append(
+        _align(
+            f"Assets:{prefix}:{tx.currency}",
+            _format_amount(tx.amount),
+            tx.currency,
+            extras=cash_extras,
+        )
+    )
+
+    # Elastic income leg — beancount auto-balances against the cost
+    # basis pulled from inventory and the proceeds.
+    if tx.isin:
+        lines.append(f"  Income:{prefix}:{isin}")
+
+    # Trailing reference comment.
+    if tx.transaction_number:
+        lines.append(f"  no: {tx.transaction_number}")
+
+    return out + "\n".join(lines) + "\n"
+
+
 def _render_security_trade(
     tx: Transaction, doc_type: DocumentType, prefix: str
 ) -> str:
@@ -304,6 +404,13 @@ def _render_security_trade(
     Sells reverse the asset/cash posting order so the value-receiving
     account is always listed first.
 
+    Sells with a multi-item fee breakdown (e.g. stock-exchange sales
+    that itemise ``Corretaje y/o spread`` + ``Tasa bursátil``) are
+    routed to :func:`_render_security_sell_with_breakdown`, which uses
+    a different posting order, broken-out fee legs, and an inline
+    income-account open. The branch is intentionally narrow so existing
+    sell-path goldens (``reembolso_final`` etc.) keep matching.
+
     Sign conventions
     ----------------
     The cash leg's ``amount`` is emitted as the extractor stored it (Pictet
@@ -314,6 +421,14 @@ def _render_security_trade(
     uses ``abs()`` because the ``@@ <total> <ccy>`` form takes the absolute
     total cost in the price currency.
     """
+
+    # Sells with a multi-item fee breakdown render in a different shape
+    # — see ``_render_security_sell_with_breakdown`` for why. Single-item
+    # or empty breakdowns continue through the simpler path below so
+    # existing goldens (``reembolso_final``, ``suscripcion.fx``) stay
+    # byte-stable.
+    if doc_type not in _SECURITY_BUY_TYPES and len(tx.fee_breakdown) > 1:
+        return _render_security_sell_with_breakdown(tx, doc_type, prefix)
 
     sec_ccy = tx.security_currency or tx.currency
 

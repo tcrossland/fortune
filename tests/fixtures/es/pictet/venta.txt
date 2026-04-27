@@ -1,0 +1,47 @@
+--- page 1/1 ---
+BOLSA DE VALORES
+VENTA
+Venta -119 PHYSICAL GOLD (INVESCO) -ETC- PERP a USD 178.6699
+ARCHIVE
+0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 785210359 | Fecha de publicación: 08.06.2022
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 08.06.2022
+Fecha valor 10.06.2022
+Fecha contable 08.06.2022
+Instrucción
+Fecha de la orden 08.06.2022 a las 13:10:28
+Tipo de orden A mercado
+Ejecución
+Tipo de operación Venta
+Plaza bursátil London Stock Exchange (LSE)
+(XLON)
+Fecha de ejecución 08.06.2022 a las 13:14:46
+Cantidad ejecutada -119
+Precio de ejecución USD 178.6699
+Importe bruto USD 21'261.72
+Costes
+Corretaje y/o spread USD -212.54
+Tasa bursátil USD -1.34
+Total USD -213.88
+Otro
+Depositario EUROCLEAR BANK S.A / N.V.
+SALIDA de la cartera K-123456.001
+PHYSICAL GOLD (INVESCO) -ETC- PERP 119
+ISIN: IE00B579F325 N° Telekurs: 10326235 
+EFECTO CASH en la cartera K-123456.001
+Importe bruto USD 21'261.72
+Costes USD -213.88
+Subtotal USD 21'047.84
+Tipo de cambio (EUR/USD): 1.07425031
+Importe neto EUR 19'593.05
+Cuenta corriente K-123456.001.00.EUR/Ordinario IBAN?LU901980012345600100

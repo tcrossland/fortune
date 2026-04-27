@@ -146,6 +146,12 @@ class DocumentType(StrEnum):
     # Kept in the issuer's Spanish vocabulary for the same reason as
     # ``SWITCH_SALIDA`` / ``SWITCH_ENTRADA``.
     COMPRA = "compra"
+    # Stock-exchange sale ("BOLSA DE VALORES / Venta") — sell counterpart
+    # to ``COMPRA``. Distinguished from ``REEMBOLSO`` (fund redemption)
+    # by the standalone ``Venta`` title and the stock-trading fee
+    # breakdown (``Corretaje y/o spread`` + ``Tasa bursátil``) the
+    # advice carries.
+    VENTA = "venta"
     SUSCRIPCION = "suscripcion"
     REEMBOLSO = "reembolso"
     # Spanish-locale final redemption — Pictet's structured-product maturity

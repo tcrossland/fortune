@@ -553,6 +553,25 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
+        doc_type=DocumentType.VENTA,
+        template_id="pictet.venta.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            re.compile(r"\bBOLSA\s+DE\s+VALORES\b", re.I),
+            # Standalone ``Venta`` title — sell counterpart to ``COMPRA``'s
+            # ``^Compra\s*$`` discriminator. The load-bearing distinction
+            # from REEMBOLSO (fund redemption), whose title is
+            # ``Reembolso``. Anchored to a full line so the headline
+            # ``Venta -119 ...`` doesn't match.
+            re.compile(r"^Venta\s*$", re.M | re.I),
+            re.compile(
+                r"\btipo\s+de\s+(?:operaci[oó]n|ejecuci[oó]n)\s+venta\b", re.I
+            ),
+            re.compile(r"\bSALIDA\s*de\s+la\s+cartera\b", re.I),
+            re.compile(r"\bcantidad\s+ejecutada\b", re.I),
+        ),
+    ),
+    Rule(
         doc_type=DocumentType.REEMBOLSO_FINAL,
         template_id="pictet.reembolso_final.v1",
         bank=BankId.PICTET,

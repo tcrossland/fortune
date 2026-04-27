@@ -752,6 +752,14 @@ def extract_simple_trade_advice(
     costs_match = find_amount_field(text, labels.costs)
     subtotal_match = find_amount_field(text, labels.subtotal)
     exchange_rate = find_exchange_rate(text, labels)
+    # Per-line fee breakdown (``Corretaje y/o spread`` + ``Tasa bursátil``
+    # for stock trades, ``Spread`` alone for fund subscriptions/redemptions).
+    # Empty when the document carries an inline ``Costes <CCY> <amount>``
+    # line but no standalone ``Costes`` block above it; the writer falls
+    # back to a single aggregate fees leg in that case.
+    fee_breakdown = find_fee_breakdown(
+        text, costs_label=labels.costs, total_label="Total"
+    )
 
     narration = (find_headline(text, labels) or fallback_narration)[:140]
 
@@ -777,6 +785,7 @@ def extract_simple_trade_advice(
         security_currency=price_match[0] if price_match else None,
         fees=costs_match[1] if costs_match else None,
         fees_currency=costs_match[0] if costs_match else None,
+        fee_breakdown=fee_breakdown,
         subtotal_security=subtotal_match[1] if subtotal_match else None,
         exchange_rate=exchange_rate,
         account_number=resolve_account_number(text, labels),

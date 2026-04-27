@@ -16,7 +16,7 @@ Templates are organised by locale:
     ``settle_fx_forward``, ``spot``, ``subscription_notice``.
   - Spanish (Madrid branch): ``compra``, ``debito_de_gastos``, ``factura``,
     ``pago_interna``, ``reembolso``, ``reembolso_final``, ``suscripcion``,
-    ``switch_entrada``, ``switch_salida``.
+    ``switch_entrada``, ``switch_salida``, ``venta``.
 """
 
 from __future__ import annotations
@@ -83,6 +83,7 @@ from banking_pipeline.templates.pictet.switch_entrada import (
 from banking_pipeline.templates.pictet.switch_salida import (
     PictetSwitchSalidaTemplate,
 )
+from banking_pipeline.templates.pictet.venta import PictetVentaTemplate
 
 # Concrete template instances exposed to the global registry. Order is not
 # significant — the registry is keyed on ``template_id`` — but keeping it
@@ -114,6 +115,7 @@ PICTET_TEMPLATES: tuple[object, ...] = (
     PictetSuscripcionTemplate(),
     PictetSwitchEntradaTemplate(),
     PictetSwitchSalidaTemplate(),
+    PictetVentaTemplate(),
 )
 
 __all__ = [
@@ -144,4 +146,5 @@ __all__ = [
     "PictetSuscripcionTemplate",
     "PictetSwitchEntradaTemplate",
     "PictetSwitchSalidaTemplate",
+    "PictetVentaTemplate",
 ]
