@@ -25,5 +25,6 @@ class PictetRedemptionNoticeTemplate:
             doc,
             expected_operations=("Sale",),
             fallback_narration="Pictet redemption",
+            title="Redemption",
         )
         return [tx] if tx else []

@@ -31,5 +31,6 @@ class PictetBuyEtfTemplate:
             doc,
             expected_operations=("Buy",),
             fallback_narration="Pictet ETF purchase",
+            title="Buy Exchange Traded Fund",
         )
         return [tx] if tx else []

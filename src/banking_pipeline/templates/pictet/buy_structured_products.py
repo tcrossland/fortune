@@ -30,5 +30,6 @@ class PictetBuyStructuredProductsTemplate:
             doc,
             expected_operations=("Buy",),
             fallback_narration="Pictet structured products purchase",
+            title="Buy structured products",
         )
         return [tx] if tx else []

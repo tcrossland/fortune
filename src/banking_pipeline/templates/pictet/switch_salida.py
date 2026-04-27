@@ -40,5 +40,6 @@ class PictetSwitchSalidaTemplate:
             expected_operations=("Venta",),
             fallback_narration="Pictet switch (salida)",
             labels=ES_LABELS,
+            title="Cambio (salida)",
         )
         return [tx] if tx else []

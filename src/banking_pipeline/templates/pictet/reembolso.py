@@ -40,5 +40,6 @@ class PictetReembolsoTemplate:
             expected_operations=("Venta",),
             fallback_narration="Pictet reembolso",
             labels=ES_LABELS,
+            title="Reembolso",
         )
         return [tx] if tx else []

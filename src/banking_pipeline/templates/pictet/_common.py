@@ -78,6 +78,14 @@ class PictetLabels:
     execution_price: str
     gross_amount: str
     net_amount: str
+    # Per-leg fee line inside the CASH EFFECT block (``Costs USD -23.45`` /
+    # ``Costes USD -23,45``). Only meaningful on advices that carry one;
+    # ``find_amount_field`` returns ``None`` when the line is absent.
+    costs: str
+    # FX-only intermediate line: gross + costs in the security currency
+    # (``Subtotal USD -73'665.87``). Absent on non-FX advices, where the
+    # CASH EFFECT block jumps straight from costs to net amount.
+    subtotal: str
 
     # Section markers
     cash_effect_marker: str  # the literal split string
@@ -85,6 +93,16 @@ class PictetLabels:
     # Document patterns
     portfolio_in_re: re.Pattern[str]
     account_no_re: re.Pattern[str]
+    # Header reference number. Pictet writes it as ``N° de transacción: NNN``
+    # (ES) / ``Transaction no.: NNN`` (EN), always on the same header line as
+    # the publication date — the regex is anchored to start-of-line so the
+    # pipe-and-publication-date trailer doesn't get swept into the capture.
+    transaction_number_re: re.Pattern[str]
+    # FX rate line — Pictet writes ``Tipo de cambio (EUR/USD): 1.18585481``
+    # (ES) / ``Exchange rate (EUR/USD): 1.18585481`` (EN). The numeric form
+    # uses an ISO decimal point regardless of locale, so the regex captures
+    # the value with a permissive ``[^:]*:\s*([\d.]+)`` tail.
+    exchange_rate_re: re.Pattern[str]
 
     # Headline detection
     headline_verbs: tuple[str, ...] = field(default_factory=tuple)
@@ -99,12 +117,20 @@ EN_LABELS = PictetLabels(
     execution_price="Execution price",
     gross_amount="Gross amount",
     net_amount="Net amount",
+    costs="Costs",
+    subtotal="Subtotal",
     cash_effect_marker="CASH EFFECT",
     portfolio_in_re=re.compile(
         r"^\s*in\s+portfolio\s+([A-Z]-\d{6}\.\d{3})", re.M
     ),
     account_no_re=re.compile(
         r"^Account no\.\s*:\s*([A-Z]-\d{6}\.\d{3})", re.M
+    ),
+    transaction_number_re=re.compile(
+        r"^Transaction\s+no\.\s*:\s*(\d+)", re.M
+    ),
+    exchange_rate_re=re.compile(
+        r"\bExchange\s+rate\b[^:]*:\s*([\d.]+)", re.I
     ),
     headline_verbs=("Purchase", "Sale", "Buy", "Sell"),
 )
@@ -122,12 +148,20 @@ ES_LABELS = PictetLabels(
     execution_price="Precio de ejecución",
     gross_amount="Importe bruto",
     net_amount="Importe neto",
+    costs="Costes",
+    subtotal="Subtotal",
     cash_effect_marker="EFECTO CASH",
     portfolio_in_re=re.compile(
         r"^\s*en\s+la\s+cartera\s+([A-Z]-\d{6}\.\d{3})", re.M
     ),
     account_no_re=re.compile(
         r"^N°\s*de\s+cuenta\s*:\s*([A-Z]-\d{6}\.\d{3})", re.M
+    ),
+    transaction_number_re=re.compile(
+        r"^N°\s*de\s+transacci[oó]n\s*:\s*(\d+)", re.M
+    ),
+    exchange_rate_re=re.compile(
+        r"\bTipo\s+de\s+cambio\b[^:]*:\s*([\d.]+)", re.I
     ),
     # ``Suscripción`` / ``Reembolso`` titles aren't headline verbs — the
     # actual narration line uses ``Compra`` / ``Venta`` (e.g.
@@ -323,6 +357,39 @@ def find_pictet_account(text: str, labels: PictetLabels = EN_LABELS) -> str | No
     return m.group(1) if m else None
 
 
+def find_transaction_number(
+    text: str, labels: PictetLabels = EN_LABELS
+) -> str | None:
+    """Pictet's per-document reference number, e.g. ``717848921``.
+
+    Pictet writes this on the document header line:
+    ``N° de transacción: 717848921 | Fecha de publicación: 10.09.2021`` (ES)
+    ``Transaction no.: 1129889269 | Publication date: 21.10.2025`` (EN).
+    Returned as a string (no integer parsing) to preserve any leading
+    zeros on documents we haven't seen yet.
+    """
+
+    m = labels.transaction_number_re.search(text)
+    return m.group(1) if m else None
+
+
+def find_exchange_rate(
+    text: str, labels: PictetLabels = EN_LABELS
+) -> Decimal | None:
+    """The FX conversion rate quoted inside the CASH EFFECT block, or
+    ``None`` if the document doesn't carry one (non-FX advices).
+
+    Pictet writes ``Tipo de cambio (EUR/USD): 1.18585481`` (ES) or
+    ``Exchange rate (EUR/USD): 1.18585481`` (EN). The rate itself uses an
+    ISO decimal point regardless of locale.
+    """
+
+    m = labels.exchange_rate_re.search(text)
+    if m is None:
+        return None
+    return Decimal(m.group(1))
+
+
 def find_headline(text: str, labels: PictetLabels = EN_LABELS) -> str | None:
     """The one-line transaction summary Pictet prints near the top of every
     single-event advice (e.g. ``Purchase 469.00 ELEVA-... at EUR 255.63``,
@@ -491,6 +558,7 @@ def extract_simple_trade_advice(
     expected_operations: tuple[str, ...] | None = None,
     fallback_narration: str = "Pictet trade",
     labels: PictetLabels = EN_LABELS,
+    title: str | None = None,
 ) -> Transaction | None:
     """Parse a single-leg Pictet trade advice into one ``Transaction``.
 
@@ -516,6 +584,21 @@ def extract_simple_trade_advice(
     fields whose meanings depend on the operation type. This guards against
     classifier mis-routes — better an empty result that surfaces a warning
     than a buy booked as a sell.
+
+    FX advice fields
+    ----------------
+    Pictet bills FX trades with the gross amount and per-leg costs in the
+    security currency, an explicit ``Subtotal`` in the security currency,
+    an FX rate, and the converted ``Net amount`` in the cash-account
+    currency. The helper populates ``security_currency``, ``fees`` /
+    ``fees_currency``, ``subtotal_security``, and ``exchange_rate`` when
+    those lines are present so the writer can emit a proper beancount
+    ``@@`` annotation; on non-FX trades those fields stay ``None``.
+
+    ``title`` is the per-doctype document title (``"Suscripción"``,
+    ``"Trade confirmation"``, etc.). Passed through to ``Transaction.title``
+    for use as the first beancount narration string. Optional — when
+    omitted the writer falls back to a single-string narration.
     """
 
     text = doc.text
@@ -542,8 +625,17 @@ def extract_simple_trade_advice(
     currency, amount = cash_effect
 
     value_date_raw = find_field(text, labels.value_date)
+    booking_date_raw = find_field(text, labels.booking_date)
     quantity_raw = find_field(text, labels.executed_quantity)
     price_match = find_amount_field(text, labels.execution_price)
+
+    # FX-bridge / fees fields. ``find_amount_field`` returns ``None`` when
+    # the line is absent, so on non-FX advices these all stay ``None``
+    # (except ``costs_match``, which fires whenever there's any per-leg
+    # cost line at all — including ``Costs EUR 0.00`` non-FX advices).
+    costs_match = find_amount_field(text, labels.costs)
+    subtotal_match = find_amount_field(text, labels.subtotal)
+    exchange_rate = find_exchange_rate(text, labels)
 
     narration = (find_headline(text, labels) or fallback_narration)[:140]
 
@@ -552,12 +644,26 @@ def extract_simple_trade_advice(
         settlement_date=(
             parse_pictet_date(value_date_raw) if value_date_raw else None
         ),
+        booking_date=(
+            parse_pictet_date(booking_date_raw) if booking_date_raw else None
+        ),
         narration=narration,
+        title=title,
         currency=currency,
         amount=amount,
         isin=resolve_isin(text),
         quantity=parse_pictet_amount(quantity_raw) if quantity_raw else None,
         price=price_match[1] if price_match else None,
+        # The price line carries the security's quotation currency
+        # (``Execution price USD 113.2718``) — the asset's trade-execution
+        # currency, distinct from ``currency`` which is the cash-account
+        # currency. On non-FX trades the two are equal.
+        security_currency=price_match[0] if price_match else None,
+        fees=costs_match[1] if costs_match else None,
+        fees_currency=costs_match[0] if costs_match else None,
+        subtotal_security=subtotal_match[1] if subtotal_match else None,
+        exchange_rate=exchange_rate,
         account_number=resolve_account_number(text, labels),
+        transaction_number=find_transaction_number(text, labels),
         source_path=doc.path,
     )

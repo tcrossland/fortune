@@ -29,5 +29,6 @@ class PictetSubscriptionNoticeTemplate:
             doc,
             expected_operations=("Purchase",),
             fallback_narration="Pictet subscription",
+            title="Subscription",
         )
         return [tx] if tx else []

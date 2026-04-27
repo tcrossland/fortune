@@ -47,5 +47,6 @@ class PictetCompraTemplate:
             expected_operations=("Compra",),
             fallback_narration="Pictet compra",
             labels=ES_LABELS,
+            title="Compra",
         )
         return [tx] if tx else []

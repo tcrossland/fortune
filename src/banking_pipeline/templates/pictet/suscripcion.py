@@ -47,5 +47,6 @@ class PictetSuscripcionTemplate:
             expected_operations=("Compra",),
             fallback_narration="Pictet suscripción",
             labels=ES_LABELS,
+            title="Suscripción",
         )
         return [tx] if tx else []

@@ -52,5 +52,6 @@ class PictetSwitchEntradaTemplate:
             expected_operations=("Compra",),
             fallback_narration="Pictet switch (entrada)",
             labels=ES_LABELS,
+            title="Cambio (entrada)",
         )
         return [tx] if tx else []
