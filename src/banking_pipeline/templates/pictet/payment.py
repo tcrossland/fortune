@@ -71,6 +71,36 @@ def _resolve_counter_account(bank_field: str | None) -> str | None:
     return None
 
 
+def _payment_section(text: str) -> str | None:
+    """Return the ``Payment`` section text — between the ``Beneficiary``
+    line and the next ``CASH EFFECT`` marker — or ``None`` when the
+    ``Beneficiary`` anchor is absent.
+
+    Pictet payment advices have two ambiguous fields the parser has to
+    disambiguate by section:
+
+      - ``Bank`` appears both in the signature block (``Bank Pictet & Cie
+        (Europe) AG``, naming Pictet itself) and inside the Payment
+        section (``Bank REVOLUT BANK UAB, …``, the beneficiary's bank).
+        Document layout determines which precedes the other.
+      - ``Gross amount`` appears once in the Payment section (positive,
+        the principal sent) and once inside the ``CASH EFFECT`` block
+        (negative, source-account perspective).
+
+    Bounding lookups to the section between ``Beneficiary`` and
+    ``CASH EFFECT`` makes both fields unambiguous: the beneficiary's
+    bank and the positive principal are the only matches that survive.
+    """
+
+    benef_match = re.search(r"^Beneficiary\b", text, re.M)
+    if benef_match is None:
+        return None
+    end = text.find(EN_LABELS.cash_effect_marker, benef_match.start())
+    if end == -1:
+        return text[benef_match.start():]
+    return text[benef_match.start():end]
+
+
 @dataclass
 class PictetPaymentTemplate:
     template_id: str = "pictet.payment.v1"
@@ -111,18 +141,15 @@ class PictetPaymentTemplate:
         # which Pictet routinely truncates / case-shifts on real wires
         # (``First LASTNAMES`` vs the client's ``FIRST MIDDLE LASTNAMES``).
         #
-        # ``Bank`` is ambiguous — the document carries one in its
-        # signature block (``Bank Pictet & Cie (Europe) AG``, naming
-        # Pictet itself) and one inside the ``Payment`` section
-        # (``Bank REVOLUT BANK UAB, …``, the beneficiary's bank).
-        # ``find_field`` returns the first match, which is the wrong
-        # one. Scope the lookup to the text *after* the ``Beneficiary``
-        # line so we read the beneficiary-side bank.
+        # The bank lookup is scoped to ``_payment_section`` — the
+        # signature-block ``Bank Pictet & Cie...`` is structurally
+        # outside that section regardless of where it falls in the
+        # document, so the first ``^Bank`` match within the section is
+        # always the beneficiary's bank.
+        section = _payment_section(text)
         bank_field = None
-        benef_pos = re.search(r"^Beneficiary\b", text, re.M)
-        if benef_pos is not None:
-            sub = text[benef_pos.start():]
-            bank_match = re.search(r"^Bank\s+(.+?)\s*$", sub, re.M)
+        if section is not None:
+            bank_match = re.search(r"^Bank\s+(.+?)\s*$", section, re.M)
             if bank_match is not None:
                 bank_field = bank_match.group(1)
         counter_account = _resolve_counter_account(bank_field)
@@ -131,15 +158,31 @@ class PictetPaymentTemplate:
         fees: object = None
         fees_currency: object = None
         if counter_account is not None:
-            # Pictet prints the gross amount twice: once near the top
-            # (``Gross amount GBP 12'000.00`` — positive, the principal
-            # sent) and once inside the ``CASH EFFECT`` block (negative,
-            # the source-account perspective). ``find_amount_field``
-            # matches the first occurrence, which is the positive
-            # principal we want for the destination leg.
-            gross_match = find_amount_field(text, "Gross amount")
-            if gross_match is not None:
-                _, gross_amount = gross_match  # type: ignore[assignment]
+            # Section-bounded ``Gross amount`` lookup: the Payment
+            # section's occurrence is the positive principal we want
+            # for the destination leg. The ``CASH EFFECT`` block's
+            # signed-negative occurrence is excluded by the section
+            # bound — pinning to the section instead of relying on
+            # document order is what guarantees correctness across
+            # layouts.
+            #
+            # If the bank-map fired but the section's ``Gross amount``
+            # line is missing, we fail loud rather than silently
+            # downgrading: the writer's three-leg shape requires a
+            # gross amount, and a missing one means either a parser
+            # regression or a Pictet format change worth surfacing.
+            # Silent downgrade would misroute the destination credit
+            # to ``Expenses:<prefix>:Other`` instead of
+            # ``Assets:<counter_account>:<ccy>``.
+            assert section is not None  # counter_account ⇒ section was found
+            gross_match = find_amount_field(section, "Gross amount")
+            if gross_match is None:
+                raise ValueError(
+                    f"pictet.payment.v1: counter_account resolved to "
+                    f"{counter_account!r} but Payment-section 'Gross "
+                    f"amount' line is missing in {doc.path}"
+                )
+            _, gross_amount = gross_match  # type: ignore[assignment]
             # Wire fee — read from the ``CASH EFFECT`` block's
             # ``Costs <ccy> <amount>`` line. Surfaced as a dedicated
             # ``Expenses:<prefix>:Fees:<ccy>`` posting in the writer.

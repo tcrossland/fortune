@@ -127,14 +127,22 @@ _THIRD_PARTY_PAYMENT_TYPES: frozenset[DocumentType] = frozenset({
 # book transfers between the user's own current accounts. The single
 # entry holds the source-currency debit leg, the destination-currency
 # credit leg with an ``@@ <abs_source> <src_ccy>`` annotation, and the
-# trailing ``no:`` reference. ``SPOT`` / ``SETTLE_FX_FORWARD`` keep
-# using the legacy ``_FX_LEG_TEMPLATE`` until they get their own
-# goldens — the document shapes are similar but carry enough
-# structural variance that bundling them prematurely would obscure
-# the per-doctype contract. ``FX_FORWARD``'s template returns ``[]``
-# (the opening has no cash impact; SETTLE_FX_FORWARD books the cash).
+# trailing ``no:`` reference. ``SPOT`` keeps using the legacy
+# ``_FX_LEG_TEMPLATE`` until it gets its own golden; ``FX_FORWARD``'s
+# template returns ``[]`` (the opening has no cash impact; the matching
+# ``SETTLE_FX_FORWARD`` advice books the cash exchange at maturity and
+# is routed through ``_render_fx_settlement`` — see below).
 _INTERNAL_TRANSFER_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.INTERNAL_TRANSFER,
+})
+
+# Doctypes routed through ``_render_fx_settlement`` — physical-settlement
+# of an OTC FX forward at maturity. Same two-leg-cash shape as
+# ``_render_internal_transfer`` but with a third ``Expenses:<prefix>:Fees:<ccy>``
+# posting carrying the forward spread, and the @@ value derived from the
+# pre-fee gross rather than the post-fee net.
+_FX_SETTLEMENT_TYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.SETTLE_FX_FORWARD,
 })
 
 # Doctypes routed through ``_render_dividend`` — security-distribution
@@ -284,15 +292,15 @@ _TEMPLATES = {
     DocumentType.PAGO_INTERNA: _CASH_IN_TEMPLATE,
     # --- FX advices ---
     # ``INTERNAL_TRANSFER`` routes through ``_render_internal_transfer``
-    # (a Python builder) instead — see ``_INTERNAL_TRANSFER_TYPES``.
-    # ``FX_FORWARD``'s template returns ``[]`` (the contract opening
-    # has no cash impact; the matching ``SETTLE_FX_FORWARD`` advice
-    # books the cash exchange at maturity), so the writer never sees
-    # a Transaction for it. ``SPOT`` and ``SETTLE_FX_FORWARD`` keep
-    # the legacy two-leg-per-document Jinja path for now until they
-    # get their own goldens.
+    # (a Python builder) — see ``_INTERNAL_TRANSFER_TYPES``.
+    # ``SETTLE_FX_FORWARD`` routes through ``_render_fx_settlement`` —
+    # see ``_FX_SETTLEMENT_TYPES``. ``FX_FORWARD``'s template returns
+    # ``[]`` (the contract opening has no cash impact; the matching
+    # ``SETTLE_FX_FORWARD`` advice books the cash exchange at maturity),
+    # so the writer never sees a Transaction for it. ``SPOT`` keeps
+    # the legacy two-leg-per-document Jinja path for now until it
+    # gets its own golden.
     DocumentType.SPOT: _FX_LEG_TEMPLATE,
-    DocumentType.SETTLE_FX_FORWARD: _FX_LEG_TEMPLATE,
     # --- Non-cash events ---
     DocumentType.LIMIT_EXTENSION: _ENV.from_string(
         """\
@@ -1086,6 +1094,92 @@ def _render_internal_transfer(
     return "\n".join(lines) + "\n"
 
 
+def _render_fx_settlement(
+    tx: Transaction, doc_type: DocumentType, prefix: str
+) -> str:
+    """Render a Pictet ``Settle FX forward`` advice.
+
+    Layout::
+
+        <booking_date> * "<title>" "<narration>"
+          Assets:<prefix>:<currency>             <amount> <ccy>
+          Expenses:<prefix>:Fees:<ccy>           <abs_fees> <ccy> ; Forward spread
+          Assets:<prefix>:<counter_currency>     <counter_amount> <counter_ccy> @@ <abs_gross> <ccy>
+          no: <transaction_number>
+
+    Both cash legs are signed as Pictet stored them: the fee-bearing leg
+    on ``currency``/``amount`` may be either signed-positive (cash-in
+    when buying the counter currency) or signed-negative (cash-out when
+    selling it). The fee leg is always positive — beancount expense
+    accounts are positive — and is set to ``abs(fees)`` since Pictet
+    writes the spread as a negative number.
+
+    The ``@@ <abs_gross> <ccy>`` annotation on the counter leg uses the
+    pre-fee gross of the fee-bearing leg: ``gross = amount - fees`` in
+    signed arithmetic, then ``abs(gross)``. That value reflects the
+    cash exchange before the spread is taken out, which is what
+    beancount needs to cross-reconcile the two cash currencies.
+
+    Falls back to ``_render_internal_transfer`` when the fee fields
+    aren't populated — covers any future fee-less Settle FX forward
+    variant Pictet might emit (none in the current fixture set).
+    """
+
+    if (
+        tx.counter_currency is None
+        or tx.counter_amount is None
+        or tx.fees is None
+        or tx.fees_currency is None
+    ):
+        return _render_internal_transfer(tx, doc_type, prefix)
+
+    entry_date = tx.booking_date or tx.trade_date
+    parts: list[str] = [str(entry_date), "*"]
+    if tx.title:
+        parts.append(f'"{_escape(tx.title)}"')
+    parts.append(f'"{_escape(tx.narration)}"')
+    lines: list[str] = [" ".join(parts)]
+
+    # Fee-bearing cash leg, signed as printed.
+    lines.append(
+        _align(
+            _cash_account(prefix, tx.account_number, tx.currency),
+            _format_amount(tx.amount),
+            tx.currency,
+        )
+    )
+
+    # Forward-spread expense leg. Pictet writes the spread negative
+    # (cash-out from the user's perspective); flip to positive for
+    # the expense account.
+    lines.append(
+        _align(
+            f"Expenses:{prefix}:Fees:{tx.fees_currency}",
+            _format_amount(abs(tx.fees)),
+            tx.fees_currency,
+            extras=" ; Forward spread",
+        )
+    )
+
+    # Counter cash leg with ``@@ <abs_gross> <ccy>`` annotation.
+    # ``gross = amount - fees`` in signed arithmetic — see the
+    # docstring for the worked-through cases.
+    gross = tx.amount - tx.fees
+    lines.append(
+        _align(
+            _cash_account(prefix, tx.account_number, tx.counter_currency),
+            _format_amount(tx.counter_amount),
+            tx.counter_currency,
+            extras=f" @@ {_format_amount(abs(gross))} {tx.currency}",
+        )
+    )
+
+    if tx.transaction_number:
+        lines.append(f"  no: {tx.transaction_number}")
+
+    return "\n".join(lines) + "\n"
+
+
 def render(result: ExtractionResult) -> str:
     """Render all transactions in ``result`` as beancount entries."""
 
@@ -1148,6 +1242,8 @@ def _render_transaction(
         return _render_third_party_payment(tx, doc_type, prefix)
     if doc_type in _INTERNAL_TRANSFER_TYPES:
         return _render_internal_transfer(tx, doc_type, prefix)
+    if doc_type in _FX_SETTLEMENT_TYPES:
+        return _render_fx_settlement(tx, doc_type, prefix)
     if doc_type in _DIVIDEND_TYPES:
         return _render_dividend(tx, doc_type, prefix)
     if doc_type in _INTEREST_TYPES:
