@@ -128,6 +128,15 @@ _INTERNAL_TRANSFER_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.INTERNAL_TRANSFER,
 })
 
+# Doctypes routed through ``_render_dividend`` — security-distribution
+# advices that pay income on a held position. The shape is a two-leg
+# entry (income-recognition leg + cash leg) keyed on the underlying
+# ISIN. ``DIVIDEND_NOTICE`` is the canonical case; future
+# ``CAPITAL_GAINS_DISTRIBUTION``-style doctypes would route here too.
+_DIVIDEND_TYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.DIVIDEND_NOTICE,
+})
+
 # Doctypes that emit an inline ``open Assets:<prefix>:<ISIN> <ISIN>``
 # directive at the top of the entry. Stock-purchase / structured-product
 # / ETF / switch-into-new-fund advices typically introduce a position
@@ -224,13 +233,10 @@ _TEMPLATES = {
     # when the legacy Jinja templates carried inline conditionals.
 
     # --- Dividends ---
-    DocumentType.DIVIDEND_NOTICE: _ENV.from_string(
-        """\
-{{ tx.trade_date }} * "{{ narration }}"
-  Income:Dividends:{{ tx.isin or 'Unknown' }}    {{ -tx.amount }} {{ tx.currency }}
-  Assets:Broker:Cash                             {{ tx.amount }} {{ tx.currency }}
-"""
-    ),
+    # ``DIVIDEND_NOTICE`` routes through ``_render_dividend`` (the Python
+    # builder) for the new bank-prefixed two-leg shape; see
+    # ``_DIVIDEND_TYPES``. The legacy Jinja form here is gone.
+
     # --- Interest ---
     DocumentType.INTEREST_NOTICE: _INTEREST_TEMPLATE,
     DocumentType.INTEREST_PAYMENT: _INTEREST_TEMPLATE,
@@ -780,6 +786,67 @@ def _render_third_party_payment(
     return "\n".join(lines) + "\n"
 
 
+def _render_dividend(
+    tx: Transaction, doc_type: DocumentType, prefix: str
+) -> str:
+    """Render a Pictet dividend / distribution advice.
+
+    Layout::
+
+        <booking_date> * "<title>" "<narration>"
+          Income:<prefix>:<ISIN>:Dividend         -<amount> <ccy>
+          Assets:<prefix>:<currency>               <amount> <ccy>
+          no: <transaction_number>
+
+    Pictet prints the ``Net amount`` positive (cash arriving in the
+    client's account); the cash leg flows through unchanged. The income
+    leg is signed-negative because beancount records income as a credit
+    on the income-side accounts. The ``Income:<prefix>:<ISIN>:Dividend``
+    naming keys per-ISIN — earlier the legacy template used
+    ``Income:Dividends:<ISIN>`` which didn't carry the bank prefix and
+    wouldn't compose with the per-bank account hierarchy the rest of
+    the writer now emits.
+
+    No inline ``open`` directive: dividends recur on the same position
+    over a holder's lifetime, and emitting an open on every quarterly
+    distribution would be noise. Manage the
+    ``Income:<prefix>:<ISIN>:Dividend`` opens via
+    :func:`render_open_directives` (which collects them across an
+    extraction batch) or your existing ledger-level conventions.
+    """
+
+    isin = tx.isin or "Unknown"
+    entry_date = tx.booking_date or tx.trade_date
+    parts: list[str] = [str(entry_date), "*"]
+    if tx.title:
+        parts.append(f'"{_escape(tx.title)}"')
+    parts.append(f'"{_escape(tx.narration)}"')
+    lines: list[str] = [" ".join(parts)]
+
+    # Income leg — signed-negative (beancount income-account convention).
+    lines.append(
+        _align(
+            f"Income:{prefix}:{isin}:Dividend",
+            _format_amount(-tx.amount),
+            tx.currency,
+        )
+    )
+
+    # Cash leg — signed as Pictet printed it (positive, cash in).
+    lines.append(
+        _align(
+            f"Assets:{prefix}:{tx.currency}",
+            _format_amount(tx.amount),
+            tx.currency,
+        )
+    )
+
+    if tx.transaction_number:
+        lines.append(f"  no: {tx.transaction_number}")
+
+    return "\n".join(lines) + "\n"
+
+
 def _render_internal_transfer(
     tx: Transaction, doc_type: DocumentType, prefix: str
 ) -> str:
@@ -915,6 +982,8 @@ def _render_transaction(
         return _render_third_party_payment(tx, doc_type, prefix)
     if doc_type in _INTERNAL_TRANSFER_TYPES:
         return _render_internal_transfer(tx, doc_type, prefix)
+    if doc_type in _DIVIDEND_TYPES:
+        return _render_dividend(tx, doc_type, prefix)
     if doc_type in _SECURITY_TRADE_TYPES:
         return _render_security_trade(tx, doc_type, prefix)
     template = _TEMPLATES.get(doc_type, _DEFAULT_TEMPLATE)
@@ -970,7 +1039,7 @@ def render_open_directives(
     for prefix, isin in sorted(asset_accounts):
         lines.append(f"{date_str} open Assets:{prefix}:{isin}  {isin}")
     for prefix, isin in sorted(income_accounts):
-        lines.append(f"{date_str} open Income:{prefix}:Dividends:{isin}")
+        lines.append(f"{date_str} open Income:{prefix}:{isin}:Dividend")
 
     return "\n".join(lines)
 

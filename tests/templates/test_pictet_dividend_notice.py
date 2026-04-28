@@ -26,10 +26,12 @@ def test_dividend_notice_extracts_single_transaction() -> None:
 
     assert len(txs) == 1
     tx = txs[0]
-    # Trade date == Ex date; settlement_date == Payment date. Keeping the
-    # mapping tight with the other Pictet advices.
+    # Trade date == Ex date; settlement_date == Payment date; booking_date
+    # == when the cash actually moved (used as the entry date by the
+    # writer). Keeping the mapping tight with the other Pictet advices.
     assert tx.trade_date == date(2026, 2, 2)
     assert tx.settlement_date == date(2026, 2, 20)
+    assert tx.booking_date == date(2026, 2, 24)
     assert tx.currency == "GBP"
     assert tx.amount == Decimal("1242.50")
     # Quantity held = the position that generated the dividend, not a
@@ -37,5 +39,9 @@ def test_dividend_notice_extracts_single_transaction() -> None:
     assert tx.quantity == Decimal("994.000")
     assert tx.price == Decimal("1.25")
     assert tx.isin == "LU2096759431"
-    assert "JPMF-INCOME FD" in tx.narration
+    # Narration uses the ``Dividend - <fund>`` security-event subject
+    # line, mirroring ``reembolso_final``'s ``Reembolso - <fund>``.
+    assert tx.narration == "Dividend - JPMF-INCOME FD C (DIV) GBP H-INC.-"
+    assert tx.title == "Dividend"
+    assert tx.transaction_number == "1168218479"
     assert tx.account_number == "P-999999.999"

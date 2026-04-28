@@ -10,7 +10,9 @@ the trade-date / settlement-date fields keeps the model uniform.
 
 Narration comes from the ``Dividend - <fund name>`` line that Pictet places
 under the section banner — neither ``find_headline`` (which scans for
-trade verbs) nor the generic comment block applies here.
+trade verbs) nor the generic comment block applies here. Title is the
+canonical ``"Dividend"``, mirroring the convention established by the
+other security-event doctypes (``Reembolso final``, etc.).
 """
 
 from __future__ import annotations
@@ -19,9 +21,11 @@ from dataclasses import dataclass
 
 from banking_pipeline.models import RawDocument, Transaction
 from banking_pipeline.templates.pictet._common import (
+    EN_LABELS,
     find_amount_field,
     find_field,
     find_subject_line,
+    find_transaction_number,
     parse_pictet_amount,
     parse_pictet_date,
     resolve_account_number,
@@ -36,36 +40,45 @@ class PictetDividendNoticeTemplate:
     def extract(self, doc: RawDocument) -> list[Transaction]:
         text = doc.text
 
-        trade_date_raw = find_field(text, "Trade date")
+        trade_date_raw = find_field(text, EN_LABELS.trade_date)
         if not trade_date_raw:
             return []
 
-        cash_effect = find_amount_field(text, "Net amount")
+        cash_effect = find_amount_field(text, EN_LABELS.net_amount)
         if cash_effect is None:
             return []
         currency, amount = cash_effect
 
-        value_date_raw = find_field(text, "Value date")
+        value_date_raw = find_field(text, EN_LABELS.value_date)
+        booking_date_raw = find_field(text, EN_LABELS.booking_date)
         quantity_raw = find_field(text, "Quantity held")
         income_match = find_amount_field(text, "Income per unit")
 
         subject = find_subject_line(text, "Dividend")
         narration = (
-            f"Pictet dividend - {subject}" if subject else "Pictet dividend"
+            f"Dividend - {subject}" if subject else "Pictet dividend"
         )[:140]
 
-        tx = Transaction(
-            trade_date=parse_pictet_date(trade_date_raw),
-            settlement_date=(
-                parse_pictet_date(value_date_raw) if value_date_raw else None
-            ),
-            narration=narration,
-            currency=currency,
-            amount=amount,
-            isin=resolve_isin(text),
-            quantity=parse_pictet_amount(quantity_raw) if quantity_raw else None,
-            price=income_match[1] if income_match else None,
-            account_number=resolve_account_number(text),
-            source_path=doc.path,
-        )
-        return [tx]
+        return [
+            Transaction(
+                trade_date=parse_pictet_date(trade_date_raw),
+                settlement_date=(
+                    parse_pictet_date(value_date_raw) if value_date_raw else None
+                ),
+                booking_date=(
+                    parse_pictet_date(booking_date_raw)
+                    if booking_date_raw
+                    else None
+                ),
+                narration=narration,
+                title="Dividend",
+                currency=currency,
+                amount=amount,
+                isin=resolve_isin(text),
+                quantity=parse_pictet_amount(quantity_raw) if quantity_raw else None,
+                price=income_match[1] if income_match else None,
+                account_number=resolve_account_number(text, EN_LABELS),
+                transaction_number=find_transaction_number(text, EN_LABELS),
+                source_path=doc.path,
+            )
+        ]
