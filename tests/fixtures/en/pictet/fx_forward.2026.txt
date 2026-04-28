@@ -1,0 +1,83 @@
+--- page 1/2 ---
+OTC DERIVATIVE
+FX forward
+Buy USD 24'660.48 - Sell GBP at 1.3665295
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/2 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-123456.001
+Transaction no.: 1162235128 | Publication date: 04.02.2026
+ADDITIONAL INFORMATION
+General
+Trade date 04.02.2026
+Value date 05.02.2026
+Booking date 04.02.2026
+Contract
+Contract no. 45985748 22GS
+Effective date 04.02.2026
+Maturity date 05.02.2026
+Execution
+Operation type Buy
+Market place Over the counter
+Execution date 04.02.2026 at 11:12:26 am
+Buy notional USD 24'660.48
+Sell notional GBP 18'046.06
+Trading capacity Principal
+Exchange rate
+Market rate (GBP/USD) 1.3706300
+Forward points (GBP/USD) -0.0000009
+Spread points (GBP/USD) -0.0040996
+Forward rate (GBP/USD) 1.3665295
+Derivative
+Asset type OTC Derivative
+Asset sub-type Foreign exchange
+Settlement type Physical
+Underlying - GBP/USD
+Asset class Currency
+Asset currency GBP/USD
+Other
+Counterparty Bank Pictet & Cie (Europe) AG,
+succursale de Luxembourg
+Unique trade ID 549300GSSPQ1QSKI1376FXFWLUX
+1162235128
+INportfolio K-123456.001
+Forex Forward USD/GBP, 05.02.26 (45985748) USD 24'660.48
+ISIN/Internal ref.: ZZ00XBD245 0 Telekurs ID/Internal ref.: ZZZXBD245 
+OUT of portfolio K-123456.001
+Forex Forward USD/GBP, 05.02.26 (45985748) GBP 18'046.06
+ISIN/Internal ref.: ZZ00XBD245 0 Telekurs ID/Internal ref.: ZZZXBD245 
+CASH EFFECTin portfolio K-123456.001
+Gross amount USD 0.00
+Costs USD 0.00
+Net amount USD 0.00
+Current account K-123456.001.00.USD/Ordinary IBAN?LU901980012345600100
+
+--- page 2/2 ---
+OTC DERIVATIVE
+FX forward
+Buy USD 24'660.48 - Sell GBP at 1.3665295
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+2/2 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-123456.001
+Transaction no.: 1162235128 | Publication date: 04.02.2026
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+CASH EFFECTin portfolio K-123456.001
+Gross amount GBP 0.00
+Costs GBP 0.00
+Net amount GBP 0.00
+Current account K-123456.001.00.GBP/Ordinary IBAN?LU901980012345600100
+Please note:
+This document constitutes and/or supplements the Confirmation or (as applicable) the transaction
+advice, as referred to in the documentation pertaining to the above-mentioned transaction. Please refer
+to the documentation applying to the transaction such as, but not limited to, the TOFF, the Master
+Agreement (for over-the-counter derivatives transactions), the Long Form Confirmation and the Bank's
+General Business Conditions (each, if applicable).

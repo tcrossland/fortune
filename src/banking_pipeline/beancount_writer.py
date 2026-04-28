@@ -127,11 +127,12 @@ _THIRD_PARTY_PAYMENT_TYPES: frozenset[DocumentType] = frozenset({
 # book transfers between the user's own current accounts. The single
 # entry holds the source-currency debit leg, the destination-currency
 # credit leg with an ``@@ <abs_source> <src_ccy>`` annotation, and the
-# trailing ``no:`` reference. ``SPOT`` / ``SETTLE_FX_FORWARD`` /
-# ``FX_FORWARD`` keep using the legacy ``_FX_LEG_TEMPLATE`` until
-# they get their own goldens — the document shapes are similar but
-# carry enough structural variance that bundling them prematurely
-# would obscure the per-doctype contract.
+# trailing ``no:`` reference. ``SPOT`` / ``SETTLE_FX_FORWARD`` keep
+# using the legacy ``_FX_LEG_TEMPLATE`` until they get their own
+# goldens — the document shapes are similar but carry enough
+# structural variance that bundling them prematurely would obscure
+# the per-doctype contract. ``FX_FORWARD``'s template returns ``[]``
+# (the opening has no cash impact; SETTLE_FX_FORWARD books the cash).
 _INTERNAL_TRANSFER_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.INTERNAL_TRANSFER,
 })
@@ -281,13 +282,17 @@ _TEMPLATES = {
     # shape is asset→asset across the user's own external accounts,
     # not income/expense, which needs a separate builder.
     DocumentType.PAGO_INTERNA: _CASH_IN_TEMPLATE,
-    # --- FX advices (one Transaction per leg) ---
+    # --- FX advices ---
     # ``INTERNAL_TRANSFER`` routes through ``_render_internal_transfer``
     # (a Python builder) instead — see ``_INTERNAL_TRANSFER_TYPES``.
+    # ``FX_FORWARD``'s template returns ``[]`` (the contract opening
+    # has no cash impact; the matching ``SETTLE_FX_FORWARD`` advice
+    # books the cash exchange at maturity), so the writer never sees
+    # a Transaction for it. ``SPOT`` and ``SETTLE_FX_FORWARD`` keep
+    # the legacy two-leg-per-document Jinja path for now until they
+    # get their own goldens.
     DocumentType.SPOT: _FX_LEG_TEMPLATE,
     DocumentType.SETTLE_FX_FORWARD: _FX_LEG_TEMPLATE,
-    # FX forward opening: zero-amount legs record the contract event.
-    DocumentType.FX_FORWARD: _FX_LEG_TEMPLATE,
     # --- Non-cash events ---
     DocumentType.LIMIT_EXTENSION: _ENV.from_string(
         """\

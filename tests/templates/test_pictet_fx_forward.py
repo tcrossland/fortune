@@ -1,5 +1,3 @@
-from datetime import date
-from decimal import Decimal
 from pathlib import Path
 
 from banking_pipeline.models import RawDocument
@@ -19,36 +17,25 @@ def test_fx_forward_template_is_registered() -> None:
     assert TEMPLATE_REGISTRY["pictet.fx_forward.v1"].template_id == "pictet.fx_forward.v1"
 
 
-def test_fx_forward_extracts_two_zero_legs() -> None:
+def test_fx_forward_extracts_no_transactions() -> None:
+    """The FX-forward opening advice is the contractual paper trail
+    for an event whose cash leg is booked by the matching
+    ``SETTLE_FX_FORWARD`` advice at maturity. Emitting both would
+    either double-count (with non-zero amounts) or clutter the ledger
+    with zero-amount memo entries. This template intentionally
+    returns ``[]`` (mirroring ``interest_scale`` and ``factura``).
+    The classifier still routes the document so audit logs see it."""
+
     template = PictetFxForwardTemplate()
     txs = template.extract(_load("fx_forward.txt"))
-
-    # Two legs even though both are zero — the contract opens and we
-    # record the event for audit completeness.
-    assert len(txs) == 2
-    usd_leg, gbp_leg = txs
-
-    assert usd_leg.trade_date == date(2026, 2, 4)
-    assert usd_leg.settlement_date == date(2026, 2, 5)
-    assert usd_leg.currency == "USD"
-    assert usd_leg.amount == Decimal("0.00")
-
-    assert gbp_leg.currency == "GBP"
-    assert gbp_leg.amount == Decimal("0.00")
-
-    # Narration marks this as the open leg of the forward — distinguishes
-    # from settle_fx_forward in downstream beancount rendering.
-    assert "FX forward" in usd_leg.narration
-    assert "open" in usd_leg.narration
-    assert "Buy USD" in usd_leg.narration
-    assert usd_leg.narration == gbp_leg.narration
+    assert txs == []
 
 
-def test_fx_forward_template_rejects_settle_advice() -> None:
-    """A settle FX forward advice has the superstring title
-    ``Settle FX forward``; the open template must explicitly reject it
-    to avoid losing the actual cash legs to a zero-amount extraction."""
+def test_fx_forward_extracts_no_transactions_2026_fixture() -> None:
+    """Same as above for the 2026 fixture — different portfolio
+    identifier, identical structure. Pinning both to lock in the
+    no-entry contract across the fixture-tree variants."""
 
     template = PictetFxForwardTemplate()
-    txs = template.extract(_load("settle_fx_forward.txt"))
+    txs = template.extract(_load("fx_forward.2026.txt"))
     assert txs == []
