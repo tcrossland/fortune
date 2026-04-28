@@ -31,6 +31,13 @@ class DocumentType(StrEnum):
     # ``Operation type Buy``); the asset-type banner is the only reliable
     # discriminator at the classifier layer.
     BUY_ETF = "buy_etf"
+    # Direct equity purchase. Pictet emits this under ``SECURITY / Buy Shares``
+    # with ``Asset type Equities`` for direct equity holdings (single shares
+    # listed on an exchange — Novo Nordisk, etc.). Same skeleton as
+    # ``BUY_ETF`` / ``BUY_STRUCTURED_PRODUCTS`` (single CASH EFFECT block,
+    # ``Operation type Buy``); the asset-type banner is the only reliable
+    # classifier discriminator from the other ``Buy <type>`` variants.
+    BUY_SHARES = "buy_shares"
     # Bond/structured-product maturity payout. Shares the ``SECURITY EVENT``
     # banner with dividend notices but uses ``Redemption price`` + an implicit
     # paired ``OUT of portfolio`` leg instead of an explicit sale execution.
@@ -61,7 +68,6 @@ class DocumentType(StrEnum):
     INTEREST_SCALE = "interest_scale"
 
     # --- Fees / invoices ---
-    FEE_NOTICE = "fee_notice"
     # Pictet "Debit of fees" advice (administration flat fee + account
     # maintenance). ``FACTURA`` is the Spanish-branch equivalent issued as a
     # tax-compliant invoice document under the Madrid succursale.
@@ -341,6 +347,25 @@ class Transaction(BaseModel):
     # signed-positive.
     counter_currency: str | None = None
     counter_amount: Decimal | None = None
+
+    # --- Self-to-self payment cross-leg ---------------------------------
+    # Set on outgoing ``PAYMENT`` advices where the ``Beneficiary``
+    # matches the account holder name — the payment is a self-to-self
+    # transfer to the user's own external account (e.g. Revolut).
+    # ``gross_amount`` is the principal sent (signed positive — Pictet's
+    # top-of-document gross line, distinct from the ``CASH EFFECT``
+    # block's gross which is signed negative for the source-account
+    # perspective). ``counter_account`` is the short account-name
+    # segment for the destination bank, looked up from
+    # :data:`banking_pipeline.config.settings.beneficiary_bank_map`
+    # against the document's ``Bank`` field. The writer uses both to
+    # emit a three-leg entry: destination credited with ``gross_amount``,
+    # source debited with ``amount`` (net), Pictet's wire fee posted to
+    # ``Expenses:<prefix>:Fees:<ccy>``. Both fields ``None`` on
+    # genuine third-party outgoing payments — the writer falls back to
+    # the elastic ``Expenses:<prefix>:Other`` shape for those.
+    gross_amount: Decimal | None = None
+    counter_account: str | None = None
 
     # --- Account identifiers --------------------------------------------
     account_number: str | None = None  # IBAN, broker account, etc.

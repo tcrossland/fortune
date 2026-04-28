@@ -1,0 +1,52 @@
+--- page 1/1 ---
+SECURITY
+Buy Shares
+Buy 200 NOVO NORDISK 'B' at DKK 460.17475
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: P-123456.002
+Transaction no.: 1068597538 | Publication date: 03.04.2025
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 03.04.2025
+Value date 07.04.2025
+Booking date 03.04.2025
+Instruction
+Order type At Market
+Execution
+Operation type Buy
+Market place Nasdaq OMX Nordic Exchange,
+Copenhagen, Equities (XCSE)
+Execution date 03.04.2025 at 04:33:46 pm
+Executed quantity 200
+Execution price DKK 460.17475
+Gross amount DKK -92'034.95
+Trading capacity Agent
+Costs
+Commission/Fee DKK -1'201.37
+Total DKK -1'201.37
+Product details
+Asset type Equities
+Asset sub-type Developed Markets
+Issuer NOVO NORDISK A/S
+INportfolio P-123456.002
+NOVO NORDISK 'B' 200
+ISIN/Internal ref.: DK0062498333 Telekurs ID/Internal ref.: 129508879 
+CASH EFFECTin portfolio P-123456.002
+Gross amount DKK -92'034.95
+Costs DKK -1'201.37
+Net amount DKK -93'236.32
+Current account P-123456.002.00.DKK/Ordinary IBAN?LU091980012345600200
+Please note:
+Please be advised that prior to the conclusion of your transaction, and in accordance with our
+information, we determined that this financial instrument was appropriate to your profile.
+Please be advised that prior to the conclusion of your transaction, and in accordance with our
+information, we determined that this financial instrument was appropriate to your profile.

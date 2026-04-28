@@ -1,4 +1,4 @@
 2026-03-31 * "Interest payment" "Period 31.12.2025 - 31.03.2026"
   Expenses:Pic:Interest:GBP                        16858.14 GBP
-  Assets:Pic:GBP                                  -16858.14 GBP
+  Assets:Pic:P-999999.999:GBP                     -16858.14 GBP
   no: 1180262700

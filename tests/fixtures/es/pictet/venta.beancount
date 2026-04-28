@@ -3,6 +3,6 @@
   Assets:Pic:IE00B579F325                              -119 IE00B579F325 {} @ 178.6699 USD
   Expenses:Pic:Fees:USD                              212.54 USD ; Corretaje y/o spread
   Expenses:Pic:Fees:USD                                1.34 USD ; Tasa bursátil
-  Assets:Pic:EUR                                   19593.05 EUR @@ 21047.84 USD
+  Assets:Pic:K-123456.001:EUR                      19593.05 EUR @@ 21047.84 USD
   Income:Pic:IE00B579F325
   no: 785210359

@@ -1,4 +1,5 @@
 2026-01-09 * "Payment" "FIRST MIDDLE LASTNAMES - Liquidity"
-  Assets:Pic:GBP                                  -12043.40 GBP
-  Expenses:Pic:Other
+  Assets:Revolut:GBP                               12000.00 GBP ; Gross amount
+  Assets:Pic:P-999999.999:GBP                     -12043.40 GBP ; Net amount
+  Expenses:Pic:Fees:GBP                               43.40 GBP ; Payment fees
   no: 1154839947

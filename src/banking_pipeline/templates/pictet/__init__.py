@@ -8,12 +8,13 @@ tuple.
 
 Templates are organised by locale:
 
-  - English (Luxembourg / Geneva): ``buy_etf``, ``buy_structured_products``,
-    ``debit_of_fees``, ``dividend_notice``, ``final_redemption``,
-    ``fx_forward``, ``incoming_payment``, ``interest_payment``,
-    ``interest_scale``, ``internal_transfer``, ``limit_extension``,
-    ``order_information_report``, ``payment``, ``redemption_notice``,
-    ``settle_fx_forward``, ``spot``, ``subscription_notice``.
+  - English (Luxembourg / Geneva): ``buy_etf``, ``buy_shares``,
+    ``buy_structured_products``, ``debit_of_fees``, ``dividend_notice``,
+    ``final_redemption``, ``fx_forward``, ``incoming_payment``,
+    ``interest_payment``, ``interest_scale``, ``internal_transfer``,
+    ``limit_extension``, ``order_information_report``, ``payment``,
+    ``redemption_notice``, ``settle_fx_forward``, ``spot``,
+    ``subscription_notice``.
   - Spanish (Madrid branch): ``compra``, ``debito_de_gastos``, ``factura``,
     ``pago_entrante``, ``pago_interna``, ``reembolso``, ``reembolso_final``,
     ``suscripcion``, ``switch_entrada``, ``switch_salida``, ``venta``.
@@ -22,6 +23,7 @@ Templates are organised by locale:
 from __future__ import annotations
 
 from banking_pipeline.templates.pictet.buy_etf import PictetBuyEtfTemplate
+from banking_pipeline.templates.pictet.buy_shares import PictetBuySharesTemplate
 from banking_pipeline.templates.pictet.buy_structured_products import (
     PictetBuyStructuredProductsTemplate,
 )
@@ -93,6 +95,7 @@ from banking_pipeline.templates.pictet.venta import PictetVentaTemplate
 # alphabetical by template_id makes diffs easy to read.
 PICTET_TEMPLATES: tuple[object, ...] = (
     PictetBuyEtfTemplate(),
+    PictetBuySharesTemplate(),
     PictetBuyStructuredProductsTemplate(),
     PictetCompraTemplate(),
     PictetDebitOfFeesTemplate(),
@@ -125,6 +128,7 @@ PICTET_TEMPLATES: tuple[object, ...] = (
 __all__ = [
     "PICTET_TEMPLATES",
     "PictetBuyEtfTemplate",
+    "PictetBuySharesTemplate",
     "PictetBuyStructuredProductsTemplate",
     "PictetCompraTemplate",
     "PictetDebitOfFeesTemplate",

@@ -213,6 +213,27 @@ PICTET_EN_RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
+        doc_type=DocumentType.BUY_SHARES,
+        template_id="pictet.buy_shares.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Title — "Buy Shares". Unique to direct-equity advices; the
+            # other ``Buy <type>`` variants use ``Buy structured products``
+            # or ``Buy Exchange Traded Fund``.
+            re.compile(r"\bBuy\s+Shares\b", re.I),
+            # Asset classification — the load-bearing discriminator from
+            # BUY_ETF and BUY_STRUCTURED_PRODUCTS (which carry their own
+            # asset-type banners) and from SUBSCRIPTION_NOTICE (which is
+            # explicitly a fund subscription, not a direct equity buy).
+            re.compile(r"\bAsset\s+type\s+Equities\b", re.I),
+            # Shared with BUY_ETF / BUY_STRUCTURED_PRODUCTS but distinct
+            # from SUBSCRIPTION_NOTICE (which uses "Purchase").
+            re.compile(r"\bOperation\s+type\s+Buy\b", re.I),
+            re.compile(r"\bExecuted\s+quantity\b", re.I),
+            re.compile(r"\bExecution\s+price\b", re.I),
+        ),
+    ),
+    Rule(
         doc_type=DocumentType.DIVIDEND_NOTICE,
         template_id="pictet.dividend_notice.v1",
         bank=BankId.PICTET,

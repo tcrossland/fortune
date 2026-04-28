@@ -41,6 +41,17 @@ def test_payment_extracts_single_transaction() -> None:
     assert tx.title == "Payment"
     assert tx.transaction_number == "1154839947"
     assert tx.account_number == "P-999999.999"
+    # Self-to-self detection: ``Beneficiary`` matches the account
+    # holder (FIRST MIDDLE LASTNAMES is also the Client name on the
+    # advice header). The bank field maps to ``Revolut`` via
+    # ``settings.beneficiary_bank_map``. The writer uses
+    # ``gross_amount`` / ``counter_account`` to emit the three-leg
+    # form (destination bank → Pictet → wire fee), distinct from the
+    # two-leg-elastic shape used for genuine third-party payments.
+    assert tx.gross_amount == Decimal("12000.00")
+    assert tx.counter_account == "Revolut"
+    assert tx.fees == Decimal("-43.40")
+    assert tx.fees_currency == "GBP"
 
 
 def test_payment_template_rejects_incoming_payment() -> None:

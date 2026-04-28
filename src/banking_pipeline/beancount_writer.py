@@ -65,6 +65,7 @@ _SECURITY_BUY_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.SUBSCRIPTION_NOTICE,
     DocumentType.BUY_STRUCTURED_PRODUCTS,
     DocumentType.BUY_ETF,
+    DocumentType.BUY_SHARES,
     DocumentType.COMPRA,
     DocumentType.SUSCRIPCION,
     DocumentType.SWITCH_ENTRADA,
@@ -98,11 +99,9 @@ _SWITCH_TYPES: frozenset[DocumentType] = frozenset({
 # ES ``Débito de gastos`` and EN ``Debit of fees`` advices have
 # bank-prefixed multi-leg goldens; ``find_fee_breakdown`` handles
 # their single-line and multi-line label layouts respectively.
-# ``FACTURA`` (the ES tax-invoice variant) keeps its legacy Jinja
-# rendering for now — its extra invoice metadata (``N° de factura``,
-# ``Base de cálculo``, ``Valor medio de la cartera``) wants surfacing
-# in narration or comments and would benefit from a dedicated builder
-# once a golden lands.
+# ``FACTURA`` is intentionally excluded — that doctype's template
+# returns ``[]`` to avoid double-counting against the matching
+# ``Débito de gastos`` advice (same economic event, two paper trails).
 _FEE_ADVICE_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.DEBIT_OF_FEES,
     DocumentType.DEBITO_DE_GASTOS,
@@ -178,9 +177,28 @@ _OPEN_EMITTING_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.TRADE_CONFIRMATION,
     DocumentType.BUY_STRUCTURED_PRODUCTS,
     DocumentType.BUY_ETF,
+    DocumentType.BUY_SHARES,
     DocumentType.COMPRA,
     DocumentType.SWITCH_ENTRADA,
 })
+
+
+def _cash_account(prefix: str, account_number: str | None, currency: str) -> str:
+    """Build a bank-prefixed cash-account path including the portfolio.
+
+    Format: ``Assets:<prefix>:<portfolio>:<currency>`` — e.g.
+    ``Assets:Pic:P-999999.999:GBP``. The portfolio segment lets users
+    distinguish multiple Pictet accounts they hold within the same
+    currency (e.g. ``P-…`` vs ``K-…`` portfolios that both have an EUR
+    sub-account); without it beancount would treat them as the same
+    bucket. Falls back to ``Unknown`` when the document doesn't carry
+    a portfolio identifier — that's rare for Pictet (every advice we
+    see has an ``Account no.`` / ``N° de cuenta`` header), but the
+    fallback keeps the writer producing parseable output even on
+    malformed input.
+    """
+
+    return f"Assets:{prefix}:{account_number or 'Unknown'}:{currency}"
 
 
 def _inline_open_directive(
@@ -205,35 +223,11 @@ def _inline_open_directive(
     return f"{entry_date} open Assets:{prefix}:{tx.isin} {tx.isin}\n"
 
 
-_FEE_TEMPLATE = _ENV.from_string(
-    """\
-{{ tx.trade_date }} * "{{ narration }}"
-  Expenses:Banking:Fees                          {{ tx.amount }} {{ tx.currency }}
-  Assets:Bank:{{ tx.account_number or 'Unknown' }}  {{ -tx.amount }} {{ tx.currency }}
-"""
-)
-
-_INTEREST_TEMPLATE = _ENV.from_string(
-    """\
-{{ tx.trade_date }} * "{{ narration }}"
-  Income:Interest                                {{ -tx.amount }} {{ tx.currency }}
-  Assets:Bank:{{ tx.account_number or 'Unknown' }}  {{ tx.amount }} {{ tx.currency }}
-"""
-)
-
 _CASH_IN_TEMPLATE = _ENV.from_string(
     """\
 {{ tx.trade_date }} * "{{ narration }}"
   Assets:Broker:Cash                             {{ tx.amount }} {{ tx.currency }}
   Equity:Uncategorized                           {{ -tx.amount }} {{ tx.currency }}
-"""
-)
-
-_CASH_OUT_TEMPLATE = _ENV.from_string(
-    """\
-{{ tx.trade_date }} * "{{ narration }}"
-  Equity:Uncategorized                           {{ tx.amount }} {{ tx.currency }}
-  Assets:Broker:Cash                             {{ -tx.amount }} {{ tx.currency }}
 """
 )
 
@@ -273,19 +267,12 @@ _TEMPLATES = {
     # ``DEBITO_DE_GASTOS`` and ``DEBIT_OF_FEES`` route through
     # ``_render_fee_advice`` (the Python builder) for the new
     # bank-prefixed multi-leg shape with the per-line breakdown.
-    # ``FEE_NOTICE`` is a speculative doctype with no fixture; it
-    # stays on the legacy Jinja path so any future fixture has at
-    # least a placeholder rendering.
-    DocumentType.FEE_NOTICE: _FEE_TEMPLATE,
-    # FACTURA stores amount as -gross_total (already negative), so flip signs
-    # vs the standard fee template to get Expenses positive, Cash negative.
-    DocumentType.FACTURA: _ENV.from_string(
-        """\
-{{ tx.trade_date }} * "{{ narration }}"
-  Expenses:Banking:Fees                          {{ -tx.amount }} {{ tx.currency }}
-  Assets:Bank:{{ tx.account_number or 'Unknown' }}  {{ tx.amount }} {{ tx.currency }}
-"""
-    ),
+    # ``FACTURA``'s template returns ``[]`` so the writer never sees a
+    # Transaction for it (it's the tax-invoice paper trail of a
+    # ``Débito de gastos`` event we already book elsewhere — emitting
+    # both would double-count). ``FEE_NOTICE`` was a third speculative
+    # doctype that never landed a fixture and has been removed from
+    # the model entirely.
     # --- Cash movements ---
     # ``INCOMING_PAYMENT`` and ``PAYMENT`` route through
     # ``_render_third_party_payment`` (the Python builder); see
@@ -430,7 +417,7 @@ def _render_security_sell_with_breakdown(
         )
     lines.append(
         _align(
-            f"Assets:{prefix}:{tx.currency}",
+            _cash_account(prefix, tx.account_number, tx.currency),
             _format_amount(tx.amount),
             tx.currency,
             extras=cash_extras,
@@ -536,11 +523,15 @@ def _render_security_trade(
         f"Assets:{prefix}:{isin}", qty_str, isin, extras=cost_basis
     )
 
-    # --- Fees leg (FX only) --------------------------------------------
-    # Non-FX advices carry a ``Costes EUR 0.00`` line that we extract as
-    # ``tx.fees == 0`` — skip emission in that case to avoid noise legs.
+    # --- Fees leg ------------------------------------------------------
+    # Emitted whenever the document carries non-zero fees, regardless of
+    # FX status. Non-FX advices with ``Costs <ccy> 0.00`` (e.g.
+    # ``compra.2022``) skip via the ``fees != 0`` guard; non-FX advices
+    # with non-zero fees (e.g. ``buy_shares`` with its commission line)
+    # need this leg for the entry to balance arithmetically — the cash
+    # leg is gross + fees and the asset leg is gross-only.
     fees_line: str | None = None
-    if tx.is_fx and tx.fees is not None and tx.fees != 0:
+    if tx.fees is not None and tx.fees != 0:
         fees_ccy = tx.fees_currency or sec_ccy
         fees_line = _align(
             f"Expenses:{prefix}:Fees:{fees_ccy}",
@@ -555,7 +546,7 @@ def _render_security_trade(
             f" @@ {_format_amount(abs(tx.subtotal_security))} {sec_ccy}"
         )
     cash_line = _align(
-        f"Assets:{prefix}:{tx.currency}",
+        _cash_account(prefix, tx.account_number, tx.currency),
         _format_amount(tx.amount),
         tx.currency,
         extras=cash_extras,
@@ -683,7 +674,7 @@ def _render_switch_trade(
         )
     lines.append(
         _align(
-            f"Assets:{prefix}:Switch:{tx.currency}",
+            f"Assets:{prefix}:{tx.account_number or 'Unknown'}:Switch:{tx.currency}",
             _format_amount(tx.amount),
             tx.currency,
             extras=cash_extras,
@@ -760,7 +751,7 @@ def _render_fee_advice(
     # --- Cash leg -------------------------------------------------------
     lines.append(
         _align(
-            f"Assets:{prefix}:{tx.currency}",
+            _cash_account(prefix, tx.account_number, tx.currency),
             _format_amount(tx.amount),
             tx.currency,
         )
@@ -776,32 +767,44 @@ def _render_fee_advice(
 def _render_third_party_payment(
     tx: Transaction, doc_type: DocumentType, prefix: str
 ) -> str:
-    """Render a third-party payment advice as a beancount entry.
+    """Render a third-party / self-to-self payment advice as a beancount entry.
 
-    Handles both directions, keyed on the cash leg's sign:
+    Three render shapes, keyed on what the extractor populated:
 
-    Incoming (``tx.amount > 0`` — third party paid the user)::
+    **Self-to-self payment** (``tx.counter_account`` set — outgoing
+    payment to one of the user's own external accounts, e.g. Revolut)::
 
         <booking_date> * "<title>" "<narration>"
-          Assets:<prefix>:<currency>    <amount> <ccy>
+          Assets:<counter_account>:<currency>     <gross_amount> <ccy> ; Gross amount
+          Assets:<prefix>:<portfolio>:<currency>  <amount>      <ccy> ; Net amount
+          Expenses:<prefix>:Fees:<ccy>            <abs_fees>    <ccy> ; Payment fees
+          no: <transaction_number>
+
+    Three legs that balance arithmetically: the user receives
+    ``gross_amount`` in their external account, the Pictet portfolio's
+    cash account decreases by ``amount`` (which is gross + fees, signed
+    negative), and the wire fee posts to ``Expenses:<prefix>:Fees:<ccy>``.
+
+    **Incoming third-party payment** (``tx.amount > 0`` — third party
+    paid the user)::
+
+        <booking_date> * "<title>" "<narration>"
+          Assets:<prefix>:<portfolio>:<currency>  <amount> <ccy>
           Income:<prefix>:Other
           no: <transaction_number>
 
-    Outgoing (``tx.amount < 0`` — user paid a third party)::
+    **Outgoing third-party payment** (``tx.amount < 0`` — user paid a
+    third party who isn't them)::
 
         <booking_date> * "<title>" "<narration>"
-          Assets:<prefix>:<currency>    <amount> <ccy>
+          Assets:<prefix>:<portfolio>:<currency>  <amount> <ccy>
           Expenses:<prefix>:Other
           no: <transaction_number>
 
-    The elastic counter-leg (``Income:<prefix>:Other`` / ``Expenses:<prefix>:Other``)
-    carries no amount; beancount auto-balances it against the cash
-    leg. ``Other`` is a deliberate placeholder — the user can rewire
-    to payer/payee-specific accounts (``Income:Pic:Earnout``,
-    ``Expenses:Pic:Rent``, etc.) per their chart of accounts. The cash
-    leg's sign flows through unchanged from ``tx.amount`` (Pictet prints
-    incoming positive, outgoing negative, matching beancount's
-    convention either way).
+    The elastic counter-leg ``Income:<prefix>:Other`` /
+    ``Expenses:<prefix>:Other`` carries no amount; beancount
+    auto-balances against the cash leg. ``Other`` is a placeholder
+    that the user can rewire to payer/payee-specific accounts.
     """
 
     entry_date = tx.booking_date or tx.trade_date
@@ -811,18 +814,53 @@ def _render_third_party_payment(
     parts.append(f'"{_escape(tx.narration)}"')
     lines: list[str] = [" ".join(parts)]
 
+    # --- Self-to-self three-leg shape ---------------------------------
+    if tx.counter_account is not None and tx.gross_amount is not None:
+        # Destination leg — user's external account credited with the
+        # principal sent. Positive amount, no portfolio (the external
+        # bank's account naming is its own concern).
+        lines.append(
+            _align(
+                f"Assets:{tx.counter_account}:{tx.currency}",
+                _format_amount(tx.gross_amount),
+                tx.currency,
+                extras=" ; Gross amount",
+            )
+        )
+        # Source leg — Pictet portfolio cash account debited with the
+        # net (gross + fees, signed negative).
+        lines.append(
+            _align(
+                _cash_account(prefix, tx.account_number, tx.currency),
+                _format_amount(tx.amount),
+                tx.currency,
+                extras=" ; Net amount",
+            )
+        )
+        # Wire fee leg — Pictet's payment-fee charge as an expense.
+        if tx.fees is not None and tx.fees != 0:
+            fees_ccy = tx.fees_currency or tx.currency
+            lines.append(
+                _align(
+                    f"Expenses:{prefix}:Fees:{fees_ccy}",
+                    _format_amount(abs(tx.fees)),
+                    fees_ccy,
+                    extras=" ; Payment fees",
+                )
+            )
+        if tx.transaction_number:
+            lines.append(f"  no: {tx.transaction_number}")
+        return "\n".join(lines) + "\n"
+
+    # --- Two-leg-elastic shape (incoming / non-self-to-self outgoing) -
     lines.append(
         _align(
-            f"Assets:{prefix}:{tx.currency}",
+            _cash_account(prefix, tx.account_number, tx.currency),
             _format_amount(tx.amount),
             tx.currency,
         )
     )
-
-    # Elastic counter-leg, keyed on direction. Beancount records
-    # income on the negative side of an income account and expenses
-    # on the positive side; with no amount the engine fills in
-    # whichever balances the entry.
+    # Elastic counter-leg, keyed on direction.
     if tx.amount >= 0:
         lines.append(f"  Income:{prefix}:Other")
     else:
@@ -897,7 +935,7 @@ def _render_interest(
     # Cash leg — signed as Pictet printed it.
     lines.append(
         _align(
-            f"Assets:{prefix}:{tx.currency}",
+            _cash_account(prefix, tx.account_number, tx.currency),
             _format_amount(tx.amount),
             tx.currency,
         )
@@ -958,7 +996,7 @@ def _render_dividend(
     # Cash leg — signed as Pictet printed it (positive, cash in).
     lines.append(
         _align(
-            f"Assets:{prefix}:{tx.currency}",
+            _cash_account(prefix, tx.account_number, tx.currency),
             _format_amount(tx.amount),
             tx.currency,
         )
@@ -1017,7 +1055,7 @@ def _render_internal_transfer(
     # Source (debit) leg — signed negative as printed.
     lines.append(
         _align(
-            f"Assets:{prefix}:{tx.currency}",
+            _cash_account(prefix, tx.account_number, tx.currency),
             _format_amount(tx.amount),
             tx.currency,
         )
@@ -1030,7 +1068,7 @@ def _render_internal_transfer(
     # rate field.
     lines.append(
         _align(
-            f"Assets:{prefix}:{tx.counter_currency}",
+            _cash_account(prefix, tx.account_number, tx.counter_currency),
             _format_amount(tx.counter_amount),
             tx.counter_currency,
             extras=f" @@ {_format_amount(abs(tx.amount))} {tx.currency}",

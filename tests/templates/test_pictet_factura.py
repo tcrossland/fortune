@@ -1,5 +1,3 @@
-from datetime import date
-from decimal import Decimal
 from pathlib import Path
 
 from banking_pipeline.models import RawDocument
@@ -20,22 +18,13 @@ def test_factura_template_is_registered() -> None:
     assert template.template_id == "pictet.factura.v1"
 
 
-def test_factura_extracts_single_transaction() -> None:
+def test_factura_extracts_no_transactions() -> None:
+    """The factura is the tax-invoice paper trail for the same fee event
+    that a matching ``Débito de gastos`` advice books as a cash leg.
+    Emitting both would double-count the fee, so this template
+    intentionally returns ``[]`` (mirroring ``interest_scale``). The
+    classifier still routes the document so audit logs see it."""
+
     template = PictetFacturaTemplate()
     txs = template.extract(_load("factura.txt"))
-
-    assert len(txs) == 1
-    tx = txs[0]
-    assert tx.trade_date == date(2026, 3, 23)
-    assert tx.settlement_date == date(2026, 3, 31)
-    assert tx.currency == "GBP"
-    # The invoice prints ``Total GBP 5'140.70`` as a positive line item;
-    # we negate for cash-impact convention. A real factura with a refund
-    # (negative invoice) would correspondingly produce a positive amount.
-    assert tx.amount == Decimal("-5140.70")
-    assert tx.isin is None
-    # Narration carries the invoice number and period for audit purposes.
-    assert "factura n° 80" in tx.narration
-    assert "Honorarios de gestión" in tx.narration
-    assert "2026-01-01" in tx.narration
-    assert tx.account_number == "P-999999.999"
+    assert txs == []
