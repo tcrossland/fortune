@@ -35,10 +35,12 @@ def test_switch_entrada_extracts_single_transaction() -> None:
     assert tx.quantity == Decimal("3940.078")
     assert tx.price == Decimal("11.369")
     assert tx.isin == "LU0767911984"
-    # No verb-led headline on switches — falls back to the synthesised
-    # narration.
-    assert "switch" in tx.narration.lower()
-    assert "entrada" in tx.narration.lower()
+    # Switches have no ``Compra``/``Venta`` headline; the narration is
+    # synthesised as ``ENTRADA <fund>`` from the portfolio block. The
+    # word "switch" lives in ``tx.title`` rather than the narration.
+    assert tx.title == "Switch"
+    assert tx.narration.startswith("ENTRADA ")
+    assert "ABRDN" in tx.narration
     # No ``Cuenta corriente`` line on switches; account_number falls
     # back to the ``N° de cuenta`` portfolio ID.
     assert tx.account_number == "P-999999.999"

@@ -1,0 +1,4 @@
+2022-01-01 * "Internal money transfer" "EUR → GBP"
+  Assets:Pic:EUR                                  -99999.99 EUR
+  Assets:Pic:GBP                                   99999.99 GBP @@ 99999.99 EUR
+  no: 9999999999

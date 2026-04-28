@@ -36,8 +36,11 @@ def test_switch_salida_extracts_single_transaction() -> None:
     assert tx.quantity == Decimal("-5.0000")
     assert tx.price == Decimal("8958.95")
     assert tx.isin == "LU1525462542"
-    assert "switch" in tx.narration.lower()
-    assert "salida" in tx.narration.lower()
+    # Switches have no ``Compra``/``Venta`` headline; the narration is
+    # synthesised as ``SALIDA <fund>`` from the portfolio block. The
+    # word "switch" lives in ``tx.title`` rather than the narration.
+    assert tx.title == "Switch"
+    assert tx.narration.startswith("SALIDA ")
     assert tx.account_number == "P-999999.999"
 
 

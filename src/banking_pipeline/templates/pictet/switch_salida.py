@@ -40,9 +40,10 @@ class PictetSwitchSalidaTemplate:
         # ``find_headline`` returns ``None`` and the helper falls back to
         # ``fallback_narration``. Compose ``"SALIDA <fund>"`` from the
         # portfolio block instead — that's the narration the writer's
-        # switch path expects.
+        # switch path expects, matching the 2021 golden's all-caps
+        # convention.
         fund = find_switch_fund_name(doc.text, "SALIDA")
-        narration = f"SALIDA {fund}" if fund else "Pictet switch (salida)"
+        narration = f"SALIDA {fund}" if fund else "Switch (salida)"
 
         tx = extract_simple_trade_advice(
             doc,

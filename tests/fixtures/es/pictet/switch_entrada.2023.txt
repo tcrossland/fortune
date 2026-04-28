@@ -1,0 +1,44 @@
+--- page 1/1 ---
+BOLSA DE VALORES
+Cambio ("switch") de fondos (entrada)
+ARCHIVE
+0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 846210315 | Fecha de publicación: 20.02.2023
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 17.02.2023
+Fecha valor 21.02.2023
+Fecha contable 20.02.2023
+Transacción
+Switch entre MIROVA-GBL GREEN BD SI/A
+EUR-ACC.
+y PICTET-USD GOVERNMENT BDS-HI
+EUR
+Instrucción
+Fecha de la orden 15.02.2023 a las 13:38:07
+Tipo de orden A mercado
+Ejecución
+Tipo de operación Compra
+Plaza bursátil All Funds
+Fecha de ejecución 15.02.2023 a las 13:56:51
+Cantidad ejecutada 96.37836
+Precio de ejecución EUR 499.55
+Importe bruto EUR -48'145.81
+Otro
+Depositario ALLFUNDS BANK INTERNATIONAL
+SA
+ENTRADAen la cartera K-123456.001
+PICTET-USD GOVERNMENT BDS-HI EUR 96.37836
+ISIN: LU1226265632 N° Telekurs: 27988760 
+EFECTO CASH
+Importe bruto EUR -48'145.81
+Costes EUR 0.00
+Importe neto EUR -48'145.81

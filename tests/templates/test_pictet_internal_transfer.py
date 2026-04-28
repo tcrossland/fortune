@@ -20,32 +20,44 @@ def test_internal_transfer_template_is_registered() -> None:
     assert template.template_id == "pictet.internal_transfer.v1"
 
 
-def test_internal_transfer_extracts_two_legs() -> None:
+def test_internal_transfer_extracts_single_cross_currency_transaction() -> None:
+    """The template now produces ONE Transaction with both legs' info,
+    not two separate Transactions. The writer's
+    ``_render_internal_transfer`` path uses ``counter_currency`` /
+    ``counter_amount`` to emit a single beancount entry with an ``@@``
+    annotation linking the two cash currencies."""
+
     template = PictetInternalTransferTemplate()
     txs = template.extract(_load("internal_transfer.txt"))
 
-    assert len(txs) == 2
-    debit, credit = txs
+    assert len(txs) == 1
+    tx = txs[0]
 
     # Fixture is fully anonymised (digits → 9, dates → 01.01.2022) but
-    # the structural split is preserved, so we can pin the leg sign
-    # convention end-to-end.
-    assert debit.trade_date == date(2022, 1, 1)
-    assert debit.settlement_date == date(2022, 1, 1)
-    assert debit.currency == "EUR"
-    assert debit.amount == Decimal("-99999.99")
+    # the structural sign convention is preserved.
+    assert tx.trade_date == date(2022, 1, 1)
+    assert tx.settlement_date == date(2022, 1, 1)
+    assert tx.booking_date == date(2022, 1, 1)
 
-    # Credit leg's currency is GBP because Pictet performs the FX inside
-    # the leg — Net amount is in the destination currency, not in the
-    # source's. This is the load-bearing detail that distinguishes
-    # internal transfers from payments.
-    assert credit.currency == "GBP"
-    assert credit.amount == Decimal("99999.99")
+    # Source (debit) leg: signed negative — cash leaving the EUR account.
+    assert tx.currency == "EUR"
+    assert tx.amount == Decimal("-99999.99")
 
-    assert debit.narration == credit.narration
-    assert "internal transfer" in debit.narration
-    assert "EUR" in debit.narration
-    assert "GBP" in debit.narration
+    # Destination (credit) leg: signed positive — cash arriving in the
+    # GBP account. Pictet performs the FX inside the leg, so the Net
+    # amount on the credit side is already in the destination currency.
+    assert tx.counter_currency == "GBP"
+    assert tx.counter_amount == Decimal("99999.99")
+
+    # Synthesised narration — the document carries no verb-led
+    # headline, so the template builds one from the leg pair.
+    assert tx.narration == "EUR → GBP"
+    assert tx.title == "Internal money transfer"
+    assert tx.transaction_number == "9999999999"
+    assert tx.exchange_rate == Decimal("9.99999999")
+    # Account number falls back to the portfolio header (the IBAN is
+    # anonymised and won't validate).
+    assert tx.account_number == "K-999999.999"
 
 
 def test_internal_transfer_template_rejects_outgoing_payment() -> None:

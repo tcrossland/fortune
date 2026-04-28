@@ -326,6 +326,21 @@ class Transaction(BaseModel):
     # between Pictet's printed rate and the implied one.
     exchange_rate: Decimal | None = None
 
+    # --- Internal-transfer cross-leg (only set on cross-currency book
+    # transfers between the user's own current accounts) ------------------
+    # On a Pictet ``Internal money transfer`` advice the document records
+    # *two* CASH EFFECT blocks — one debit on the source account, one
+    # credit on the destination account in a different currency. Modelling
+    # this as a single ``Transaction`` with both currencies/amounts (rather
+    # than two separate ``Transaction`` rows balanced against
+    # ``Equity:Uncategorized``) lets the writer emit a single beancount
+    # entry with the destination leg carrying ``@@ <abs_source> <src_ccy>``
+    # to record the FX. ``currency``/``amount`` hold the source (debit)
+    # leg signed-negative; these hold the destination (credit) leg
+    # signed-positive.
+    counter_currency: str | None = None
+    counter_amount: Decimal | None = None
+
     # --- Account identifiers --------------------------------------------
     account_number: str | None = None  # IBAN, broker account, etc.
     # Pictet's per-document reference (``N° de transacción``). Emitted by

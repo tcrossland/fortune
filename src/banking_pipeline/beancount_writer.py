@@ -115,6 +115,19 @@ _THIRD_PARTY_PAYMENT_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.PAGO_ENTRANTE,
 })
 
+# Doctypes routed through ``_render_internal_transfer`` — cross-currency
+# book transfers between the user's own current accounts. The single
+# entry holds the source-currency debit leg, the destination-currency
+# credit leg with an ``@@ <abs_source> <src_ccy>`` annotation, and the
+# trailing ``no:`` reference. ``SPOT`` / ``SETTLE_FX_FORWARD`` /
+# ``FX_FORWARD`` keep using the legacy ``_FX_LEG_TEMPLATE`` until
+# they get their own goldens — the document shapes are similar but
+# carry enough structural variance that bundling them prematurely
+# would obscure the per-doctype contract.
+_INTERNAL_TRANSFER_TYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.INTERNAL_TRANSFER,
+})
+
 # Doctypes that emit an inline ``open Assets:<prefix>:<ISIN> <ISIN>``
 # directive at the top of the entry. Stock-purchase / structured-product
 # / ETF / switch-into-new-fund advices typically introduce a position
@@ -242,10 +255,11 @@ _TEMPLATES = {
     DocumentType.INCOMING_PAYMENT: _CASH_IN_TEMPLATE,
     DocumentType.PAGO_INTERNA: _CASH_IN_TEMPLATE,
     DocumentType.PAYMENT: _CASH_OUT_TEMPLATE,
-    # --- FX and internal transfers (one Transaction per leg) ---
+    # --- FX advices (one Transaction per leg) ---
+    # ``INTERNAL_TRANSFER`` routes through ``_render_internal_transfer``
+    # (a Python builder) instead — see ``_INTERNAL_TRANSFER_TYPES``.
     DocumentType.SPOT: _FX_LEG_TEMPLATE,
     DocumentType.SETTLE_FX_FORWARD: _FX_LEG_TEMPLATE,
-    DocumentType.INTERNAL_TRANSFER: _FX_LEG_TEMPLATE,
     # FX forward opening: zero-amount legs record the contract event.
     DocumentType.FX_FORWARD: _FX_LEG_TEMPLATE,
     # --- Non-cash events ---
@@ -766,6 +780,79 @@ def _render_third_party_payment(
     return "\n".join(lines) + "\n"
 
 
+def _render_internal_transfer(
+    tx: Transaction, doc_type: DocumentType, prefix: str
+) -> str:
+    """Render a Pictet cross-currency internal-money-transfer advice.
+
+    Layout::
+
+        <booking_date> * "<title>" "<narration>"
+          Assets:<prefix>:<currency>             <amount> <ccy>
+          Assets:<prefix>:<counter_currency>     <counter_amount> <counter_ccy> @@ <abs_amount> <ccy>
+          no: <transaction_number>
+
+    Both legs are positive-or-negative as Pictet stored them: the source
+    leg is signed-negative (cash out) and the destination leg is
+    signed-positive (cash in). The destination leg's ``@@ <abs_source>
+    <src_ccy>`` annotation tells beancount the conversion total — this
+    is what lets it cross-reconcile the two cash currencies on a
+    single entry rather than splitting into two ``Equity:Uncategorized``-
+    balanced entries.
+
+    Skips its job if ``counter_currency`` / ``counter_amount`` aren't
+    populated (legacy callers that built ``Transaction`` objects without
+    the cross-leg fields), falling back to a single-leg render via
+    ``_FX_LEG_TEMPLATE``-style shape — but in practice every fresh
+    extraction populates both fields.
+    """
+
+    if tx.counter_currency is None or tx.counter_amount is None:
+        # Defensive fallback: legacy/incomplete Transaction. Render the
+        # single leg with the legacy account naming so the entry at
+        # least balances against ``Equity:Uncategorized``.
+        return _TEMPLATES[DocumentType.INTERNAL_TRANSFER].render(
+            tx=tx, doc_type=doc_type, narration=_escape(tx.narration)
+        ) if doc_type in _TEMPLATES else _DEFAULT_TEMPLATE.render(
+            tx=tx, doc_type=doc_type, narration=_escape(tx.narration)
+        )
+
+    entry_date = tx.booking_date or tx.trade_date
+    parts: list[str] = [str(entry_date), "*"]
+    if tx.title:
+        parts.append(f'"{_escape(tx.title)}"')
+    parts.append(f'"{_escape(tx.narration)}"')
+    lines: list[str] = [" ".join(parts)]
+
+    # Source (debit) leg — signed negative as printed.
+    lines.append(
+        _align(
+            f"Assets:{prefix}:{tx.currency}",
+            _format_amount(tx.amount),
+            tx.currency,
+        )
+    )
+
+    # Destination (credit) leg with ``@@`` total-cost annotation. The
+    # absolute value of the source leg's amount goes in the source
+    # currency on the right of the ``@@`` — beancount uses that to
+    # reconcile the two cash currencies without needing the explicit
+    # rate field.
+    lines.append(
+        _align(
+            f"Assets:{prefix}:{tx.counter_currency}",
+            _format_amount(tx.counter_amount),
+            tx.counter_currency,
+            extras=f" @@ {_format_amount(abs(tx.amount))} {tx.currency}",
+        )
+    )
+
+    if tx.transaction_number:
+        lines.append(f"  no: {tx.transaction_number}")
+
+    return "\n".join(lines) + "\n"
+
+
 def render(result: ExtractionResult) -> str:
     """Render all transactions in ``result`` as beancount entries."""
 
@@ -826,6 +913,8 @@ def _render_transaction(
         return _render_fee_advice(tx, doc_type, prefix)
     if doc_type in _THIRD_PARTY_PAYMENT_TYPES:
         return _render_third_party_payment(tx, doc_type, prefix)
+    if doc_type in _INTERNAL_TRANSFER_TYPES:
+        return _render_internal_transfer(tx, doc_type, prefix)
     if doc_type in _SECURITY_TRADE_TYPES:
         return _render_security_trade(tx, doc_type, prefix)
     template = _TEMPLATES.get(doc_type, _DEFAULT_TEMPLATE)

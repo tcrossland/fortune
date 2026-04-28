@@ -477,8 +477,14 @@ def find_switch_fund_name(text: str, side: str) -> str | None:
     standard :func:`find_headline` returns ``None`` on them.
     """
 
+    # ``\s*`` (not ``\s+``) between the side and the preposition: Pictet's
+    # PDF-to-text output sometimes squishes ``ENTRADA en`` into ``ENTRADAen``
+    # when font kerning eats the inter-word space (seen on
+    # ``switch_entrada.txt`` and ``switch_entrada.2023.txt``; the 2021
+    # variant has the space). The trailing ``\b`` after ``cartera`` keeps
+    # the optional-whitespace from accidentally matching unrelated words.
     portfolio_re = re.compile(
-        rf"^{re.escape(side)}\s+(?:de|en)\s+la\s+cartera\b", re.I
+        rf"^{re.escape(side)}\s*(?:de|en)\s+la\s+cartera\b", re.I
     )
     quantity_tail_re = re.compile(
         rf"\s+-?\d{{1,3}}(?:'\d{{3}})*(?:\.\d+)?\s*$"

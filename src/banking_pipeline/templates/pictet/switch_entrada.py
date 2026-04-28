@@ -49,10 +49,12 @@ class PictetSwitchEntradaTemplate:
             return []
 
         # Same narration shape as switch_salida — see that module's
-        # comment. ``ENTRADA <fund>`` is the form the writer's switch
-        # path expects on the entrada leg.
+        # comment. ``ENTRADA <fund>`` (all caps, matching Pictet's own
+        # capitalisation in the portfolio header) is the form the
+        # writer's switch path expects; pinned by both 2021 and 2023
+        # goldens.
         fund = find_switch_fund_name(doc.text, "ENTRADA")
-        narration = f"ENTRADA {fund}" if fund else "Pictet switch (entrada)"
+        narration = f"ENTRADA {fund}" if fund else "Switch (entrada)"
 
         tx = extract_simple_trade_advice(
             doc,
