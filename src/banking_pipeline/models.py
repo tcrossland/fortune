@@ -83,14 +83,21 @@ class DocumentType(StrEnum):
     INTERNAL_TRANSFER = "internal_transfer"
     # Spanish-locale incoming payment where the ordering party is the client
     # themselves — i.e. a self-to-self transfer from a client-owned external
-    # account (e.g. Revolut → Pictet). Structurally this is just the Pictet
-    # ES ``TRÁFICO DE PAGOS / PAGO ENTRANTE`` advice; what makes it *interna*
-    # is that the ``Ordenante`` name matches the account holder. Regex can't
-    # make that cross-reference, so the classifier's rule matches the generic
-    # payment-advice shape and the downstream extractor is responsible for
-    # confirming the self-to-self property before booking it differently
-    # (Assets:Revolut → Assets:Pictet rather than Income:External → Assets:*).
+    # account (e.g. Revolut → Pictet). Pictet prints the title in all caps
+    # (``PAGO ENTRANTE``) on this variant; structurally it's the same as
+    # the third-party variant below but bookkeeps to a different posting
+    # shape (Assets:Revolut → Assets:Pictet rather than
+    # Income:External → Assets:*). The classifier discriminates against
+    # ``PAGO_ENTRANTE`` via the title's case-sensitivity.
     PAGO_INTERNA = "pago_interna"
+    # Spanish-locale third-party incoming payment — payment from a real
+    # external counterparty (e.g. an employer earnout, a vendor invoice
+    # paid). Pictet prints the title as ``Pago entrante`` (mixed case),
+    # vs ``PAGO ENTRANTE`` (all caps) for the self-to-self ``PAGO_INTERNA``
+    # variant. Books to ``Income:Pic:Other`` (or whichever income account
+    # the user routes the payer to) rather than to a self-owned external
+    # asset account.
+    PAGO_ENTRANTE = "pago_entrante"
 
     # --- Periodic financial statements ---
     # Monthly portfolio report ("Financial Statement", "As at <day> <month>

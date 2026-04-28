@@ -1,0 +1,38 @@
+--- page 9/9 ---
+TRÁFICO DE PAGOS
+Pago entrante
+ARCHIVE
+9A99 Pictet & Cie (Europe) S.A. / 99A, avenue J.F. Kennedy / L-9999 Luxembourg / B.P. 999 / L-9999 Luxembourg
+Tel. +999 99 99 99-9 / Fax +999 99 99 99 / grupo.pictet
+9/9 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-999999.999
+N° de transacción: 999999999 | Fecha de publicación: 15.08.2022
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 15.08.2022
+Fecha valor 15.08.2022
+Fecha contable 15.08.2022
+Fecha de la orden 15.08.2022 a las 99:99:99
+Pago
+Ordenante SOME CORP
+9 New Orchard Rd
+Armonk NY 99999 US
+Banco JPMORGAN CHASE BANK, N.A.
+LONDON
+No de clearing bancario SWIFT(CHASGB9L)
+Pais Reino Unido
+Importe bruto EUR 9'999'999.99
+Comentario
+Commission
+EFECTO CASHen la cartera K-999999.999
+Importe bruto EUR 9'999'999.99
+Costes EUR 9.99
+Importe neto EUR 9'999'999.99
+Cuenta corriente K-999999.999.99.EUR/Ordinario IBAN?LU999999999999999999
+Nota:
+Salvo buen fin

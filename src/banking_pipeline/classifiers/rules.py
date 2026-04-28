@@ -631,14 +631,12 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
     ),
     # "Pago interna" — the Spanish-locale incoming-payment advice where the
     # ``Ordenante`` is the client themselves (self-to-self transfer from a
-    # client-owned external account like Revolut). Structurally it's just a
-    # ``TRÁFICO DE PAGOS / PAGO ENTRANTE`` advice with the Pictet ES field
-    # layout; the self-to-self property has to be checked by the downstream
-    # extractor (comparing ``Ordenante`` to the account holder name). No
-    # distinct third-party ``pago_entrante`` fixture exists today, so this
-    # rule also doubles as the generic ES incoming-payment classifier — if
-    # that fixture ever lands, the two will tie on regex patterns and will
-    # need extractor-level disambiguation.
+    # client-owned external account like Revolut). Pictet prints the title
+    # in ALL CAPS (``PAGO ENTRANTE``) on this variant; the third-party
+    # ``PAGO_ENTRANTE`` variant uses mixed case (``Pago entrante``). The
+    # title's case-sensitivity is the load-bearing discriminator — we
+    # deliberately drop ``re.I`` from that pattern to keep the two rules
+    # from tying on the shared structural markers.
     Rule(
         doc_type=DocumentType.PAGO_INTERNA,
         template_id="pictet.pago_interna.v1",
@@ -647,17 +645,48 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
             # Banner — shared with any Pictet ES payment advice (outgoing or
             # incoming); load-bearing only in combination with the title.
             re.compile(r"\bTR[ÁA]FICO\s+DE\s+PAGOS\b", re.I),
-            # Title — "PAGO ENTRANTE" (incoming payment).
-            re.compile(r"\bPAGO\s+ENTRANTE\b", re.I),
+            # Title — case-sensitive ``PAGO ENTRANTE`` (all caps, on its
+            # own line). See the rule's preamble for why ``re.I`` is
+            # intentionally absent.
+            re.compile(r"^PAGO\s+ENTRANTE\s*$", re.M),
             # Ordering-party field — the giveaway that this is an *incoming*
             # advice (an outgoing "pago saliente" would carry ``Beneficiario``
             # here instead).
             re.compile(r"\bOrdenante\b", re.I),
-            # Free-text payment-reference line on every incoming-payment
-            # advice at Pictet ES.
+            # Free-text payment-reference line — present on the self-to-self
+            # variant (Revolut prints an ``IP<digits>`` reference); often
+            # absent on the third-party variant (PAGO_ENTRANTE), making
+            # this an additional structural discriminator.
             re.compile(r"\bReferencia\s+de\s+pago\b", re.I),
             # Shared Pictet ES structural marker — the credit leg posts into
             # a client-owned ``EFECTO CASH en la cartera`` current account.
+            re.compile(r"\bEFECTO\s+CASH\s*en\s+la\s+cartera\b", re.I),
+        ),
+    ),
+    # "Pago entrante" — third-party incoming payment (employer earnout,
+    # vendor invoice settlement, etc.) where the ``Ordenante`` is a real
+    # external counterparty. Pictet prints the title in mixed case
+    # (``Pago entrante``) on this variant — distinct from the all-caps
+    # ``PAGO ENTRANTE`` of the self-to-self ``PAGO_INTERNA`` variant. The
+    # case-sensitive title match keeps the two rules from tying on shared
+    # patterns; the absence of ``Referencia de pago`` (replaced here by
+    # ``Banco`` / ``Pais`` lines for the foreign correspondent) is a
+    # secondary structural signal.
+    Rule(
+        doc_type=DocumentType.PAGO_ENTRANTE,
+        template_id="pictet.pago_entrante.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            re.compile(r"\bTR[ÁA]FICO\s+DE\s+PAGOS\b", re.I),
+            # Title — case-sensitive mixed-case ``Pago entrante``.
+            re.compile(r"^Pago\s+entrante\s*$", re.M),
+            re.compile(r"\bOrdenante\b", re.I),
+            # ``Banco`` — the correspondent bank that initiated the
+            # third-party payment. Present on this variant; usually
+            # absent on the self-to-self variant (which doesn't need a
+            # correspondent because the source is the user's own
+            # external account).
+            re.compile(r"\bBanco\b", re.I),
             re.compile(r"\bEFECTO\s+CASH\s*en\s+la\s+cartera\b", re.I),
         ),
     ),

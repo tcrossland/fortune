@@ -105,6 +105,16 @@ _FEE_ADVICE_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.DEBITO_DE_GASTOS,
 })
 
+# Doctypes routed through ``_render_third_party_payment`` — simple
+# cash-in entries with an elastic ``Income:<prefix>:Other`` posting
+# that beancount auto-balances. Pictet ES ``Pago entrante`` (third-party
+# incoming payment) is the canonical case. ``PAGO_INTERNA`` (self-to-self)
+# stays on the legacy Jinja ``_CASH_IN_TEMPLATE`` for now — it'll route
+# to a Python builder once a golden lands for that variant.
+_THIRD_PARTY_PAYMENT_TYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.PAGO_ENTRANTE,
+})
+
 # Doctypes that emit an inline ``open Assets:<prefix>:<ISIN> <ISIN>``
 # directive at the top of the entry. Stock-purchase / structured-product
 # / ETF / switch-into-new-fund advices typically introduce a position
@@ -710,6 +720,52 @@ def _render_fee_advice(
     return "\n".join(lines) + "\n"
 
 
+def _render_third_party_payment(
+    tx: Transaction, doc_type: DocumentType, prefix: str
+) -> str:
+    """Render a third-party incoming-payment advice as a beancount entry.
+
+    Layout::
+
+        <booking_date> * "<title>" "<narration>"
+          Assets:<prefix>:<currency>    <amount> <ccy>
+          Income:<prefix>:Other
+          no: <transaction_number>
+
+    The ``Income:<prefix>:Other`` posting carries no amount — beancount
+    auto-balances it against the cash leg, recording the third-party
+    payment as income. ``Other`` is a deliberate placeholder; the user
+    can rewire this to payer-specific income accounts (e.g.
+    ``Income:Pic:Earnout``, ``Income:Pic:Salary``) per their chart of
+    accounts. The cash leg's sign flows through unchanged from
+    ``tx.amount`` (Pictet prints incoming payments positive, matching
+    beancount's convention).
+    """
+
+    entry_date = tx.booking_date or tx.trade_date
+    parts: list[str] = [str(entry_date), "*"]
+    if tx.title:
+        parts.append(f'"{_escape(tx.title)}"')
+    parts.append(f'"{_escape(tx.narration)}"')
+    lines: list[str] = [" ".join(parts)]
+
+    lines.append(
+        _align(
+            f"Assets:{prefix}:{tx.currency}",
+            _format_amount(tx.amount),
+            tx.currency,
+        )
+    )
+
+    # Elastic posting — no amount, beancount fills in the balance.
+    lines.append(f"  Income:{prefix}:Other")
+
+    if tx.transaction_number:
+        lines.append(f"  no: {tx.transaction_number}")
+
+    return "\n".join(lines) + "\n"
+
+
 def render(result: ExtractionResult) -> str:
     """Render all transactions in ``result`` as beancount entries."""
 
@@ -768,6 +824,8 @@ def _render_transaction(
         return _render_switch_trade(tx, doc_type, prefix)
     if doc_type in _FEE_ADVICE_TYPES:
         return _render_fee_advice(tx, doc_type, prefix)
+    if doc_type in _THIRD_PARTY_PAYMENT_TYPES:
+        return _render_third_party_payment(tx, doc_type, prefix)
     if doc_type in _SECURITY_TRADE_TYPES:
         return _render_security_trade(tx, doc_type, prefix)
     template = _TEMPLATES.get(doc_type, _DEFAULT_TEMPLATE)
