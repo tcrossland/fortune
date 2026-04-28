@@ -11,18 +11,25 @@ the client wires money to an external account. The advice carries:
 We map the advice to a single
 :class:`~banking_pipeline.models.Transaction`. Two render paths:
 
-  1. **Self-to-self transfer**: when ``Beneficiary`` matches the
-     account-holder name (the user is wiring money to their own
-     external account, e.g. Revolut), populate ``gross_amount`` and
-     ``counter_account`` so the writer can emit a three-leg entry
-     (destination credited with the principal, source debited with
-     the net, Pictet's wire fee broken out as an expense).
-  2. **Genuine third-party**: when the beneficiary is someone else,
-     leave the cross-leg fields ``None``; the writer falls back to
-     the simpler two-leg-elastic shape (cash leg + ``Expenses:<prefix>:Other``).
+  1. **Self-to-self transfer**: when the destination ``Bank`` resolves
+     via :data:`banking_pipeline.config.settings.beneficiary_bank_map`
+     (e.g. ``REVOLUT BANK UAB`` → ``Revolut``) the user is wiring
+     money to one of their own external accounts. Populate
+     ``gross_amount`` and ``counter_account`` so the writer can emit
+     a three-leg entry (destination credited with the principal,
+     source debited with the net, Pictet's wire fee broken out as
+     an expense).
+  2. **Genuine third-party**: when the destination bank isn't in the
+     map, leave the cross-leg fields ``None``; the writer falls back
+     to the simpler two-leg-elastic shape (cash leg + ``Expenses:<prefix>:Other``).
 
-The ``Bank`` field maps to the destination account-name segment
-(``Revolut``, etc.) via :data:`banking_pipeline.config.settings.beneficiary_bank_map`.
+Self-to-self detection is keyed on the destination bank, *not* on a
+name match between ``Beneficiary`` and ``Client``. The bank map is
+authoritatively user-configured (these are the user's own external
+banks); name matching is brittle in practice because Pictet's PDF
+extractor often produces case-shifted or middle-name-stripped
+beneficiary strings on real wires (``First LASTNAMES`` vs the
+client's ``FIRST MIDDLE LASTNAMES``).
 
 Narration combines the beneficiary and the wire's communication, e.g.
 ``FIRST MIDDLE LASTNAMES - Liquidity``.
@@ -43,11 +50,6 @@ from banking_pipeline.templates.pictet._common import (
     parse_pictet_date,
     resolve_account_number,
 )
-
-# Account-holder line: ``Client: FIRST MIDDLE LASTNAMES``. Used to
-# detect self-to-self payments by comparing against ``Beneficiary``.
-_CLIENT_NAME_RE = re.compile(r"^Client\s*:\s*(.+?)\s*$", re.M)
-
 
 def _resolve_counter_account(bank_field: str | None) -> str | None:
     """Map Pictet's ``Bank`` field to the destination account-name segment.
@@ -102,23 +104,33 @@ class PictetPaymentTemplate:
             narration = communication or beneficiary or "Pictet payment"
 
         # --- Self-to-self detection ----------------------------------
-        # If the beneficiary matches the account holder, this is a
-        # transfer between two of the user's own accounts. Try to
-        # resolve the destination bank to a known account-name segment
-        # via the settings map.
-        client_match = _CLIENT_NAME_RE.search(text)
-        client_name = client_match.group(1).strip() if client_match else None
-        is_self = (
-            beneficiary is not None
-            and client_name is not None
-            and beneficiary.strip().upper() == client_name.upper()
-        )
+        # Bank-map presence is the load-bearing signal: if the
+        # destination bank resolves to a configured account-name
+        # segment, this is by definition a transfer to one of the
+        # user's own external accounts. More robust than name matching,
+        # which Pictet routinely truncates / case-shifts on real wires
+        # (``First LASTNAMES`` vs the client's ``FIRST MIDDLE LASTNAMES``).
+        #
+        # ``Bank`` is ambiguous — the document carries one in its
+        # signature block (``Bank Pictet & Cie (Europe) AG``, naming
+        # Pictet itself) and one inside the ``Payment`` section
+        # (``Bank REVOLUT BANK UAB, …``, the beneficiary's bank).
+        # ``find_field`` returns the first match, which is the wrong
+        # one. Scope the lookup to the text *after* the ``Beneficiary``
+        # line so we read the beneficiary-side bank.
+        bank_field = None
+        benef_pos = re.search(r"^Beneficiary\b", text, re.M)
+        if benef_pos is not None:
+            sub = text[benef_pos.start():]
+            bank_match = re.search(r"^Bank\s+(.+?)\s*$", sub, re.M)
+            if bank_match is not None:
+                bank_field = bank_match.group(1)
+        counter_account = _resolve_counter_account(bank_field)
 
         gross_amount: object = None  # Decimal | None
-        counter_account: str | None = None
         fees: object = None
         fees_currency: object = None
-        if is_self:
+        if counter_account is not None:
             # Pictet prints the gross amount twice: once near the top
             # (``Gross amount GBP 12'000.00`` — positive, the principal
             # sent) and once inside the ``CASH EFFECT`` block (negative,
@@ -128,22 +140,6 @@ class PictetPaymentTemplate:
             gross_match = find_amount_field(text, "Gross amount")
             if gross_match is not None:
                 _, gross_amount = gross_match  # type: ignore[assignment]
-            # ``Bank`` is ambiguous — the document carries one in its
-            # signature block (``Bank Pictet & Cie (Europe) AG``,
-            # naming Pictet itself) and one inside the ``Payment``
-            # section (``Bank REVOLUT BANK UAB, …``, the beneficiary's
-            # bank). ``find_field`` returns the first match, which is
-            # the wrong one. Scope the lookup to the text *after* the
-            # ``Beneficiary`` line so we read the beneficiary-side
-            # bank.
-            bank_field = None
-            benef_pos = re.search(r"^Beneficiary\b", text, re.M)
-            if benef_pos is not None:
-                sub = text[benef_pos.start():]
-                bank_match = re.search(r"^Bank\s+(.+?)\s*$", sub, re.M)
-                if bank_match is not None:
-                    bank_field = bank_match.group(1)
-            counter_account = _resolve_counter_account(bank_field)
             # Wire fee — read from the ``CASH EFFECT`` block's
             # ``Costs <ccy> <amount>`` line. Surfaced as a dedicated
             # ``Expenses:<prefix>:Fees:<ccy>`` posting in the writer.

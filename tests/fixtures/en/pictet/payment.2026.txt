@@ -1,0 +1,40 @@
+--- page 1/1 ---
+PAYMENT TRANSACTIONS
+Payment
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: P-123456.002
+Transaction no.: 1176078173 | Publication date: 19.03.2026
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 19.03.2026
+Value date 19.03.2026
+Booking date 19.03.2026
+Order date 19.03.2026 at 09:51:55 am
+Payment
+Beneficiary First LASTNAMES
+IBAN ES99 9999 9999 9999 9999 9999
+Bank REVOLUT BANK UAB, SUCURSAL EN
+ESPAN
+CLOUDWORKS SERRANO 20
+28001 MADRID
+ES
+Country Spain
+Communication Liquidity
+Gross amount EUR 12'000.00
+Costs
+Payment fees EUR -15.00
+Total EUR -15.00
+CASH EFFECTin portfolio P-123456.002
+Gross amount EUR -12'000.00
+Costs EUR -15.00
+Net amount EUR -12'015.00
+Current account P-123456.002.00.EUR/Ordinary IBAN?LU091980012345600200
