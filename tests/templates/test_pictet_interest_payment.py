@@ -28,13 +28,18 @@ def test_interest_payment_extracts_single_transaction() -> None:
     tx = txs[0]
     assert tx.trade_date == date(2026, 3, 31)
     assert tx.settlement_date == date(2026, 3, 31)
+    assert tx.booking_date == date(2026, 3, 31)
     assert tx.currency == "GBP"
-    # Debit-balance interest charge — negative amount.
+    # Debit-balance interest charge — negative amount. The writer's
+    # ``_render_interest`` path keys the counter-leg account family
+    # (Expenses vs Income) on this sign.
     assert tx.amount == Decimal("-16858.14")
     assert tx.isin is None
     assert tx.quantity is None
     assert tx.price is None
-    # Narration includes both period bounds so the entry is self-describing.
-    assert "2025-12-31" in tx.narration
-    assert "2026-03-31" in tx.narration
+    # Narration uses the ``Period <range>`` form in Pictet's printed
+    # dd.mm.yyyy date format — same convention as the fee-advice path.
+    assert tx.narration == "Period 31.12.2025 - 31.03.2026"
+    assert tx.title == "Interest payment"
+    assert tx.transaction_number == "1180262700"
     assert tx.account_number == "P-999999.999"

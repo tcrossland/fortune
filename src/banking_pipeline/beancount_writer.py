@@ -137,6 +137,20 @@ _DIVIDEND_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.DIVIDEND_NOTICE,
 })
 
+# Doctypes routed through ``_render_interest`` — quarterly current-account
+# interest postings. The shape is a two-leg entry: the cash leg flows as
+# Pictet printed (negative on debit-balance interest charged to the user,
+# positive on credit-balance interest paid to the user) and the
+# counter-leg switches account family based on direction —
+# ``Expenses:<prefix>:Interest:<ccy>`` for charges, ``Income:<prefix>:Interest:<ccy>``
+# for earnings. ``INTEREST_SCALE`` is intentionally absent: the scale
+# document is the per-day rate ledger that produced the same cash event
+# the payment advice already books, and emitting both would
+# double-count.
+_INTEREST_TYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.INTEREST_PAYMENT,
+})
+
 # Doctypes that emit an inline ``open Assets:<prefix>:<ISIN> <ISIN>``
 # directive at the top of the entry. Stock-purchase / structured-product
 # / ETF / switch-into-new-fund advices typically introduce a position
@@ -238,9 +252,14 @@ _TEMPLATES = {
     # ``_DIVIDEND_TYPES``. The legacy Jinja form here is gone.
 
     # --- Interest ---
-    DocumentType.INTEREST_NOTICE: _INTEREST_TEMPLATE,
-    DocumentType.INTEREST_PAYMENT: _INTEREST_TEMPLATE,
-    DocumentType.INTEREST_SCALE: _INTEREST_TEMPLATE,
+    # ``INTEREST_PAYMENT`` routes through ``_render_interest`` (the Python
+    # builder) for the new bank-prefixed two-leg shape; see
+    # ``_INTEREST_TYPES``. ``INTEREST_SCALE`` is the companion ledger
+    # document — informational only, the template returns ``[]`` and no
+    # beancount entry is emitted (the matching ``INTEREST_PAYMENT`` advice
+    # carries the cash leg). ``INTEREST_NOTICE`` is gone — it was a
+    # speculative third doctype that never landed a fixture and would
+    # have duplicated ``INTEREST_PAYMENT``'s shape if it had.
     # --- Fees ---
     # ``DEBITO_DE_GASTOS`` routes through ``_render_fee_advice`` (the
     # Python builder) for the new bank-prefixed multi-leg shape; the
@@ -786,6 +805,81 @@ def _render_third_party_payment(
     return "\n".join(lines) + "\n"
 
 
+def _render_interest(
+    tx: Transaction, doc_type: DocumentType, prefix: str
+) -> str:
+    """Render a Pictet quarterly current-account interest payment.
+
+    Layout (debit-balance interest — user is charged for an overdraft)::
+
+        <booking_date> * "<title>" "<narration>"
+          Expenses:<prefix>:Interest:<ccy>        <abs_amount> <ccy>
+          Assets:<prefix>:<currency>              <amount> <ccy>
+          no: <transaction_number>
+
+    Layout (credit-balance interest — Pictet pays interest on the
+    cash balance)::
+
+        <booking_date> * "<title>" "<narration>"
+          Income:<prefix>:Interest:<ccy>          -<amount> <ccy>
+          Assets:<prefix>:<currency>              <amount> <ccy>
+          no: <transaction_number>
+
+    The counter-leg account-family switch is keyed on the cash leg's
+    sign: when ``tx.amount`` is negative (Pictet's convention for cash
+    out — the user is paying interest on their overdraft) the entry
+    posts to ``Expenses:...:Interest:<ccy>``; when positive (cash in,
+    Pictet paid the user interest on a credit balance) it posts to
+    ``Income:...:Interest:<ccy>``. Beancount's sign convention then
+    flips: expenses are positive, income is negative.
+
+    Currency-suffixed account names (``Interest:GBP``, ``Interest:EUR``)
+    let the user track interest separately per current account currency
+    without an extra hierarchy level — same convention the writer
+    already uses for ``Expenses:<prefix>:Fees:<ccy>``.
+    """
+
+    entry_date = tx.booking_date or tx.trade_date
+    parts: list[str] = [str(entry_date), "*"]
+    if tx.title:
+        parts.append(f'"{_escape(tx.title)}"')
+    parts.append(f'"{_escape(tx.narration)}"')
+    lines: list[str] = [" ".join(parts)]
+
+    # Counter-leg: Expenses for negative cash (interest charged),
+    # Income for positive cash (interest earned).
+    if tx.amount < 0:
+        lines.append(
+            _align(
+                f"Expenses:{prefix}:Interest:{tx.currency}",
+                _format_amount(abs(tx.amount)),
+                tx.currency,
+            )
+        )
+    else:
+        lines.append(
+            _align(
+                f"Income:{prefix}:Interest:{tx.currency}",
+                _format_amount(-tx.amount),
+                tx.currency,
+            )
+        )
+
+    # Cash leg — signed as Pictet printed it.
+    lines.append(
+        _align(
+            f"Assets:{prefix}:{tx.currency}",
+            _format_amount(tx.amount),
+            tx.currency,
+        )
+    )
+
+    if tx.transaction_number:
+        lines.append(f"  no: {tx.transaction_number}")
+
+    return "\n".join(lines) + "\n"
+
+
 def _render_dividend(
     tx: Transaction, doc_type: DocumentType, prefix: str
 ) -> str:
@@ -984,6 +1078,10 @@ def _render_transaction(
         return _render_internal_transfer(tx, doc_type, prefix)
     if doc_type in _DIVIDEND_TYPES:
         return _render_dividend(tx, doc_type, prefix)
+    if doc_type in _INTEREST_TYPES:
+        return _render_interest(tx, doc_type, prefix)
+    if doc_type in _INTEREST_TYPES:
+        return _render_interest(tx, doc_type, prefix)
     if doc_type in _SECURITY_TRADE_TYPES:
         return _render_security_trade(tx, doc_type, prefix)
     template = _TEMPLATES.get(doc_type, _DEFAULT_TEMPLATE)

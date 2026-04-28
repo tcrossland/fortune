@@ -52,10 +52,11 @@ class DocumentType(StrEnum):
 
     # --- Income events ---
     DIVIDEND_NOTICE = "dividend_notice"
-    INTEREST_NOTICE = "interest_notice"
     # Quarterly interest booking on a current account (credit/debit balance
     # interest). ``INTEREST_SCALE`` is the companion ledger-style document
-    # showing the per-bucket rates that produced that interest total.
+    # showing the per-bucket rates that produced that interest total —
+    # the scale is informational only and doesn't generate a beancount
+    # entry; the payment carries the cash leg.
     INTEREST_PAYMENT = "interest_payment"
     INTEREST_SCALE = "interest_scale"
 
