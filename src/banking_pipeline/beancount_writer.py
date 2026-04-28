@@ -94,25 +94,34 @@ _SWITCH_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.SWITCH_ENTRADA,
 })
 
-# Fee-advice doctypes routed through ``_render_fee_advice``. Currently
-# scoped to the Spanish-locale ``Débito de gastos`` because that's the
-# only fixture with a golden file in the new format. ``DEBIT_OF_FEES``
-# (EN) and ``FACTURA`` keep their existing Jinja-template render until
-# they get their own goldens — those advices use multi-line fee labels
-# that the breakdown helper doesn't yet handle, and ``Factura`` carries
-# additional invoice metadata we'd want to render too.
+# Fee-advice doctypes routed through ``_render_fee_advice``. Both the
+# ES ``Débito de gastos`` and EN ``Debit of fees`` advices have
+# bank-prefixed multi-leg goldens; ``find_fee_breakdown`` handles
+# their single-line and multi-line label layouts respectively.
+# ``FACTURA`` (the ES tax-invoice variant) keeps its legacy Jinja
+# rendering for now — its extra invoice metadata (``N° de factura``,
+# ``Base de cálculo``, ``Valor medio de la cartera``) wants surfacing
+# in narration or comments and would benefit from a dedicated builder
+# once a golden lands.
 _FEE_ADVICE_TYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.DEBIT_OF_FEES,
     DocumentType.DEBITO_DE_GASTOS,
 })
 
 # Doctypes routed through ``_render_third_party_payment`` — simple
-# cash-in entries with an elastic ``Income:<prefix>:Other`` posting
-# that beancount auto-balances. Pictet ES ``Pago entrante`` (third-party
-# incoming payment) is the canonical case. ``PAGO_INTERNA`` (self-to-self)
-# stays on the legacy Jinja ``_CASH_IN_TEMPLATE`` for now — it'll route
-# to a Python builder once a golden lands for that variant.
+# cash-in/cash-out entries with an elastic ``Income:<prefix>:Other``
+# (incoming) or ``Expenses:<prefix>:Other`` (outgoing) posting that
+# beancount auto-balances. Direction is keyed on the cash-leg sign
+# inside the renderer; the doctype membership just routes here.
+#
+# ``PAGO_INTERNA`` (self-to-self) stays on the legacy Jinja
+# ``_CASH_IN_TEMPLATE`` for now — its real shape is asset→asset across
+# the user's own external accounts, not income/expense, and that needs
+# a separate builder once a golden lands.
 _THIRD_PARTY_PAYMENT_TYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.INCOMING_PAYMENT,
     DocumentType.PAGO_ENTRANTE,
+    DocumentType.PAYMENT,
 })
 
 # Doctypes routed through ``_render_internal_transfer`` — cross-currency
@@ -261,12 +270,13 @@ _TEMPLATES = {
     # speculative third doctype that never landed a fixture and would
     # have duplicated ``INTEREST_PAYMENT``'s shape if it had.
     # --- Fees ---
-    # ``DEBITO_DE_GASTOS`` routes through ``_render_fee_advice`` (the
-    # Python builder) for the new bank-prefixed multi-leg shape; the
-    # other fee doctypes stay on the legacy Jinja path until they get
-    # their own goldens.
+    # ``DEBITO_DE_GASTOS`` and ``DEBIT_OF_FEES`` route through
+    # ``_render_fee_advice`` (the Python builder) for the new
+    # bank-prefixed multi-leg shape with the per-line breakdown.
+    # ``FEE_NOTICE`` is a speculative doctype with no fixture; it
+    # stays on the legacy Jinja path so any future fixture has at
+    # least a placeholder rendering.
     DocumentType.FEE_NOTICE: _FEE_TEMPLATE,
-    DocumentType.DEBIT_OF_FEES: _FEE_TEMPLATE,
     # FACTURA stores amount as -gross_total (already negative), so flip signs
     # vs the standard fee template to get Expenses positive, Cash negative.
     DocumentType.FACTURA: _ENV.from_string(
@@ -277,9 +287,13 @@ _TEMPLATES = {
 """
     ),
     # --- Cash movements ---
-    DocumentType.INCOMING_PAYMENT: _CASH_IN_TEMPLATE,
+    # ``INCOMING_PAYMENT`` and ``PAYMENT`` route through
+    # ``_render_third_party_payment`` (the Python builder); see
+    # ``_THIRD_PARTY_PAYMENT_TYPES``. ``PAGO_INTERNA`` (self-to-self)
+    # stays on the legacy ``_CASH_IN_TEMPLATE`` for now — its real
+    # shape is asset→asset across the user's own external accounts,
+    # not income/expense, which needs a separate builder.
     DocumentType.PAGO_INTERNA: _CASH_IN_TEMPLATE,
-    DocumentType.PAYMENT: _CASH_OUT_TEMPLATE,
     # --- FX advices (one Transaction per leg) ---
     # ``INTERNAL_TRANSFER`` routes through ``_render_internal_transfer``
     # (a Python builder) instead — see ``_INTERNAL_TRANSFER_TYPES``.
@@ -762,23 +776,32 @@ def _render_fee_advice(
 def _render_third_party_payment(
     tx: Transaction, doc_type: DocumentType, prefix: str
 ) -> str:
-    """Render a third-party incoming-payment advice as a beancount entry.
+    """Render a third-party payment advice as a beancount entry.
 
-    Layout::
+    Handles both directions, keyed on the cash leg's sign:
+
+    Incoming (``tx.amount > 0`` — third party paid the user)::
 
         <booking_date> * "<title>" "<narration>"
           Assets:<prefix>:<currency>    <amount> <ccy>
           Income:<prefix>:Other
           no: <transaction_number>
 
-    The ``Income:<prefix>:Other`` posting carries no amount — beancount
-    auto-balances it against the cash leg, recording the third-party
-    payment as income. ``Other`` is a deliberate placeholder; the user
-    can rewire this to payer-specific income accounts (e.g.
-    ``Income:Pic:Earnout``, ``Income:Pic:Salary``) per their chart of
-    accounts. The cash leg's sign flows through unchanged from
-    ``tx.amount`` (Pictet prints incoming payments positive, matching
-    beancount's convention).
+    Outgoing (``tx.amount < 0`` — user paid a third party)::
+
+        <booking_date> * "<title>" "<narration>"
+          Assets:<prefix>:<currency>    <amount> <ccy>
+          Expenses:<prefix>:Other
+          no: <transaction_number>
+
+    The elastic counter-leg (``Income:<prefix>:Other`` / ``Expenses:<prefix>:Other``)
+    carries no amount; beancount auto-balances it against the cash
+    leg. ``Other`` is a deliberate placeholder — the user can rewire
+    to payer/payee-specific accounts (``Income:Pic:Earnout``,
+    ``Expenses:Pic:Rent``, etc.) per their chart of accounts. The cash
+    leg's sign flows through unchanged from ``tx.amount`` (Pictet prints
+    incoming positive, outgoing negative, matching beancount's
+    convention either way).
     """
 
     entry_date = tx.booking_date or tx.trade_date
@@ -796,8 +819,14 @@ def _render_third_party_payment(
         )
     )
 
-    # Elastic posting — no amount, beancount fills in the balance.
-    lines.append(f"  Income:{prefix}:Other")
+    # Elastic counter-leg, keyed on direction. Beancount records
+    # income on the negative side of an income account and expenses
+    # on the positive side; with no amount the engine fills in
+    # whichever balances the entry.
+    if tx.amount >= 0:
+        lines.append(f"  Income:{prefix}:Other")
+    else:
+        lines.append(f"  Expenses:{prefix}:Other")
 
     if tx.transaction_number:
         lines.append(f"  no: {tx.transaction_number}")

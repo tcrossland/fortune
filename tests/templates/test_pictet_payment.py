@@ -27,16 +27,19 @@ def test_payment_extracts_single_transaction() -> None:
     tx = txs[0]
     assert tx.trade_date == date(2026, 1, 9)
     assert tx.settlement_date == date(2026, 1, 9)
+    assert tx.booking_date == date(2026, 1, 9)
     assert tx.currency == "GBP"
     # Net amount is the all-in cash impact: gross (-12'000) + fees (-43.40).
+    # Negative sign tells the writer's third-party-payment path to use
+    # ``Expenses:<prefix>:Other`` for the elastic counter-leg.
     assert tx.amount == Decimal("-12043.40")
     assert tx.isin is None
     assert tx.quantity is None
     assert tx.price is None
-    # Narration carries beneficiary and communication so the audit trail
-    # stays self-describing without needing the original PDF.
-    assert "FIRST MIDDLE LASTNAMES" in tx.narration
-    assert "Liquidity" in tx.narration
+    # Narration combines beneficiary with the Communication wire memo.
+    assert tx.narration == "FIRST MIDDLE LASTNAMES - Liquidity"
+    assert tx.title == "Payment"
+    assert tx.transaction_number == "1154839947"
     assert tx.account_number == "P-999999.999"
 
 

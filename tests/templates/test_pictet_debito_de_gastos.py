@@ -44,9 +44,14 @@ def test_debito_de_gastos_extracts_single_transaction() -> None:
     assert tx.title == "Débito de gastos"
     assert tx.transaction_number == "855093717"
     assert tx.account_number == "P-999999.999"
-    # The 2023 fixture has multi-line fee labels that the breakdown
-    # helper doesn't yet parse, so ``fee_breakdown`` stays empty —
-    # the writer falls back to a single aggregate expense leg in
-    # that case. Pin the empty-list expectation so a future
-    # multi-line accumulator change is a deliberate update.
-    assert tx.fee_breakdown == []
+    # The 2023 fixture has multi-line fee labels (``Honorarios de`` +
+    # ``administración`` + ``EUR -3'088.36``); ``find_fee_breakdown``
+    # now joins the wrapped parts with single spaces and emits one
+    # ``FeeItem`` per row, same way it handles the EN
+    # ``debit_of_fees`` advice.
+    assert len(tx.fee_breakdown) == 2
+    assert tx.fee_breakdown[0].description == "Honorarios de administración"
+    assert tx.fee_breakdown[0].amount == Decimal("-3088.36")
+    assert tx.fee_breakdown[0].currency == "EUR"
+    assert tx.fee_breakdown[1].description == "Comisiones de mantenimiento de cuenta"
+    assert tx.fee_breakdown[1].amount == Decimal("-400.00")

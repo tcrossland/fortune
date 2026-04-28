@@ -407,17 +407,21 @@ def find_fee_breakdown(
         Total EUR -10'245.31
 
     The helper enters the block at the standalone ``costs_label`` line,
-    yields one :class:`~banking_pipeline.models.FeeItem` per single-line
-    ``<label> <CCY> <amount>`` row, and stops when it hits ``Total`` or
-    a non-matching line (section change). Amounts are stored signed as
-    printed (negative for cash-out); the writer flips signs at render.
+    yields one :class:`~banking_pipeline.models.FeeItem` per fee row,
+    and stops when it hits ``Total`` or a non-matching, non-amount line
+    (section change). Amounts are stored signed as printed (negative
+    for cash-out); the writer flips signs at render.
 
-    Limitation: multi-line label wrapping (where Pictet splits long fee
-    names across two or three lines before the currency+amount line)
-    isn't handled — affects the 2023 ES and the 2026 EN ``debit_of_fees``
-    fixtures. Add a multi-line accumulator when those fixtures get their
-    own goldens; the 2021 ES fixture this helper targets has all fee
-    items on a single line.
+    Handles two row layouts:
+
+    1. Single-line ``<label> <CCY> <amount>`` (used by the 2021 ES
+       fixture and most narrow fee names).
+    2. Multi-line: one or more label-only lines followed by a
+       standalone ``<CCY> <amount>`` line. Used by the 2023 ES and the
+       2026 EN ``debit_of_fees`` fixtures, where Pictet wraps long
+       names like ``Administration flat fee (subject to VAT)`` across
+       two or three lines before the amount. Label parts are joined
+       with single spaces.
     """
 
     from banking_pipeline.models import FeeItem  # avoid import cycle
@@ -427,6 +431,10 @@ def find_fee_breakdown(
     inline_re = re.compile(
         rf"^(.+?)\s+([A-Z]{{3}})\s+({_NUMBER})\s*$"
     )
+    standalone_amount_re = re.compile(
+        rf"^([A-Z]{{3}})\s+({_NUMBER})\s*$"
+    )
+    pending_label_parts: list[str] = []
 
     for line in text.splitlines():
         stripped = line.strip()
@@ -435,26 +443,47 @@ def find_fee_breakdown(
                 in_block = True
             continue
         if not stripped:
-            # Blank line inside the block — skip without ending; Pictet
-            # occasionally pads vertical space between fee items.
+            # Blank line — skip without ending the block (Pictet
+            # occasionally pads vertical space between fee items).
             continue
-        m = inline_re.match(stripped)
-        if not m:
-            # Multi-line label or section change — stop at the first
-            # non-matching line. The single-line-only contract is
-            # documented above; revisit when fixtures with multi-line
-            # labels need to round-trip through the writer.
-            break
-        label, ccy, amount_str = m.groups()
-        if label.strip().lower() == total_label.lower():
-            break
-        items.append(
-            FeeItem(
-                description=label.strip(),
-                amount=parse_pictet_amount(amount_str),
-                currency=ccy,
+
+        # Inline ``<label> <CCY> <amount>`` row, or the ``Total <CCY>
+        # <amount>`` end marker.
+        m_inline = inline_re.match(stripped)
+        if m_inline:
+            label, ccy, amount_str = m_inline.groups()
+            if label.strip().lower() == total_label.lower():
+                break
+            items.append(
+                FeeItem(
+                    description=label.strip(),
+                    amount=parse_pictet_amount(amount_str),
+                    currency=ccy,
+                )
             )
-        )
+            pending_label_parts = []
+            continue
+
+        # Standalone ``<CCY> <amount>`` row — closes the multi-line
+        # label whose parts we've been accumulating.
+        m_standalone = standalone_amount_re.match(stripped)
+        if m_standalone:
+            ccy, amount_str = m_standalone.groups()
+            if pending_label_parts:
+                items.append(
+                    FeeItem(
+                        description=" ".join(pending_label_parts),
+                        amount=parse_pictet_amount(amount_str),
+                        currency=ccy,
+                    )
+                )
+                pending_label_parts = []
+            continue
+
+        # Otherwise it's a label-only line — accumulate as a
+        # continuation of a pending multi-line label.
+        pending_label_parts.append(stripped)
+
     return items
 
 

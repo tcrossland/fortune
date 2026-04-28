@@ -28,13 +28,16 @@ def test_incoming_payment_extracts_single_transaction() -> None:
     tx = txs[0]
     assert tx.trade_date == date(2026, 2, 16)
     assert tx.settlement_date == date(2026, 2, 16)
+    assert tx.booking_date == date(2026, 2, 16)
     assert tx.currency == "EUR"
     # Positive: cash incoming.
     assert tx.amount == Decimal("200000.00")
     assert tx.isin is None
-    assert "Nilufer Keskin" in tx.narration
-    # The Comment block carries free-form context — preserve it in narration.
-    assert "UVZ Nr. 1445/2025" in tx.narration
+    # Narration combines instructing party with the Comment block —
+    # same shape as ``pago_entrante``'s narration.
+    assert tx.narration == "Nilufer Keskin - UVZ Nr. 1445/2025"
+    assert tx.title == "Incoming payment"
+    assert tx.transaction_number == "1165960303"
     assert tx.account_number == "P-999999.999"
 
 
