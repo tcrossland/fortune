@@ -1,5 +1,5 @@
 2026-03-23 * "Debit of fees" "Period 01.01.2026 - 31.03.2026"
   Expenses:Pic:Fees:GBP                             3427.14 GBP ; Administration flat fee (subject to VAT)
   Expenses:Pic:Fees:GBP                              390.52 GBP ; Account maintenance fees
-  Assets:Pic:P-999999.999:GBP                      -3817.66 GBP
+  Assets:Pic:P999999999:GBP                        -3817.66 GBP
   no: 1177002942

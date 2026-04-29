@@ -192,22 +192,51 @@ _OPEN_EMITTING_TYPES: frozenset[DocumentType] = frozenset({
 })
 
 
+def _portfolio_segment(account_number: str | None) -> str:
+    """Sanitise a Pictet portfolio identifier for use as a beancount account
+    segment.
+
+    Pictet prints portfolio IDs as ``P-123456.789`` / ``K-123456.001`` —
+    a dash and a period that are both invalid in beancount account
+    segments (each segment is letters, digits, and hyphens only, and
+    the dash position rules are tighter than what Pictet's format
+    produces). We strip both punctuation marks so the same identity
+    survives as ``P123456789`` / ``K123456001``: still
+    portfolio-unique, still readable, but a valid beancount segment.
+
+    Returns ``Unknown`` when the document didn't carry a portfolio
+    identifier — rare for Pictet but kept as a fallback so the writer
+    produces parseable output on malformed input.
+    """
+
+    if not account_number:
+        return "Unknown"
+    return account_number.replace("-", "").replace(".", "")
+
+
+# Expose ``_portfolio_segment`` to Jinja so the fallback template can
+# sanitise ``tx.account_number`` the same way the Python builders do.
+_ENV.filters["portfolio_segment"] = _portfolio_segment
+
+
 def _cash_account(prefix: str, account_number: str | None, currency: str) -> str:
     """Build a bank-prefixed cash-account path including the portfolio.
 
     Format: ``Assets:<prefix>:<portfolio>:<currency>`` — e.g.
-    ``Assets:Pic:P-999999.999:GBP``. The portfolio segment lets users
+    ``Assets:Pic:P999999999:GBP``. The portfolio segment lets users
     distinguish multiple Pictet accounts they hold within the same
     currency (e.g. ``P-…`` vs ``K-…`` portfolios that both have an EUR
     sub-account); without it beancount would treat them as the same
-    bucket. Falls back to ``Unknown`` when the document doesn't carry
-    a portfolio identifier — that's rare for Pictet (every advice we
-    see has an ``Account no.`` / ``N° de cuenta`` header), but the
-    fallback keeps the writer producing parseable output even on
-    malformed input.
+    bucket. The Pictet ID is sanitised through
+    :func:`_portfolio_segment` to drop the dash and period so the
+    segment is valid beancount syntax. Falls back to ``Unknown`` when
+    the document doesn't carry a portfolio identifier — that's rare
+    for Pictet (every advice we see has an ``Account no.`` /
+    ``N° de cuenta`` header), but the fallback keeps the writer
+    producing parseable output even on malformed input.
     """
 
-    return f"Assets:{prefix}:{account_number or 'Unknown'}:{currency}"
+    return f"Assets:{prefix}:{_portfolio_segment(account_number)}:{currency}"
 
 
 def _inline_open_directive(
@@ -314,7 +343,7 @@ _DEFAULT_TEMPLATE = _ENV.from_string(
     """\
 {{ tx.trade_date }} * "{{ narration }}"
   ; TODO review — document type: {{ doc_type }}
-  Assets:Bank:{{ tx.account_number or 'Unknown' }}  {{ tx.amount }} {{ tx.currency }}
+  Assets:Bank:{{ tx.account_number | portfolio_segment }}  {{ tx.amount }} {{ tx.currency }}
   Equity:Uncategorized                           {{ -tx.amount }} {{ tx.currency }}
 """
 )
@@ -687,7 +716,7 @@ def _render_switch_trade(
         )
     lines.append(
         _align(
-            f"Assets:{prefix}:{tx.account_number or 'Unknown'}:Switch:{tx.currency}",
+            f"Assets:{prefix}:{_portfolio_segment(tx.account_number)}:Switch:{tx.currency}",
             _format_amount(tx.amount),
             tx.currency,
             extras=cash_extras,

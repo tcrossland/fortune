@@ -1,5 +1,5 @@
 2026-02-04 * "Settle FX forward" "Buy USD 24'660.48 - Sell GBP at 1.3665295"
-  Assets:Pic:P-999999.999:GBP                     -18046.06 GBP
+  Assets:Pic:P999999999:GBP                       -18046.06 GBP
   Expenses:Pic:Fees:GBP                               53.98 GBP ; Forward spread
-  Assets:Pic:P-999999.999:USD                      24660.48 USD @@ 17992.08 GBP
+  Assets:Pic:P999999999:USD                        24660.48 USD @@ 17992.08 GBP
   no: 1162235443
