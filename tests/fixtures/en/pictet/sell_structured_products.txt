@@ -1,0 +1,43 @@
+--- page 1/1 ---
+SECURITY
+Sell structured products
+Sell 405 EUR PWM LG VOL BALANC (PICTET)23/24 at EUR 43.91
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG / Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-123456.001
+Transaction no.: 970189146 | Publication date: 18.04.2024
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 18.04.2024
+Value date 22.04.2024
+Booking date 18.04.2024
+Instruction
+Order type At Market
+Execution
+Operation type Sell
+Market place Over the counter
+Execution date 18.04.2024 at 05:05:02 pm
+Executed quantity -405
+Execution price EUR 43.91
+Gross amount EUR 17'783.55
+Product details
+Asset type Structured products
+Asset sub-type PWM Pictet Equity Certificate (PEC)
+Issuer BANQUE PICTET & CIE SA
+Maturity date 03.05.2024
+OUT of portfolio K-123456.001
+EUR PWM LG VOL BALANC (PICTET)23/24 405
+ISIN/Internal ref.: CH1146387191 Telekurs ID/Internal ref.: 114638719 
+CASH EFFECTin portfolio K-123456.001
+Gross amount EUR 17'783.55
+Costs EUR 0.00
+Net amount EUR 17'783.55
+Current account K-123456.001.00.EUR/Ordinary IBAN?LU901980012345600100

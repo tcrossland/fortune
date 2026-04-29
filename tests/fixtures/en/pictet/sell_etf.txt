@@ -1,0 +1,45 @@
+--- page 1/1 ---
+SECURITY
+Sell Exchange Traded Fund
+Sell 1'488 Multi Units Luxembourg SICAV - Amundi Euro Government Bond 7-10Y ETF -Acc.- at EUR 164.2716
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-123456.001
+Transaction no.: 1027385859 | Publication date: 07.11.2024
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 07.11.2024
+Value date 11.11.2024
+Booking date 07.11.2024
+Instruction
+Order type At Market
+Execution
+Operation type Sell
+Market place Italie Mercato Continuo (MTAA)
+Execution date 07.11.2024 at 12:32:41 pm
+Executed quantity -1'488
+Execution price EUR 164.2716
+Gross amount EUR 244'436.14
+Trading capacity Agent
+Costs
+Commission/Fee EUR -1'099.96
+Total EUR -1'099.96
+Product details
+Asset type Exchange Traded Fund
+Asset sub-type Investment fund - Bonds
+OUT of portfolio K-123456.001
+MULTI-AMUNDI EUR GOV BD 7-10Y-ETF 1'488
+ISIN/Internal ref.: LU1287023185 Telekurs ID/Internal ref.: 31879362 
+CASH EFFECTin portfolio K-123456.001
+Gross amount EUR 244'436.14
+Costs EUR -1'099.96
+Net amount EUR 243'336.18
+Current account K-123456.001.00.EUR/Ordinary IBAN?LU901980012345600100

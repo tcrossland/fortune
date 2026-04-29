@@ -10,7 +10,7 @@ import structlog
 import typer
 from rich.console import Console
 
-from banking_pipeline import beancount_writer
+from banking_pipeline import beancount_writer, portfolio_aggregate
 from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.classifiers.bank import BANK_RULES, BankRuleClassifier
 from banking_pipeline.classifiers.language import LANGUAGE_RULES, LanguageRuleClassifier
@@ -62,6 +62,53 @@ def ingest(
     else:
         output.write_text(rendered, encoding="utf-8")
         err_console.print(f"Wrote {output}")
+
+
+@app.command()
+def portfolio(
+    data_dir: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Directory containing per-year *.beancount ingest output.",
+        ),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Aggregate output file. Defaults to "
+            "``<data_dir>/portfolio.beancount``.",
+        ),
+    ] = None,
+    operating_currency: Annotated[
+        list[str],
+        typer.Option(
+            "--operating-currency",
+            help="Currency emitted as ``option \"operating_currency\" \"<ccy>\"`` "
+            "at the top of the aggregate. Pass multiple times for a "
+            "multi-currency view; defaults to ``GBP``.",
+        ),
+    ] = ["GBP"],
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Regenerate the portfolio-aggregate file (central account opens
+    + per-year includes) under ``data_dir``."""
+
+    _configure_logging(verbose)
+    output_path, total = portfolio_aggregate.generate(
+        data_dir=data_dir,
+        output=output,
+        operating_currencies=operating_currency,
+    )
+    err_console.print(
+        f"Wrote {output_path} ({total} accounts; "
+        f"operating_currency={','.join(operating_currency)})"
+    )
 
 
 @app.command()

@@ -1,0 +1,47 @@
+--- page 1/1 ---
+SECURITY
+Sell bonds
+Sell EUR 90'000.00 2.30% GERMANY 23/33 SR GREEN at 102.902%
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG / Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-123456.001
+Transaction no.: 928806826 | Publication date: 20.12.2023
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 20.12.2023
+Value date 22.12.2023
+Booking date 20.12.2023
+Instruction
+Order type At Market
+Execution
+Operation type Sell
+Market place Over the counter
+Execution date 20.12.2023 at 11:07:33 am
+Executed nominal EUR -90'000.00
+Execution price 102.902%
+Gross amount EUR 92'611.80
+Costs
+Commission/Fee EUR -428.23
+Total EUR -428.23
+Product details
+Asset type Bonds
+Asset sub-type Government
+Issuer GERMANY
+Maturity date 15.02.2033
+OUT of portfolio K-123456.001
+2.30% GERMANY 23/33 SR GREEN EUR 90'000.00
+ISIN: DE000BU3Z005 Telekurs ID: 126652249 
+CASH EFFECTin portfolio K-123456.001
+Gross amount EUR 92'611.80
+Interest EUR 1'945.23
+Costs EUR -428.23
+Net amount EUR 94'128.80
+Current account K-123456.001.00.EUR/Ordinary IBAN?LU901980012345600100

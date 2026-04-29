@@ -63,6 +63,7 @@ _ENV = Environment()
 _SECURITY_BUY_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.TRADE_CONFIRMATION,
     DocumentType.SUBSCRIPTION_NOTICE,
+    DocumentType.BUY_BONDS,
     DocumentType.BUY_STRUCTURED_PRODUCTS,
     DocumentType.BUY_ETF,
     DocumentType.BUY_SHARES,
@@ -76,8 +77,25 @@ _SECURITY_SELL_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.REDEMPTION_NOTICE,
     DocumentType.REEMBOLSO,
     DocumentType.REEMBOLSO_FINAL,
+    DocumentType.SELL_BONDS,
+    DocumentType.SELL_ETF,
+    DocumentType.SELL_STRUCTURED_PRODUCTS,
     DocumentType.SWITCH_SALIDA,
     DocumentType.VENTA,
+})
+
+# Doctypes routed through ``_render_bond_trade`` — a trade shape that
+# differs from the regular security-trade renderer in carrying a
+# dedicated ``Income:<prefix>:<isin>:Interest`` leg for the accrued
+# interest paid alongside the principal. Used for both directions:
+# on a buy the buyer pays accrued interest to the seller (income
+# debited); on a sell the buyer's accrued payment hits the seller's
+# cash (income credited). The renderer branches on
+# ``_SECURITY_BUY_TYPES`` to pick the asset-leg cost form and the
+# leg ordering.
+_BOND_TRADE_TYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.BUY_BONDS,
+    DocumentType.SELL_BONDS,
 })
 
 _SECURITY_TRADE_TYPES = _SECURITY_BUY_TYPES | _SECURITY_SELL_TYPES
@@ -199,6 +217,7 @@ _INTEREST_TYPES: frozenset[DocumentType] = frozenset({
 # account already exists from the prior buy that opened it.
 _OPEN_EMITTING_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.TRADE_CONFIRMATION,
+    DocumentType.BUY_BONDS,
     DocumentType.BUY_STRUCTURED_PRODUCTS,
     DocumentType.BUY_ETF,
     DocumentType.BUY_SHARES,
@@ -647,6 +666,156 @@ def _render_security_trade(
         lines.append(f"  no: {tx.transaction_number}")
 
     return out + "\n".join(lines) + "\n"
+
+
+def _render_bond_trade(
+    tx: Transaction, doc_type: DocumentType, prefix: str
+) -> str:
+    """Render a Pictet bond purchase or sale as a beancount entry.
+
+    Sell layout (``SELL_BONDS``)::
+
+        <booking_date> * "Sell bonds" "<narration>"
+          Assets:<prefix>:<portfolio>:<currency>     <net>     <ccy>  ; Net amount
+          Expenses:<prefix>:Fees:<ccy>               <fees>    <ccy>  ; Commission/Fee
+          Income:<prefix>:<ISIN>:Interest            <-int>    <ccy>  ; Accrued interest
+          Assets:<prefix>:<portfolio>:<ISIN>         <-nominal> <ISIN> {} @ <unit_px> <ccy>
+          Income:<prefix>:<ISIN>:Realized
+          no: <transaction_number>
+
+    Buy layout (``BUY_BONDS``)::
+
+        <booking_date> * "Buy bonds" "<narration>"
+          Assets:<prefix>:<portfolio>:<ISIN>         <+nominal> <ISIN> {<unit_px> <ccy>}
+          Expenses:<prefix>:Fees:<ccy>               <fees>    <ccy>  ; Brokerage
+          Income:<prefix>:<ISIN>:Interest            <+int>    <ccy>  ; Accrued interest
+          Assets:<prefix>:<portfolio>:<currency>     <net>     <ccy>  ; Net amount
+          no: <transaction_number>
+
+    Four legs always (five for sells, counting the elastic
+    ``:Realized``) that balance to zero:
+
+      - Cash leg — signed-as-printed Net amount. Sells are positive
+        (proceeds in); buys are negative (cash out). Posted to
+        ``Assets:<prefix>:<portfolio>:<currency>``.
+      - Fee leg ``+abs(fees)`` — Pictet's brokerage / commission,
+        posted positive on ``Expenses:<prefix>:Fees:<ccy>`` regardless
+        of direction. The inline comment branches on direction
+        because the per-line cost label differs (``Brokerage`` on
+        buys, ``Commission/Fee`` on sells).
+      - Interest leg ``-accrued_interest`` — accrued interest paid
+        alongside the principal, recognised on
+        ``Income:<prefix>:<ISIN>:Interest``. Pictet prints the
+        accrued amount with the cash sign (positive on sells, the
+        buyer paid the seller; negative on buys, the buyer's cash
+        out). Negating it gives the income-account sign: credit on
+        sells (income recognised), debit on buys (income reversed
+        because we paid for accrued interest belonging to the prior
+        holder).
+      - Asset leg — face-value units. Sells use ``{} @ <unit_px>`` so
+        the lot leaves inventory at its cost basis and beancount
+        attributes the cost-vs-proceeds difference to the elastic
+        ``:Realized`` leg below. Buys use ``{<unit_px> <ccy>}`` to
+        record the cost basis at acquisition; the realised-gain
+        leg is omitted (buys don't realise anything).
+      - Elastic ``Income:<prefix>:<ISIN>:Realized`` leg (sells only) —
+        beancount fills in the diff between cost basis and
+        ``nominal × unit_price``.
+
+    Posting order is determined by direction: buys list the asset leg
+    first (the account receiving value), sells list the cash leg
+    first (same convention as ``_render_security_trade``).
+    """
+
+    isin = tx.isin or "Unknown"
+    portfolio = _portfolio_segment(tx.account_number)
+    entry_date = tx.booking_date or tx.trade_date
+    is_buy = doc_type in _SECURITY_BUY_TYPES
+
+    parts: list[str] = [str(entry_date), "*"]
+    if tx.title:
+        parts.append(f'"{_escape(tx.title)}"')
+    parts.append(f'"{_escape(tx.narration)}"')
+    lines: list[str] = [" ".join(parts)]
+
+    # Asset leg. Buys carry a literal cost-basis brace
+    # ``{<unit_px> <ccy>}``; sells use the empty-cost
+    # ``{} @ <unit_px> <ccy>`` form so beancount reduces the position
+    # at its existing inventory cost basis and the ``@`` records the
+    # market price for capital-gains attribution.
+    qty_str = _format_amount(tx.quantity) if tx.quantity is not None else "0"
+    if tx.price is not None:
+        if is_buy:
+            cost_basis = f" {{{_format_amount(tx.price)} {tx.currency}}}"
+        else:
+            cost_basis = f" {{}} @ {_format_amount(tx.price)} {tx.currency}"
+    else:
+        cost_basis = ""
+    asset_line = _align(
+        f"Assets:{prefix}:{portfolio}:{isin}",
+        qty_str,
+        isin,
+        extras=cost_basis,
+    )
+
+    # Fee leg — Pictet prints negative inside the CASH EFFECT block on
+    # both directions; expense accounts hold positive amounts.
+    fee_line: str | None = None
+    if tx.fees is not None and tx.fees != 0:
+        fees_ccy = tx.fees_currency or tx.currency
+        fee_label = " ; Brokerage" if is_buy else " ; Commission/Fee"
+        fee_line = _align(
+            f"Expenses:{prefix}:Fees:{fees_ccy}",
+            _format_amount(abs(tx.fees)),
+            fees_ccy,
+            extras=fee_label,
+        )
+
+    # Interest leg — direction-agnostic; ``-accrued_interest`` flips
+    # Pictet's cash-sign printing into the income-account sign.
+    interest_line: str | None = None
+    if tx.accrued_interest is not None and tx.accrued_interest != 0:
+        interest_line = _align(
+            f"Income:{prefix}:{isin}:Interest",
+            _format_amount(-tx.accrued_interest),
+            tx.currency,
+            extras=" ; Accrued interest",
+        )
+
+    # Cash leg — signed as Pictet printed Net amount: positive on
+    # sells, negative on buys.
+    cash_line = _align(
+        _cash_account(prefix, tx.account_number, tx.currency),
+        _format_amount(tx.amount),
+        tx.currency,
+        extras=" ; Net amount",
+    )
+
+    if is_buy:
+        # Asset-first ordering: the account receiving value leads.
+        lines.append(asset_line)
+        if fee_line is not None:
+            lines.append(fee_line)
+        if interest_line is not None:
+            lines.append(interest_line)
+        lines.append(cash_line)
+    else:
+        # Cash-first ordering, with the elastic realised-gain leg at
+        # the end so beancount auto-balances against the cost-basis
+        # diff pulled from inventory.
+        lines.append(cash_line)
+        if fee_line is not None:
+            lines.append(fee_line)
+        if interest_line is not None:
+            lines.append(interest_line)
+        lines.append(asset_line)
+        if tx.isin:
+            lines.append(f"  Income:{prefix}:{isin}:Realized")
+
+    if tx.transaction_number:
+        lines.append(f"  no: {tx.transaction_number}")
+
+    return "\n".join(lines) + "\n"
 
 
 def _render_switch_trade(
@@ -1313,6 +1482,8 @@ def _render_transaction(
     # ``_TEMPLATES``.
     if doc_type in _SWITCH_TYPES:
         return _render_switch_trade(tx, doc_type, prefix)
+    if doc_type in _BOND_TRADE_TYPES:
+        return _render_bond_trade(tx, doc_type, prefix)
     if doc_type in _FEE_ADVICE_TYPES:
         return _render_fee_advice(tx, doc_type, prefix)
     if doc_type in _THIRD_PARTY_PAYMENT_TYPES:

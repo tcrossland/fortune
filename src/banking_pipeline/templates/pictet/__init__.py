@@ -22,6 +22,7 @@ Templates are organised by locale:
 
 from __future__ import annotations
 
+from banking_pipeline.templates.pictet.buy_bonds import PictetBuyBondsTemplate
 from banking_pipeline.templates.pictet.buy_etf import PictetBuyEtfTemplate
 from banking_pipeline.templates.pictet.buy_shares import PictetBuySharesTemplate
 from banking_pipeline.templates.pictet.buy_structured_products import (
@@ -72,6 +73,11 @@ from banking_pipeline.templates.pictet.reembolso import PictetReembolsoTemplate
 from banking_pipeline.templates.pictet.reembolso_final import (
     PictetReembolsoFinalTemplate,
 )
+from banking_pipeline.templates.pictet.sell_bonds import PictetSellBondsTemplate
+from banking_pipeline.templates.pictet.sell_etf import PictetSellEtfTemplate
+from banking_pipeline.templates.pictet.sell_structured_products import (
+    PictetSellStructuredProductsTemplate,
+)
 from banking_pipeline.templates.pictet.settle_fx_forward import (
     PictetSettleFxForwardTemplate,
 )
@@ -94,6 +100,7 @@ from banking_pipeline.templates.pictet.venta import PictetVentaTemplate
 # significant — the registry is keyed on ``template_id`` — but keeping it
 # alphabetical by template_id makes diffs easy to read.
 PICTET_TEMPLATES: tuple[object, ...] = (
+    PictetBuyBondsTemplate(),
     PictetBuyEtfTemplate(),
     PictetBuySharesTemplate(),
     PictetBuyStructuredProductsTemplate(),
@@ -116,6 +123,9 @@ PICTET_TEMPLATES: tuple[object, ...] = (
     PictetRedemptionNoticeTemplate(),
     PictetReembolsoTemplate(),
     PictetReembolsoFinalTemplate(),
+    PictetSellBondsTemplate(),
+    PictetSellEtfTemplate(),
+    PictetSellStructuredProductsTemplate(),
     PictetSettleFxForwardTemplate(),
     PictetSpotTemplate(),
     PictetSubscriptionNoticeTemplate(),
@@ -127,6 +137,7 @@ PICTET_TEMPLATES: tuple[object, ...] = (
 
 __all__ = [
     "PICTET_TEMPLATES",
+    "PictetBuyBondsTemplate",
     "PictetBuyEtfTemplate",
     "PictetBuySharesTemplate",
     "PictetBuyStructuredProductsTemplate",
@@ -149,6 +160,9 @@ __all__ = [
     "PictetRedemptionNoticeTemplate",
     "PictetReembolsoTemplate",
     "PictetReembolsoFinalTemplate",
+    "PictetSellBondsTemplate",
+    "PictetSellEtfTemplate",
+    "PictetSellStructuredProductsTemplate",
     "PictetSettleFxForwardTemplate",
     "PictetSpotTemplate",
     "PictetSubscriptionNoticeTemplate",

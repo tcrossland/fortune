@@ -42,6 +42,43 @@ class DocumentType(StrEnum):
     # banner with dividend notices but uses ``Redemption price`` + an implicit
     # paired ``OUT of portfolio`` leg instead of an explicit sale execution.
     FINAL_REDEMPTION = "final_redemption"
+    # Structured-product sale advice — Pictet emits this under
+    # ``SECURITY / Sell structured products`` when a held PWM equity
+    # certificate (PEC) or similar OTC structured product is sold back.
+    # Field skeleton mirrors the buy advice (single CASH EFFECT,
+    # ``Operation type Sell``, ``Asset type Structured products``);
+    # the ISIN field can carry either a real ISIN (real Swiss/EU
+    # certificates) or a Pictet-internal ``ZZ...`` code with the
+    # PDF-extractor space artifact.
+    SELL_STRUCTURED_PRODUCTS = "sell_structured_products"
+    # ETF sale advice — Pictet emits this under ``SECURITY / Sell
+    # Exchange Traded Fund`` when an ETF holding is unwound. Field
+    # skeleton mirrors the buy advice (single CASH EFFECT,
+    # ``Operation type Sell``, ``Asset type Exchange Traded Fund``);
+    # quantity and price are unit-count and trade-currency, so the
+    # shared trade-advice helper handles parsing.
+    SELL_ETF = "sell_etf"
+    # Bond sale advice — Pictet emits this under ``SECURITY / Sell bonds``
+    # when a held bond is sold before maturity. Distinct from
+    # ``REDEMPTION_NOTICE`` (fund redemption) and ``FINAL_REDEMPTION`` (bond
+    # held to maturity) because: the units are face-value nominal
+    # (``Executed nominal EUR -90'000.00``) not unit count, the price is
+    # quoted as a percentage of face value (``102.902%``), and the
+    # advice carries an ``Interest`` line in the CASH EFFECT block — accrued
+    # interest paid by the buyer that's recognised separately from the
+    # principal proceeds.
+    SELL_BONDS = "sell_bonds"
+    # Bond purchase advice — Pictet emits this under ``STOCK EXCHANGE /
+    # Purchase`` when a bond is bought via the OTC desk. Mirrors
+    # ``SELL_BONDS``: face-value nominal (positive on buy), percentage
+    # price (e.g. ``97.512%``), and an ``Interest`` line in the CASH
+    # EFFECT block — accrued interest the buyer pays to the seller for
+    # the period since the last coupon. The Operation-type vocabulary
+    # differs from the sell side (``Purchase`` vs ``Sell``); the
+    # ``Executed nominal`` + percentage-priced ``Execution price``
+    # combination is the load-bearing structural marker of a bond
+    # advice in either direction.
+    BUY_BONDS = "buy_bonds"
     ACCOUNT_STATEMENT = "account_statement"
     TRADE_CONFIRMATION = "trade_confirmation"
 
@@ -347,6 +384,16 @@ class Transaction(BaseModel):
     # signed-positive.
     counter_currency: str | None = None
     counter_amount: Decimal | None = None
+
+    # --- Bond accrued interest ------------------------------------------
+    # Set on ``SELL_BONDS`` advices: the amount of accrued interest the
+    # buyer pays to the seller alongside the bond's principal proceeds.
+    # Pictet prints this on a dedicated ``Interest`` line inside the
+    # ``CASH EFFECT`` block, on top of the percentage-priced principal.
+    # Recognised by the writer as a separate ``Income:<prefix>:<isin>:Interest``
+    # leg so the bond's running yield stays distinct from realised
+    # capital gain/loss on the principal.
+    accrued_interest: Decimal | None = None
 
     # --- Self-to-self payment cross-leg ---------------------------------
     # Set on outgoing ``PAYMENT`` advices where the ``Beneficiary``

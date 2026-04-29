@@ -1,0 +1,45 @@
+--- page 1/1 ---
+STOCK EXCHANGE
+Purchase
+Purchase EUR 90'000.00 2.30% GERMANY 23/33 SR GREEN at 97.512%
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG / Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-123456.001
+Transaction no.: 920228676 | Publication date: 24.11.2023
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 24.11.2023
+Value date 28.11.2023
+Booking date 24.11.2023
+Instruction
+Order date 24.11.2023 at 10:44:50 am
+Order type At Market
+Execution
+Operation type Purchase
+Market place Over the counter
+Execution date 24.11.2023 at 10:46:44 am
+Executed nominal EUR 90'000.00
+Execution price 97.512%
+Gross amount EUR -87'760.80
+Costs
+Brokerage EUR -408.28
+Total EUR -408.28
+Other
+Custodian EUROCLEAR BANK S.A / N.V.
+INportfolio K-123456.001
+2.30% GERMANY 23/33 SR GREEN EUR 90'000.00
+ISIN: DE000BU3Z005 Telekurs ID: 126652249 
+CASH EFFECTin portfolio K-123456.001
+Gross amount EUR -87'760.80
+Interest EUR -1'809.12
+Costs EUR -408.28
+Net amount EUR -89'978.20
+Current account K-123456.001.00.EUR/Ordinary IBAN?LU901980012345600100

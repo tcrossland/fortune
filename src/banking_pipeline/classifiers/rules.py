@@ -234,6 +234,94 @@ PICTET_EN_RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
+        doc_type=DocumentType.SELL_ETF,
+        template_id="pictet.sell_etf.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Title — unique to ETF sales among the sell family.
+            re.compile(r"\bSell\s+Exchange\s+Traded\s+Fund\b", re.I),
+            # Asset classification — load-bearing discriminator from
+            # SELL_STRUCTURED_PRODUCTS (which carries ``Asset type
+            # Structured products``) and from REDEMPTION_NOTICE (whose
+            # asset type is fund-shaped).
+            re.compile(r"\bAsset\s+type\s+Exchange\s+Traded\s+Fund\b", re.I),
+            # ``Sell`` (not ``Sale``) is the ETF operation vocabulary.
+            re.compile(r"\bOperation\s+type\s+Sell\b", re.I),
+            re.compile(r"\bExecuted\s+quantity\b", re.I),
+            re.compile(r"\bExecution\s+price\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.SELL_STRUCTURED_PRODUCTS,
+        template_id="pictet.sell_structured_products.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Title — unique to structured-product sales.
+            re.compile(r"\bSell\s+structured\s+products\b", re.I),
+            # Asset classification — load-bearing discriminator from
+            # ``SELL_BONDS`` (which carries ``Asset type Bonds``) and
+            # from ``REDEMPTION_NOTICE`` (which is fund-asset-typed and
+            # uses ``Operation type Sale``).
+            re.compile(r"\bAsset\s+type\s+Structured\s+products\b", re.I),
+            # ``Sell`` (not ``Sale``) is the structured-product operation
+            # vocabulary; ``REDEMPTION_NOTICE`` uses ``Sale``.
+            re.compile(r"\bOperation\s+type\s+Sell\b", re.I),
+            # Structured-product-specific issuer line at Pictet.
+            re.compile(r"\bIssuer\s+BANQUE\s+PICTET\b", re.I),
+            # Maturity date is always quoted on structured-product advices.
+            re.compile(r"\bMaturity\s+date\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.BUY_BONDS,
+        template_id="pictet.buy_bonds.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Banner — Pictet routes bond purchases through the
+            # ``STOCK EXCHANGE`` desk (sells use ``SECURITY`` instead).
+            re.compile(r"^STOCK\s+EXCHANGE\s*$", re.M),
+            # Standalone title — anchored to a full line so the headline
+            # ``Purchase EUR 90'000.00 ...`` doesn't accidentally match.
+            # ``Purchase`` alone is unique to bond buys among the EN
+            # trade family (subscriptions use ``Subscription``;
+            # ETF/structured/shares use ``Buy <type>``).
+            re.compile(r"^Purchase\s*$", re.M),
+            # Bond-specific quantity field — also fires on SELL_BONDS,
+            # but the title and operation-type patterns separate them.
+            re.compile(r"\bExecuted\s+nominal\b", re.I),
+            # Percentage-priced execution price — the structural
+            # discriminator from any unit-priced trade. ``\d+\.?\d*\s*%``
+            # is tight enough that the ``%`` makes it unambiguous.
+            re.compile(r"^Execution\s+price\s+\d+\.?\d*\s*%\s*$", re.M),
+            # ``Purchase`` operation-type vocabulary; bond sells say
+            # ``Sell`` and ETF/structured/shares buys say ``Buy``.
+            re.compile(r"\bOperation\s+type\s+Purchase\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.SELL_BONDS,
+        template_id="pictet.sell_bonds.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Title — unique to bond-sale advices among the trade family.
+            re.compile(r"\bSell\s+bonds\b", re.I),
+            # Asset classification — load-bearing discriminator vs the
+            # other ``Operation type Sell`` paths (REDEMPTION_NOTICE,
+            # FINAL_REDEMPTION) which carry equity- or fund-typed assets.
+            re.compile(r"\bAsset\s+type\s+Bonds\b", re.I),
+            # Bond-specific quantity field — the regular trade advices
+            # use ``Executed quantity`` (unit count) instead.
+            re.compile(r"\bExecuted\s+nominal\b", re.I),
+            # Distinguishes from a (hypothetical future) ``BUY_BONDS``
+            # variant which would carry ``Operation type Buy``.
+            re.compile(r"\bOperation\s+type\s+Sell\b", re.I),
+            # Maturity date is always quoted on bond advices; shared with
+            # structured-product buys but the title + asset-type patterns
+            # above already separate the two.
+            re.compile(r"\bMaturity\s+date\b", re.I),
+        ),
+    ),
+    Rule(
         doc_type=DocumentType.DIVIDEND_NOTICE,
         template_id="pictet.dividend_notice.v1",
         bank=BankId.PICTET,
