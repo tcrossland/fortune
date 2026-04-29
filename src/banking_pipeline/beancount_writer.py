@@ -145,6 +145,21 @@ _FX_SETTLEMENT_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.SETTLE_FX_FORWARD,
 })
 
+# Doctypes that produce no beancount output whatsoever — neither the
+# ``;`` audit header nor any transaction lines. Used for documents that
+# describe a contractual event whose cash leg is booked by a different,
+# paired advice. ``FX_FORWARD`` is the canonical case: the opening of
+# the contract has zero cash effect, and the matching
+# ``SETTLE_FX_FORWARD`` advice at maturity is the canonical paper trail
+# for the cash exchange. Per-template ``extract`` may already return
+# ``[]`` for these doctypes (Pictet's ``fx_forward.v1`` does); enforcing
+# the rule at the writer level adds defence-in-depth so that a future
+# template emitting Transactions for this doctype still produces no
+# output without manual intervention.
+_NO_EMIT_TYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.FX_FORWARD,
+})
+
 # Doctypes routed through ``_render_dividend`` — security-distribution
 # advices that pay income on a held position. The shape is a two-leg
 # entry (income-recognition leg + cash leg) keyed on the underlying
@@ -1210,7 +1225,16 @@ def _render_fx_settlement(
 
 
 def render(result: ExtractionResult) -> str:
-    """Render all transactions in ``result`` as beancount entries."""
+    """Render all transactions in ``result`` as beancount entries.
+
+    Returns the empty string for doctypes in :data:`_NO_EMIT_TYPES`
+    (currently ``FX_FORWARD``) — those documents are paper-trail only
+    and have their cash leg booked elsewhere, so no header, no audit
+    comments, and no transaction lines are emitted.
+    """
+
+    if result.classification.document_type in _NO_EMIT_TYPES:
+        return ""
 
     prefix = _bank_prefix(result.classification)
     chunks = [_render_header(result)]
@@ -1230,8 +1254,15 @@ def render_entry(tx: Transaction, classification: Classification) -> str:
     ``; bank:``) that :func:`render` prepends. Useful for golden-file tests
     that want to compare entry text directly without slicing past a header
     of variable length.
+
+    Returns the empty string for doctypes in :data:`_NO_EMIT_TYPES`
+    (currently ``FX_FORWARD``) — paper-trail documents whose cash leg
+    is booked by a paired advice (``SETTLE_FX_FORWARD`` at maturity)
+    and which therefore must not contribute any beancount output.
     """
 
+    if classification.document_type in _NO_EMIT_TYPES:
+        return ""
     return _render_transaction(
         tx, classification.document_type, _bank_prefix(classification)
     )
@@ -1292,7 +1323,10 @@ def _escape(narration: str) -> str:
 def render_all(results: Iterable[ExtractionResult]) -> str:
     results = list(results)
     chunks = [render_open_directives(results)]
-    chunks.extend(render(r) for r in results)
+    # Filter out empty renderings (no-emit doctypes like ``FX_FORWARD``)
+    # so the joined output doesn't carry stray blank-line gaps where a
+    # paper-trail document was suppressed.
+    chunks.extend(c for c in (render(r) for r in results) if c)
     return "\n".join(chunks)
 
 
@@ -1320,6 +1354,11 @@ def render_open_directives(
     for result in results:
         prefix = _bank_prefix(result.classification)
         doc_type = result.classification.document_type
+        # No-emit doctypes contribute no postings to the ledger, so any
+        # ISINs they happen to carry shouldn't drag account opens with
+        # them either.
+        if doc_type in _NO_EMIT_TYPES:
+            continue
         for tx in result.transactions:
             if not tx.isin:
                 continue
