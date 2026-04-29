@@ -34,11 +34,12 @@ def test_final_redemption_extracts_single_transaction() -> None:
     # Quantity printed negative on the security-event line (units leaving).
     assert tx.quantity == Decimal("-423")
     assert tx.price == Decimal("60.99250934")
-    # Anonymised "ZZ00AB97OD 0" carries a stray space that our 12-contiguous-
-    # char ISIN regex deliberately rejects (same behaviour as
-    # buy_structured_products). Real Pictet structured-product codes don't
-    # have the space and would parse cleanly.
-    assert tx.isin is None
+    # Pictet's ISIN/Internal ref. line for structured products has the
+    # PDF-extractor space artifact (``ZZ00AB97OD 0``); ``find_isin``
+    # strips the space and returns the contiguous 11-char form.
+    # ``resolve_isin`` falls back to the raw value because the code
+    # isn't a real (checksummed) ISIN.
+    assert tx.isin == "ZZ00AB97OD0"
     assert "PWM LG VOL BALANC" in tx.narration
     assert tx.account_number == "P-999999.999"
 

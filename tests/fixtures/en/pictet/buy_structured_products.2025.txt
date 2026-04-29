@@ -1,0 +1,44 @@
+--- page 1/1 ---
+SECURITY
+Buy structured products
+Buy 423 EUR PWM LG VOL BALANC (PICTET)25/26 at EUR 75.00
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-123456.001
+Transaction no.: 1073383995 | Publication date: 10.04.2025
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 10.04.2025
+Value date 14.04.2025
+Booking date 10.04.2025
+Instruction
+Order type At Market
+Execution
+Operation type Buy
+Market place Over the counter
+Execution date 10.04.2025 at 05:32:20 pm
+Executed quantity 423
+Execution price EUR 75.00
+Gross amount EUR -31'725.00
+Trading capacity Principal
+Product details
+Asset type Structured products
+Asset sub-type PWM Pictet Equity Certificate (PEC)
+Maturity date 30.03.2026
+Issuer BANQUE PICTET & CIE SA
+INportfolio K-123456.001
+EUR PWM LG VOL BALANC (PICTET)25/26 423
+ISIN/Internal ref.: ZZ00AB97OD 0 Telekurs ID/Internal ref.: ZZZAB97OD 
+CASH EFFECTin portfolio K-123456.001
+Gross amount EUR -31'725.00
+Costs EUR 0.00
+Net amount EUR -31'725.00
+Current account K-123456.001.00.EUR/Ordinary IBAN?LU901980012345600100

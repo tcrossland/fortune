@@ -228,13 +228,30 @@ def find_isin(text: str) -> str | None:
 
       ``ISIN/Internal ref.: LU1234567890 Telekurs ID/Internal ref.: ...``
       ``ISIN: LU1234567890 Telekurs ID: ...``
+
+    Two value shapes:
+
+      - **Real ISINs** are 12 contiguous alphanumeric chars
+        (``LU2096759431``).
+      - **Pictet structured-product internal refs** are 11 alphanumeric
+        chars (``ZZ00ABB5K50``) — Pictet's PDF-to-text extractor
+        consistently inserts a stray space before the final char on
+        these, producing ``ZZ00ABB5K5 0`` in the source text. We
+        accept both forms and return a contiguous identifier so
+        downstream callers (writer commodity names, golden tests) see
+        a stable string.
+
+    The match is anchored to the literal ``ISIN`` label, so the embedded
+    whitespace is consumed inside the value rather than being a vector
+    for false positives elsewhere in the document.
     """
 
     pattern = re.compile(
-        r"\bISIN(?:/Internal\s+ref\.)?\s*:\s*([A-Z]{2}[A-Z0-9]{9}[A-Z0-9])"
+        r"\bISIN(?:/Internal\s+ref\.)?\s*:\s*"
+        r"([A-Z]{2}[A-Z0-9]{8}(?:[A-Z0-9]{2}|\s[A-Z0-9]))"
     )
     m = pattern.search(text)
-    return m.group(1) if m else None
+    return m.group(1).replace(" ", "") if m else None
 
 
 def find_iban(text: str) -> str | None:
