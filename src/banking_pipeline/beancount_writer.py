@@ -27,7 +27,7 @@ from banking_pipeline.models import (
 # use, and matching it makes diff-based testing meaningful.
 _AMOUNT_COL = 59
 
-# Short account-name prefix per bank — used in ``Assets:<prefix>:<ISIN>``,
+# Short account-name prefix per bank — used in ``Assets:<prefix>:<portfolio>:<ISIN>``,
 # ``Assets:<prefix>:<currency>``, ``Expenses:<prefix>:Fees:<ccy>``. Banks not
 # in this map fall back to ``"Unknown"``; that keeps generic/bank-agnostic
 # classifications producing valid (if ugly) beancount instead of crashing.
@@ -84,7 +84,7 @@ _SECURITY_TRADE_TYPES = _SECURITY_BUY_TYPES | _SECURITY_SELL_TYPES
 
 # Switches are *also* members of the buy/sell sets above (entrada is a buy,
 # salida is a sell at the security-leg level), so ``render_open_directives``
-# still finds their ISINs and emits the right ``Assets:<prefix>:<ISIN>``
+# still finds their ISINs and emits the right ``Assets:<prefix>:<portfolio>:<ISIN>``
 # opens. The dispatcher in ``_render_transaction`` checks this set first so
 # switch advices route to the switch builder rather than the regular trade
 # builder — the cash-leg shape, the ``{} @`` cost form, the Switch holding
@@ -183,7 +183,7 @@ _INTEREST_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.INTEREST_PAYMENT,
 })
 
-# Doctypes that emit an inline ``open Assets:<prefix>:<ISIN> <ISIN>``
+# Doctypes that emit an inline ``open Assets:<prefix>:<portfolio>:<ISIN> <ISIN>``
 # directive at the top of the entry. Stock-purchase / structured-product
 # / ETF / switch-into-new-fund advices typically introduce a position
 # the user hasn't held before, so opening the account inline keeps the
@@ -260,7 +260,7 @@ def _inline_open_directive(
     """Return the inline ``open`` directive line for advices that need
     one, or an empty string when they don't.
 
-    Output format: ``<date> open Assets:<prefix>:<ISIN> <ISIN>\\n``
+    Output format: ``<date> open Assets:<prefix>:<portfolio>:<ISIN> <ISIN>\\n``
     (single-space separator — matches the project's golden files;
     distinct from :func:`render_open_directives` which uses double-space
     for batch-output formatting). The trailing newline is included so
@@ -273,13 +273,14 @@ def _inline_open_directive(
     if not tx.isin:
         return ""
     entry_date = tx.booking_date or tx.trade_date
-    return f"{entry_date} open Assets:{prefix}:{tx.isin} {tx.isin}\n"
+    portfolio = _portfolio_segment(tx.account_number)
+    return f"{entry_date} open Assets:{prefix}:{portfolio}:{tx.isin} {tx.isin}\n"
 
 
 _CASH_IN_TEMPLATE = _ENV.from_string(
     """\
 {{ tx.trade_date }} * "{{ narration }}"
-  Assets:Broker:Cash                             {{ tx.amount }} {{ tx.currency }}
+  Assets:{{ prefix }}:{{ tx.account_number | portfolio_segment }}:{{ tx.currency }}  {{ tx.amount }} {{ tx.currency }}
   Equity:Uncategorized                           {{ -tx.amount }} {{ tx.currency }}
 """
 )
@@ -289,7 +290,7 @@ _CASH_IN_TEMPLATE = _ENV.from_string(
 _FX_LEG_TEMPLATE = _ENV.from_string(
     """\
 {{ tx.trade_date }} * "{{ narration }}"
-  Assets:Broker:Cash                             {{ tx.amount }} {{ tx.currency }}
+  Assets:{{ prefix }}:{{ tx.account_number | portfolio_segment }}:{{ tx.currency }}  {{ tx.amount }} {{ tx.currency }}
   Equity:Uncategorized                           {{ -tx.amount }} {{ tx.currency }}
 """
 )
@@ -358,7 +359,7 @@ _DEFAULT_TEMPLATE = _ENV.from_string(
     """\
 {{ tx.trade_date }} * "{{ narration }}"
   ; TODO review — document type: {{ doc_type }}
-  Assets:Bank:{{ tx.account_number | portfolio_segment }}  {{ tx.amount }} {{ tx.currency }}
+  Assets:{{ prefix }}:{{ tx.account_number | portfolio_segment }}:{{ tx.currency }}  {{ tx.amount }} {{ tx.currency }}
   Equity:Uncategorized                           {{ -tx.amount }} {{ tx.currency }}
 """
 )
@@ -448,8 +449,14 @@ def _render_security_sell_with_breakdown(
         if tx.price is not None
         else ""
     )
+    portfolio = _portfolio_segment(tx.account_number)
     lines.append(
-        _align(f"Assets:{prefix}:{isin}", qty_str, isin, extras=cost_basis)
+        _align(
+            f"Assets:{prefix}:{portfolio}:{isin}",
+            qty_str,
+            isin,
+            extras=cost_basis,
+        )
     )
 
     # Per-item expense legs. Each fee item becomes its own posting with
@@ -501,7 +508,7 @@ def _render_security_trade(
     Layout (FX trade, with all fields populated)::
 
         <booking_date> * "<title>" "<narration>"
-          Assets:<prefix>:<ISIN>          <qty> <ISIN> {<price> <sec_ccy>}
+          Assets:<prefix>:<portfolio>:<ISIN>          <qty> <ISIN> {<price> <sec_ccy>}
           Expenses:<prefix>:Fees:<sec_ccy>  <fees>      <sec_ccy>
           Assets:<prefix>:<currency>      <amount>     <ccy> @@ <subtotal> <sec_ccy>
           no: <transaction_number>
@@ -576,8 +583,12 @@ def _render_security_trade(
             cost_basis = f" {{}} @ {_format_amount(tx.price)} {sec_ccy}"
     else:
         cost_basis = ""
+    portfolio = _portfolio_segment(tx.account_number)
     asset_line = _align(
-        f"Assets:{prefix}:{isin}", qty_str, isin, extras=cost_basis
+        f"Assets:{prefix}:{portfolio}:{isin}",
+        qty_str,
+        isin,
+        extras=cost_basis,
     )
 
     # --- Fees leg ------------------------------------------------------
@@ -651,7 +662,7 @@ def _render_switch_trade(
     Salida (sale) layout::
 
         <booking_date> * "<title>" "<narration>" ^<txn_no>
-          Assets:<prefix>:<ISIN>          <quantity> <ISIN> {} @ <price> <ccy>
+          Assets:<prefix>:<portfolio>:<ISIN>          <quantity> <ISIN> {} @ <price> <ccy>
           Assets:<prefix>:Switch:<ccy>    <amount>   <ccy>
           Income:<prefix>:<ISIN>:Unrealized
           no: <txn_no>
@@ -714,8 +725,14 @@ def _render_switch_trade(
             cost_extras = f" {{{_format_amount(tx.price)} {sec_ccy}}}"
     else:
         cost_extras = ""
+    portfolio = _portfolio_segment(tx.account_number)
     lines.append(
-        _align(f"Assets:{prefix}:{isin}", qty_str, isin, extras=cost_extras)
+        _align(
+            f"Assets:{prefix}:{portfolio}:{isin}",
+            qty_str,
+            isin,
+            extras=cost_extras,
+        )
     )
 
     # --- Switch holding leg --------------------------------------------
@@ -731,7 +748,7 @@ def _render_switch_trade(
         )
     lines.append(
         _align(
-            f"Assets:{prefix}:{_portfolio_segment(tx.account_number)}:Switch:{tx.currency}",
+            f"Assets:{prefix}:{portfolio}:Switch:{tx.currency}",
             _format_amount(tx.amount),
             tx.currency,
             extras=cash_extras,
@@ -1313,7 +1330,12 @@ def _render_transaction(
     if doc_type in _SECURITY_TRADE_TYPES:
         return _render_security_trade(tx, doc_type, prefix)
     template = _TEMPLATES.get(doc_type, _DEFAULT_TEMPLATE)
-    return template.render(tx=tx, doc_type=doc_type, narration=_escape(tx.narration))
+    return template.render(
+        tx=tx,
+        doc_type=doc_type,
+        prefix=prefix,
+        narration=_escape(tx.narration),
+    )
 
 
 def _escape(narration: str) -> str:
@@ -1337,18 +1359,19 @@ def render_open_directives(
     """Return beancount ``open`` directives for every ISIN-based account seen.
 
     Call this once across all results so the generated ledger is
-    self-contained. Accounts are keyed on (bank prefix, ISIN) — accounts
-    for the same ISIN held at different banks are tracked separately
-    because each bank's holdings live under its own prefix
-    (``Assets:Pic:LU…`` vs e.g. ``Assets:Cs:LU…``).
+    self-contained. Asset-account keys are
+    ``(bank prefix, portfolio segment, ISIN)`` so the same ISIN held
+    in two different portfolios at the same bank (e.g. ``P-…`` vs
+    ``K-…`` Pictet portfolios) generates two distinct opens — the
+    same dimensionality the per-trade asset postings carry.
+    Income (dividend) accounts are still keyed on ``(prefix, ISIN)``
+    only; they're scoped per-bank, not per-portfolio.
     """
     if open_date is None:
         open_date = datetime.date(2020, 1, 1)
     date_str = open_date.isoformat()
 
-    # Keys are ``(prefix, isin)`` so the same ISIN held at two different
-    # banks generates two distinct opens.
-    asset_accounts: dict[tuple[str, str], str] = {}
+    asset_accounts: dict[tuple[str, str, str], str] = {}
     income_accounts: dict[tuple[str, str], str] = {}
 
     for result in results:
@@ -1364,14 +1387,17 @@ def render_open_directives(
                 continue
             isin = tx.isin
             commodity = isin  # beancount commodity == ISIN
+            portfolio = _portfolio_segment(tx.account_number)
             if doc_type in _SECURITY_TRADE_TYPES:
-                asset_accounts[(prefix, isin)] = commodity
+                asset_accounts[(prefix, portfolio, isin)] = commodity
             elif doc_type == DocumentType.DIVIDEND_NOTICE:
                 income_accounts[(prefix, isin)] = commodity
 
     lines: list[str] = []
-    for prefix, isin in sorted(asset_accounts):
-        lines.append(f"{date_str} open Assets:{prefix}:{isin}  {isin}")
+    for prefix, portfolio, isin in sorted(asset_accounts):
+        lines.append(
+            f"{date_str} open Assets:{prefix}:{portfolio}:{isin}  {isin}"
+        )
     for prefix, isin in sorted(income_accounts):
         lines.append(f"{date_str} open Income:{prefix}:{isin}:Dividend")
 

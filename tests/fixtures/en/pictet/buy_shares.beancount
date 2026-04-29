@@ -1,6 +1,6 @@
-2025-04-03 open Assets:Pic:DK0062498333 DK0062498333
+2025-04-03 open Assets:Pic:P123456002:DK0062498333 DK0062498333
 2025-04-03 * "Buy Shares" "Buy 200 NOVO NORDISK 'B' at DKK 460.17475"
-  Assets:Pic:DK0062498333                               200 DK0062498333 {460.17475 DKK}
+  Assets:Pic:P123456002:DK0062498333                    200 DK0062498333 {460.17475 DKK}
   Expenses:Pic:Fees:DKK                             1201.37 DKK
   Assets:Pic:P123456002:DKK                       -93236.32 DKK
   no: 1068597538

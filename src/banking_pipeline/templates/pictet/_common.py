@@ -690,19 +690,20 @@ def legs_to_transactions(
     """Render a list of ``CashEffectLeg`` as ``Transaction`` objects with a
     shared narration, one Transaction per leg.
 
-    Account number resolution mirrors :func:`resolve_account_number`: prefer
-    the leg's own validated IBAN (each leg is a different per-currency
-    sub-account), fall back to the parent portfolio identifier when the
-    IBAN won't validate (anonymised fixtures, mostly).
+    Account number resolution mirrors :func:`resolve_account_number`:
+    use the parent portfolio identifier (``P-…`` / ``K-…``) so the
+    rendered beancount account is keyed on the user's portfolio
+    identity. Earlier this preferred the leg's IBAN when the checksum
+    validated, which produced wrong-shape segments like
+    ``Assets:Pic:LU091980012345600200:USD`` on real PDFs whose IBANs
+    pass mod-97 — those should sit under
+    ``Assets:Pic:P123456002:USD`` instead.
     """
 
     truncated = narration[:140]
     transactions: list[Transaction] = []
     for leg in legs:
-        validated = (
-            normalise_iban(leg.iban_raw) if leg.iban_raw is not None else None
-        )
-        account_number = validated or leg.portfolio_account
+        account_number = leg.portfolio_account
         transactions.append(
             Transaction(
                 trade_date=trade_date,
