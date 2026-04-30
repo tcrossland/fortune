@@ -1,0 +1,55 @@
+--- page 1/1 ---
+SECURITY
+Buy Shares
+Buy 215 FENIX OUT IN at SEK 628.00
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: P-123456.002
+Transaction no.: 1068597539 | Publication date: 03.04.2025
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 03.04.2025
+Value date 07.04.2025
+Booking date 03.04.2025
+Instruction
+Order type At Market
+Execution
+Operation type Buy
+Market place Nasdaq OMX Nordic Exchange,
+Stockholm, Equities (XSTO)
+Execution date 03.04.2025 at 04:34:08 pm
+Executed quantity 215
+Execution price SEK 628.00
+Gross amount SEK -135'020.00
+Trading capacity Agent
+Costs
+Forex spread SEK -1'778.05
+Commission/Fee SEK -1'752.80
+Total SEK -3'530.85
+Product details
+Asset type Equities
+Asset sub-type Developed Markets
+Issuer FENIX OUTDOOR INTERNATIONAL
+INportfolio P-123456.002
+FENIX OUT IN 215
+ISIN/Internal ref.: CH0242214887 Telekurs ID/Internal ref.: 24221488 
+CASH EFFECTin portfolio P-123456.002
+Gross amount SEK -135'020.00
+Costs SEK -3'530.85
+Sub-total SEK -138'550.85
+Exchange rate (GBP/SEK): 12.746708
+Net amount GBP -10'869.54
+Current account P-123456.002.00.GBP/Ordinary IBAN?LU091980012345600200
+Please note:
+Please be advised that prior to the conclusion of your transaction, and in accordance with our
+information, we determined that this financial instrument was appropriate to your profile.
+Please be advised that prior to the conclusion of your transaction, and in accordance with our
+information, we determined that this financial instrument was appropriate to your profile.

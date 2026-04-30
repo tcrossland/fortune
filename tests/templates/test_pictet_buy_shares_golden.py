@@ -6,11 +6,11 @@ gated on ``tx.is_fx``, now emits whenever ``tx.fees != 0``) so a
 future revert to the old condition surfaces as a test failure rather
 than a silently unbalanced entry.
 
-Layout: inline ``open Assets:<prefix>:<ISIN>`` directive, asset leg
-with cost basis at the execution price (commission excluded —
-recorded separately), broken-out ``Expenses:<prefix>:Fees:<ccy>`` leg
+Layout: asset leg with cost basis at the execution price (commission
+excluded — recorded separately), ``Expenses:<prefix>:Fees:<ccy>`` leg
 for the commission, cash leg with the all-in net (gross + fees),
-trailing ``no:`` reference comment.
+trailing ``no:`` reference comment. No inline ``open`` directive —
+account opens are centralised in ``portfolio.beancount``.
 """
 
 from __future__ import annotations

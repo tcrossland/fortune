@@ -226,29 +226,18 @@ _INTEREST_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.INTEREST_PAYMENT,
 })
 
-# Doctypes that emit an inline ``open Assets:<prefix>:<portfolio>:<ISIN> <ISIN>``
-# directive at the top of the entry. Stock-purchase / structured-product
-# / ETF / switch-into-new-fund advices typically introduce a position
-# the user hasn't held before, so opening the account inline keeps the
-# entry self-contained for bean-check.
+# Doctypes that would emit an inline ``open Assets:<prefix>:<portfolio>:<ISIN> <ISIN>``
+# directive at the top of their entry. Empty by design today — every
+# account open is centralised in ``portfolio.beancount`` (via the
+# ``banking-pipeline portfolio`` aggregate command), and emitting an
+# inline open here would duplicate the central one and trip a
+# duplicate-open error in ``bean-check``.
 #
-# Fund subscriptions (``SUSCRIPCION``, ``SUBSCRIPTION_NOTICE``) are
-# *excluded* on purpose: the user typically holds the same fund across
-# many subscription transactions, and inline opens on every recurring
-# subscription would just be noise. The batch-output path
-# (:func:`render_open_directives`) deduplicates and handles those.
-#
-# Sells (``REDEMPTION_NOTICE`` etc.) never emit — by definition the
-# account already exists from the prior buy that opened it.
-_OPEN_EMITTING_TYPES: frozenset[DocumentType] = frozenset({
-    DocumentType.TRADE_CONFIRMATION,
-    DocumentType.BUY_BONDS,
-    DocumentType.BUY_STRUCTURED_PRODUCTS,
-    DocumentType.BUY_ETF,
-    DocumentType.BUY_SHARES,
-    DocumentType.COMPRA,
-    DocumentType.SWITCH_ENTRADA,
-})
+# The membership set is preserved (rather than removing the
+# ``_inline_open_directive`` helper outright) so a future workflow
+# that renders per-document beancount files independently of the
+# central aggregate can opt back in by adding the relevant doctypes.
+_OPEN_EMITTING_TYPES: frozenset[DocumentType] = frozenset()
 
 
 def _portfolio_segment(account_number: str | None) -> str:
@@ -304,12 +293,20 @@ def _inline_open_directive(
     """Return the inline ``open`` directive line for advices that need
     one, or an empty string when they don't.
 
-    Output format: ``<date> open Assets:<prefix>:<portfolio>:<ISIN> <ISIN>\\n``
-    (single-space separator — matches the project's golden files;
-    distinct from :func:`render_open_directives` which uses double-space
-    for batch-output formatting). The trailing newline is included so
-    callers can prepend the result directly to their entry text without
-    juggling separators.
+    Returns ``""`` for every doctype today: ``_OPEN_EMITTING_TYPES``
+    is the empty set because account opens are centralised in
+    ``portfolio.beancount`` (via the ``banking-pipeline portfolio``
+    aggregate command). Re-emitting an inline open here would
+    duplicate the central declaration and trip a duplicate-open
+    error when the per-year file is loaded alongside the aggregate.
+
+    The function is preserved as a hook so a future workflow that
+    renders standalone per-document beancount files (without the
+    central aggregate) can opt back in by repopulating
+    ``_OPEN_EMITTING_TYPES``. Output format when active:
+    ``<date> open Assets:<prefix>:<portfolio>:<ISIN> <ISIN>\\n`` with
+    a trailing newline so callers can prepend it directly to their
+    entry text without juggling separators.
     """
 
     if doc_type not in _OPEN_EMITTING_TYPES:
@@ -446,11 +443,8 @@ def _render_security_sell_with_breakdown(
 
     Used for stock-exchange sales where Pictet prints a per-line ``Costes``
     block (``Corretaje y/o spread`` + ``Tasa bursátil`` etc.). The shape
-    differs from the simpler sell path on four points:
+    differs from the simpler sell path on three points:
 
-      - Inline ``open Income:<prefix>:<ISIN>`` directive at the top —
-        this is the first realized gain/loss event for this position,
-        so the income account needs opening.
       - Asset leg first (mirroring the switch_salida convention),
         followed by the fee legs, the FX-aware cash leg, and the
         elastic income leg.
@@ -466,16 +460,16 @@ def _render_security_sell_with_breakdown(
     place for sells without a breakdown (e.g. ``reembolso_final`` with
     its ``Costes EUR 0.00`` non-FX layout); switching shapes based on
     breakdown presence avoids disturbing those goldens.
+
+    No inline ``open`` directive is emitted: account opens are
+    centralised in ``portfolio.beancount`` and an inline
+    ``Income:<prefix>:<ISIN>`` open here would duplicate the central
+    one and fail ``bean-check``.
     """
 
     sec_ccy = tx.security_currency or tx.currency
     isin = tx.isin or "Unknown"
     entry_date = tx.booking_date or tx.trade_date
-
-    # Inline open for the realized-income account.
-    out = ""
-    if tx.isin:
-        out = f"{entry_date} open Income:{prefix}:{isin}\n"
 
     # Header (two-string narration when title is set).
     narration = _escape(tx.narration)
@@ -541,7 +535,7 @@ def _render_security_sell_with_breakdown(
     if tx.transaction_number:
         lines.append(f"  no: {tx.transaction_number}")
 
-    return out + "\n".join(lines) + "\n"
+    return "\n".join(lines) + "\n"
 
 
 def _render_security_trade(
@@ -591,8 +585,10 @@ def _render_security_trade(
     sec_ccy = tx.security_currency or tx.currency
 
     # --- Optional inline open directive --------------------------------
-    # Stock-purchase / structured-product / ETF advices emit one;
-    # fund subscriptions don't. See ``_OPEN_EMITTING_TYPES``.
+    # No-op today (``_OPEN_EMITTING_TYPES`` is empty — account opens
+    # are centralised in ``portfolio.beancount``); kept as a hook so
+    # a standalone-file workflow can opt back in. See
+    # ``_inline_open_directive`` for the gating rule.
     out = _inline_open_directive(tx, doc_type, prefix)
 
     # --- Header ---------------------------------------------------------
@@ -635,20 +631,42 @@ def _render_security_trade(
         extras=cost_basis,
     )
 
-    # --- Fees leg ------------------------------------------------------
+    # --- Fees leg(s) ---------------------------------------------------
     # Emitted whenever the document carries non-zero fees, regardless of
     # FX status. Non-FX advices with ``Costs <ccy> 0.00`` (e.g.
     # ``compra.2022``) skip via the ``fees != 0`` guard; non-FX advices
     # with non-zero fees (e.g. ``buy_shares`` with its commission line)
     # need this leg for the entry to balance arithmetically — the cash
     # leg is gross + fees and the asset leg is gross-only.
-    fees_line: str | None = None
-    if tx.fees is not None and tx.fees != 0:
+    #
+    # Multi-item fee breakdowns (e.g. an FX buy that splits ``Forex
+    # spread`` from ``Commission/Fee``) emit one expense leg per item
+    # with the item's description as an inline beancount comment so
+    # the audit detail Pictet printed survives in the rendered entry.
+    # Sells with multi-item breakdowns get this same treatment via the
+    # dedicated ``_render_security_sell_with_breakdown`` builder above
+    # (which also reorders postings so the cash leg lands first); buys
+    # stay in this builder because their asset-first order is shared
+    # with the single-fee path.
+    fees_lines: list[str] = []
+    if len(tx.fee_breakdown) > 1:
+        for item in tx.fee_breakdown:
+            fees_lines.append(
+                _align(
+                    f"Expenses:{prefix}:Fees:{item.currency}",
+                    _format_amount(abs(item.amount)),
+                    item.currency,
+                    extras=f" ; {item.description}",
+                )
+            )
+    elif tx.fees is not None and tx.fees != 0:
         fees_ccy = tx.fees_currency or sec_ccy
-        fees_line = _align(
-            f"Expenses:{prefix}:Fees:{fees_ccy}",
-            _format_amount(abs(tx.fees)),
-            fees_ccy,
+        fees_lines.append(
+            _align(
+                f"Expenses:{prefix}:Fees:{fees_ccy}",
+                _format_amount(abs(tx.fees)),
+                fees_ccy,
+            )
         )
 
     # --- Cash leg -------------------------------------------------------
@@ -667,13 +685,11 @@ def _render_security_trade(
     # --- Posting order: asset-first for buys, cash-first for sells -----
     if doc_type in _SECURITY_BUY_TYPES:
         lines.append(asset_line)
-        if fees_line is not None:
-            lines.append(fees_line)
+        lines.extend(fees_lines)
         lines.append(cash_line)
     else:
         lines.append(cash_line)
-        if fees_line is not None:
-            lines.append(fees_line)
+        lines.extend(fees_lines)
         lines.append(asset_line)
         # Elastic ``Income:<prefix>:<ISIN>:Realized`` posting on every
         # sell — beancount auto-balances it against the difference
@@ -756,6 +772,11 @@ def _render_bond_trade(
     portfolio = _portfolio_segment(tx.account_number)
     entry_date = tx.booking_date or tx.trade_date
     is_buy = doc_type in _SECURITY_BUY_TYPES
+
+    # No-op today (``_OPEN_EMITTING_TYPES`` is empty — account opens
+    # are centralised in ``portfolio.beancount``); kept as a hook so
+    # a standalone-file workflow can opt back in.
+    out = _inline_open_directive(tx, doc_type, prefix)
 
     parts: list[str] = [str(entry_date), "*"]
     if tx.title:
@@ -840,7 +861,7 @@ def _render_bond_trade(
     if tx.transaction_number:
         lines.append(f"  no: {tx.transaction_number}")
 
-    return "\n".join(lines) + "\n"
+    return out + "\n".join(lines) + "\n"
 
 
 def _render_switch_trade(
@@ -888,8 +909,9 @@ def _render_switch_trade(
     entry_date = tx.booking_date or tx.trade_date
 
     # --- Optional inline open directive --------------------------------
-    # ``SWITCH_ENTRADA`` is in ``_OPEN_EMITTING_TYPES``, salida is not.
-    # See that constant's docstring for the full rule across doctypes.
+    # No-op today (``_OPEN_EMITTING_TYPES`` is empty — account opens
+    # are centralised in ``portfolio.beancount``); kept as a hook so
+    # a standalone-file workflow can opt back in.
     out = _inline_open_directive(tx, doc_type, prefix)
 
     lines: list[str] = []

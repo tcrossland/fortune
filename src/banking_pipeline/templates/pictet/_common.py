@@ -118,7 +118,14 @@ EN_LABELS = PictetLabels(
     gross_amount="Gross amount",
     net_amount="Net amount",
     costs="Costs",
-    subtotal="Subtotal",
+    # Pictet's English locale prints ``Sub-total`` (with hyphen) on FX
+    # advices that bridge the security currency to the cash-account
+    # currency; the Spanish locale uses ``Subtotal`` (no hyphen). Each
+    # locale's exact label is what ``find_amount_field`` greps for, so
+    # the hyphen variant matters — without it the EN FX advices'
+    # subtotal goes unparsed and the cash leg loses its
+    # ``@@ <subtotal> <sec_ccy>`` annotation.
+    subtotal="Sub-total",
     cash_effect_marker="CASH EFFECT",
     portfolio_in_re=re.compile(
         r"^\s*in\s+portfolio\s+([A-Z]-\d{6}\.\d{3})", re.M

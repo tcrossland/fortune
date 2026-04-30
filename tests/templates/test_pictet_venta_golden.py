@@ -7,8 +7,6 @@ breakdown rendered as one ``Expenses:<prefix>:Fees:<ccy>`` posting
 per item with inline description comments. Pins the entry shape
 established by ``venta.beancount``:
 
-  - Inline ``open Income:<prefix>:<ISIN>`` directive at the top
-    (first realized event for the position).
   - Asset leg first (sell-from-inventory at market).
   - One expense leg per fee component with ``; <description>`` comment.
   - FX-aware cash leg with ``@@`` total-cost annotation.

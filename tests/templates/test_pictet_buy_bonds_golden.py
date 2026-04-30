@@ -1,9 +1,10 @@
 """Golden-file test for the EN bond-purchase render.
 
-Pins the four-leg shape ``BUY_BONDS`` produces, plus the inline
-``open Assets:<prefix>:<portfolio>:<isin> <isin>`` directive emitted
-on first-time security buys (``BUY_BONDS`` is in
-``_OPEN_EMITTING_TYPES``):
+Pins the four-leg shape ``BUY_BONDS`` produces. No inline ``open``
+directive is emitted — account opens are centralised in
+``portfolio.beancount`` via ``banking-pipeline portfolio``, and an
+inline open here would duplicate the central declaration and trip
+``bean-check``.
 
   - Asset leg leads (the account receiving value), with the literal
     cost-basis brace ``{<unit_price> <currency>}``. The percentage

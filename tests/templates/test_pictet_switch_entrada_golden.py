@@ -3,8 +3,6 @@
 This is the paired leg of ``test_pictet_switch_salida_golden``. Notable
 shape differences from the salida path:
 
-  - **Inline open directive** at the top of the entry — the entrada
-    leg brings the new ISIN into the portfolio.
   - **FX cash leg** — Pictet bills the underlying buy in the security
     currency (USD here) but posts the cost into the EUR Switch holding,
     so the cash leg carries an ``@@ <subtotal> <ccy>`` annotation.

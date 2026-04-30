@@ -1,12 +1,10 @@
 """Golden-file test for the ``Compra`` (Spanish stock-purchase) render.
 
-Pictet ES stock-purchase advices share the trade-advice skeleton used
-by ``SUSCRIPCION`` etc., but the writer additionally emits an inline
-``open Assets:<prefix>:<ISIN> <ISIN>`` directive at the top of the
-entry — same convention as ``SWITCH_ENTRADA``, on the assumption that
-stock purchases tend to introduce a position the user hasn't held
-before. The 2022 fixture exercises the non-FX, zero-fee path with an
-all-caps ``COMPRA`` title.
+Pictet ES stock-purchase advices share the trade-advice skeleton
+used by ``SUSCRIPCION`` etc. The 2022 fixture exercises the non-FX,
+zero-fee path with an all-caps ``COMPRA`` title. No inline ``open``
+directive is emitted — account opens are centralised in
+``portfolio.beancount``.
 """
 
 from __future__ import annotations
