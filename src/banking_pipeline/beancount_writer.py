@@ -164,18 +164,43 @@ _FX_SETTLEMENT_TYPES: frozenset[DocumentType] = frozenset({
 })
 
 # Doctypes that produce no beancount output whatsoever — neither the
-# ``;`` audit header nor any transaction lines. Used for documents that
-# describe a contractual event whose cash leg is booked by a different,
-# paired advice. ``FX_FORWARD`` is the canonical case: the opening of
-# the contract has zero cash effect, and the matching
-# ``SETTLE_FX_FORWARD`` advice at maturity is the canonical paper trail
-# for the cash exchange. Per-template ``extract`` may already return
-# ``[]`` for these doctypes (Pictet's ``fx_forward.v1`` does); enforcing
-# the rule at the writer level adds defence-in-depth so that a future
-# template emitting Transactions for this doctype still produces no
-# output without manual intervention.
+# ``;`` audit header nor any transaction lines. Used for documents
+# whose information either duplicates a cash leg booked elsewhere or
+# is purely a position snapshot rather than a movement.
+#
+# Two families:
+#
+#   - **Paired-advice openings**: ``FX_FORWARD`` is the canonical
+#     case — the opening of the contract has zero cash effect, and
+#     the matching ``SETTLE_FX_FORWARD`` advice at maturity is the
+#     canonical paper trail for the cash exchange.
+#
+#   - **Periodic valuation statements**: monthly / quarterly / annual
+#     reports across both locales. These describe portfolio
+#     valuations at a point in time, not transactions. Their cash
+#     events have already been booked by the per-trade and per-cash-
+#     movement advices that fed them; emitting any postings from a
+#     statement would double-count, and the regex-extractor fallback
+#     was producing degraded ``Equity:Uncategorized`` postings on
+#     them. ``ACCOUNT_STATEMENT`` is the generic non-bank-specific
+#     equivalent.
+#
+# Per-template ``extract`` may already return ``[]`` for some of
+# these doctypes; enforcing the rule at the writer level adds
+# defence-in-depth so the regex-extractor fallback can't re-emit
+# postings if a statement classifies but its template misses.
 _NO_EMIT_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.FX_FORWARD,
+    # Periodic-valuation statements (English / Pictet Luxembourg).
+    DocumentType.MONTHLY_STATEMENT,
+    DocumentType.QUARTERLY_STATEMENT,
+    DocumentType.ANNUAL_STATEMENT,
+    # Periodic-valuation statements (Spanish / Pictet Madrid).
+    DocumentType.ESTADO_MENSUAL,
+    DocumentType.ESTADO_TRIMESTRAL,
+    DocumentType.ESTADO_ANUAL,
+    # Generic non-bank-specific account statement.
+    DocumentType.ACCOUNT_STATEMENT,
 })
 
 # Doctypes routed through ``_render_dividend`` — security-distribution
