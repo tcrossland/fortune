@@ -1,7 +1,7 @@
 2023-12-20 * "Sell bonds" "Sell EUR 90'000.00 2.30% GERMANY 23/33 SR GREEN at 102.902%"
   Assets:Pic:K123456001:EUR                        94128.80 EUR ; Net amount
-  Expenses:Pic:Fees:EUR                              428.23 EUR ; Commission/Fee
-  Income:Pic:DE000BU3Z005:Interest                 -1945.23 EUR ; Accrued interest
+  Expenses:Pic:K123456001:Fees:EUR                   428.23 EUR ; Commission/Fee
+  Income:Pic:K123456001:DE000BU3Z005:Interest      -1945.23 EUR ; Accrued interest
   Assets:Pic:K123456001:DE000BU3Z005              -90000.00 DE000BU3Z005 {} @ 1.02902 EUR
-  Income:Pic:DE000BU3Z005:Realized
+  Income:Pic:K123456001:DE000BU3Z005:Realized
   no: 928806826

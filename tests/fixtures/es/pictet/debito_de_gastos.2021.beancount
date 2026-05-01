@@ -1,5 +1,5 @@
 2021-12-20 * "Débito de gastos" "Periodo 01.10.2021 - 31.12.2021"
-  Expenses:Pic:Fees:EUR                             8467.20 EUR ; Honorarios de gestión
-  Expenses:Pic:Fees:EUR                             1778.11 EUR ; IVA extranjero
+  Expenses:Pic:K123456001:Fees:EUR                  8467.20 EUR ; Honorarios de gestión
+  Expenses:Pic:K123456001:Fees:EUR                  1778.11 EUR ; IVA extranjero
   Assets:Pic:K123456001:EUR                       -10245.31 EUR
   no: 743477730

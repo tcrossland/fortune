@@ -1,6 +1,6 @@
 2024-11-07 * "Sell Exchange Traded Fund" "Sell 1'488 Multi Units Luxembourg SICAV - Amundi Euro Government Bond 7-10Y ETF -Acc.- at EUR 164.2716"
   Assets:Pic:K123456001:EUR                       243336.18 EUR
-  Expenses:Pic:Fees:EUR                             1099.96 EUR
+  Expenses:Pic:K123456001:Fees:EUR                  1099.96 EUR
   Assets:Pic:K123456001:LU1287023185                  -1488 LU1287023185 {} @ 164.2716 EUR
-  Income:Pic:LU1287023185:Realized
+  Income:Pic:K123456001:LU1287023185:Realized
   no: 1027385859

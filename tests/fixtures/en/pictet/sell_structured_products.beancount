@@ -1,5 +1,5 @@
 2024-04-18 * "Sell structured products" "Sell 405 EUR PWM LG VOL BALANC (PICTET)23/24 at EUR 43.91"
   Assets:Pic:K123456001:EUR                        17783.55 EUR
   Assets:Pic:K123456001:CH1146387191                   -405 CH1146387191 {} @ 43.91 EUR
-  Income:Pic:CH1146387191:Realized
+  Income:Pic:K123456001:CH1146387191:Realized
   no: 970189146

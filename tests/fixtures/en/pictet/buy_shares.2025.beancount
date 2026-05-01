@@ -1,6 +1,6 @@
 2025-04-03 * "Buy Shares" "Buy 215 FENIX OUT IN at SEK 628.00"
   Assets:Pic:P123456002:CH0242214887                    215 CH0242214887 {628.00 SEK}
-  Expenses:Pic:Fees:SEK                             1778.05 SEK ; Forex spread
-  Expenses:Pic:Fees:SEK                             1752.80 SEK ; Commission/Fee
+  Expenses:Pic:P123456002:Fees:SEK                  1778.05 SEK ; Forex spread
+  Expenses:Pic:P123456002:Fees:SEK                  1752.80 SEK ; Commission/Fee
   Assets:Pic:P123456002:GBP                       -10869.54 GBP @@ 138550.85 SEK
   no: 1068597539

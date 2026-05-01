@@ -503,7 +503,7 @@ def _render_security_sell_with_breakdown(
     for item in tx.fee_breakdown:
         lines.append(
             _align(
-                f"Expenses:{prefix}:Fees:{item.currency}",
+                f"Expenses:{prefix}:{portfolio}:Fees:{item.currency}",
                 _format_amount(abs(item.amount)),
                 item.currency,
                 extras=f" ; {item.description}",
@@ -529,7 +529,7 @@ def _render_security_sell_with_breakdown(
     # Elastic income leg — beancount auto-balances against the cost
     # basis pulled from inventory and the proceeds.
     if tx.isin:
-        lines.append(f"  Income:{prefix}:{isin}")
+        lines.append(f"  Income:{prefix}:{portfolio}:{isin}")
 
     # Trailing reference comment.
     if tx.transaction_number:
@@ -653,7 +653,7 @@ def _render_security_trade(
         for item in tx.fee_breakdown:
             fees_lines.append(
                 _align(
-                    f"Expenses:{prefix}:Fees:{item.currency}",
+                    f"Expenses:{prefix}:{portfolio}:Fees:{item.currency}",
                     _format_amount(abs(item.amount)),
                     item.currency,
                     extras=f" ; {item.description}",
@@ -663,7 +663,7 @@ def _render_security_trade(
         fees_ccy = tx.fees_currency or sec_ccy
         fees_lines.append(
             _align(
-                f"Expenses:{prefix}:Fees:{fees_ccy}",
+                f"Expenses:{prefix}:{portfolio}:Fees:{fees_ccy}",
                 _format_amount(abs(tx.fees)),
                 fees_ccy,
             )
@@ -700,7 +700,7 @@ def _render_security_trade(
         # which is uglier than just leaving the entry to balance via
         # whichever leg picks up the slack).
         if tx.isin:
-            lines.append(f"  Income:{prefix}:{tx.isin}:Realized")
+            lines.append(f"  Income:{prefix}:{portfolio}:{tx.isin}:Realized")
 
     # --- Trailing reference comment ------------------------------------
     if tx.transaction_number:
@@ -811,7 +811,7 @@ def _render_bond_trade(
         fees_ccy = tx.fees_currency or tx.currency
         fee_label = " ; Brokerage" if is_buy else " ; Commission/Fee"
         fee_line = _align(
-            f"Expenses:{prefix}:Fees:{fees_ccy}",
+            f"Expenses:{prefix}:{portfolio}:Fees:{fees_ccy}",
             _format_amount(abs(tx.fees)),
             fees_ccy,
             extras=fee_label,
@@ -822,7 +822,7 @@ def _render_bond_trade(
     interest_line: str | None = None
     if tx.accrued_interest is not None and tx.accrued_interest != 0:
         interest_line = _align(
-            f"Income:{prefix}:{isin}:Interest",
+            f"Income:{prefix}:{portfolio}:{isin}:Interest",
             _format_amount(-tx.accrued_interest),
             tx.currency,
             extras=" ; Accrued interest",
@@ -856,7 +856,7 @@ def _render_bond_trade(
             lines.append(interest_line)
         lines.append(asset_line)
         if tx.isin:
-            lines.append(f"  Income:{prefix}:{isin}:Realized")
+            lines.append(f"  Income:{prefix}:{portfolio}:{isin}:Realized")
 
     if tx.transaction_number:
         lines.append(f"  no: {tx.transaction_number}")
@@ -974,7 +974,7 @@ def _render_switch_trade(
     # --- Unrealized gain/loss (salida only) ----------------------------
     if doc_type == DocumentType.SWITCH_SALIDA:
         # Elastic posting — no amount, beancount fills in the balance.
-        lines.append(f"  Income:{prefix}:{isin}:Unrealized")
+        lines.append(f"  Income:{prefix}:{portfolio}:{isin}:Unrealized")
 
     # --- Trailing reference comment ------------------------------------
     # The ``no:`` comment carries the document's own transaction number,
@@ -1017,12 +1017,14 @@ def _render_fee_advice(
     parts.append(f'"{_escape(tx.narration)}"')
     lines: list[str] = [" ".join(parts)]
 
+    portfolio = _portfolio_segment(tx.account_number)
+
     # --- Expense legs ---------------------------------------------------
     if tx.fee_breakdown:
         for item in tx.fee_breakdown:
             lines.append(
                 _align(
-                    f"Expenses:{prefix}:Fees:{item.currency}",
+                    f"Expenses:{prefix}:{portfolio}:Fees:{item.currency}",
                     _format_amount(abs(item.amount)),
                     item.currency,
                     extras=f" ; {item.description}",
@@ -1032,7 +1034,7 @@ def _render_fee_advice(
         # No per-line breakdown — fall back to a single aggregate leg.
         lines.append(
             _align(
-                f"Expenses:{prefix}:Fees:{tx.currency}",
+                f"Expenses:{prefix}:{portfolio}:Fees:{tx.currency}",
                 _format_amount(abs(tx.amount)),
                 tx.currency,
             )
@@ -1104,6 +1106,8 @@ def _render_third_party_payment(
     parts.append(f'"{_escape(tx.narration)}"')
     lines: list[str] = [" ".join(parts)]
 
+    portfolio = _portfolio_segment(tx.account_number)
+
     # --- Self-to-self three-leg shape ---------------------------------
     if tx.counter_account is not None and tx.gross_amount is not None:
         # Destination leg — user's external account credited with the
@@ -1132,7 +1136,7 @@ def _render_third_party_payment(
             fees_ccy = tx.fees_currency or tx.currency
             lines.append(
                 _align(
-                    f"Expenses:{prefix}:Fees:{fees_ccy}",
+                    f"Expenses:{prefix}:{portfolio}:Fees:{fees_ccy}",
                     _format_amount(abs(tx.fees)),
                     fees_ccy,
                     extras=" ; Payment fees",
@@ -1152,9 +1156,9 @@ def _render_third_party_payment(
     )
     # Elastic counter-leg, keyed on direction.
     if tx.amount >= 0:
-        lines.append(f"  Income:{prefix}:Other")
+        lines.append(f"  Income:{prefix}:{portfolio}:Other")
     else:
-        lines.append(f"  Expenses:{prefix}:Other")
+        lines.append(f"  Expenses:{prefix}:{portfolio}:Other")
 
     if tx.transaction_number:
         lines.append(f"  no: {tx.transaction_number}")
@@ -1203,12 +1207,14 @@ def _render_interest(
     parts.append(f'"{_escape(tx.narration)}"')
     lines: list[str] = [" ".join(parts)]
 
+    portfolio = _portfolio_segment(tx.account_number)
+
     # Counter-leg: Expenses for negative cash (interest charged),
     # Income for positive cash (interest earned).
     if tx.amount < 0:
         lines.append(
             _align(
-                f"Expenses:{prefix}:Interest:{tx.currency}",
+                f"Expenses:{prefix}:{portfolio}:Interest:{tx.currency}",
                 _format_amount(abs(tx.amount)),
                 tx.currency,
             )
@@ -1216,7 +1222,7 @@ def _render_interest(
     else:
         lines.append(
             _align(
-                f"Income:{prefix}:Interest:{tx.currency}",
+                f"Income:{prefix}:{portfolio}:Interest:{tx.currency}",
                 _format_amount(-tx.amount),
                 tx.currency,
             )
@@ -1267,6 +1273,7 @@ def _render_dividend(
     """
 
     isin = tx.isin or "Unknown"
+    portfolio = _portfolio_segment(tx.account_number)
     entry_date = tx.booking_date or tx.trade_date
     parts: list[str] = [str(entry_date), "*"]
     if tx.title:
@@ -1277,7 +1284,7 @@ def _render_dividend(
     # Income leg — signed-negative (beancount income-account convention).
     lines.append(
         _align(
-            f"Income:{prefix}:{isin}:Dividend",
+            f"Income:{prefix}:{portfolio}:{isin}:Dividend",
             _format_amount(-tx.amount),
             tx.currency,
         )
@@ -1417,6 +1424,8 @@ def _render_fx_settlement(
     parts.append(f'"{_escape(tx.narration)}"')
     lines: list[str] = [" ".join(parts)]
 
+    portfolio = _portfolio_segment(tx.account_number)
+
     # Fee-bearing cash leg, signed as printed.
     lines.append(
         _align(
@@ -1431,7 +1440,7 @@ def _render_fx_settlement(
     # the expense account.
     lines.append(
         _align(
-            f"Expenses:{prefix}:Fees:{tx.fees_currency}",
+            f"Expenses:{prefix}:{portfolio}:Fees:{tx.fees_currency}",
             _format_amount(abs(tx.fees)),
             tx.fees_currency,
             extras=" ; Forward spread",
@@ -1577,20 +1586,18 @@ def render_open_directives(
     """Return beancount ``open`` directives for every ISIN-based account seen.
 
     Call this once across all results so the generated ledger is
-    self-contained. Asset-account keys are
+    self-contained. Both asset and income (dividend) account keys are
     ``(bank prefix, portfolio segment, ISIN)`` so the same ISIN held
     in two different portfolios at the same bank (e.g. ``P-…`` vs
     ``K-…`` Pictet portfolios) generates two distinct opens — the
-    same dimensionality the per-trade asset postings carry.
-    Income (dividend) accounts are still keyed on ``(prefix, ISIN)``
-    only; they're scoped per-bank, not per-portfolio.
+    same dimensionality the per-trade postings carry.
     """
     if open_date is None:
         open_date = datetime.date(2020, 1, 1)
     date_str = open_date.isoformat()
 
     asset_accounts: dict[tuple[str, str, str], str] = {}
-    income_accounts: dict[tuple[str, str], str] = {}
+    income_accounts: dict[tuple[str, str, str], str] = {}
 
     for result in results:
         prefix = _bank_prefix(result.classification)
@@ -1609,15 +1616,17 @@ def render_open_directives(
             if doc_type in _SECURITY_TRADE_TYPES:
                 asset_accounts[(prefix, portfolio, isin)] = commodity
             elif doc_type == DocumentType.DIVIDEND_NOTICE:
-                income_accounts[(prefix, isin)] = commodity
+                income_accounts[(prefix, portfolio, isin)] = commodity
 
     lines: list[str] = []
     for prefix, portfolio, isin in sorted(asset_accounts):
         lines.append(
             f"{date_str} open Assets:{prefix}:{portfolio}:{isin}  {isin}"
         )
-    for prefix, isin in sorted(income_accounts):
-        lines.append(f"{date_str} open Income:{prefix}:{isin}:Dividend")
+    for prefix, portfolio, isin in sorted(income_accounts):
+        lines.append(
+            f"{date_str} open Income:{prefix}:{portfolio}:{isin}:Dividend"
+        )
 
     return "\n".join(lines)
 
