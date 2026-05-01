@@ -1,0 +1,7 @@
+2025-11-28 * "Sell structured products" "Sell 360 BTC (COINSHARES) -ETC- 21/PERP at USD 88.16"
+  Assets:Pic:P123456002:GB00BLD4ZL17                   -360 GB00BLD4ZL17 {} @ 88.16 USD
+  Expenses:Pic:P123456002:Fees:USD                   200.79 USD ; Commission/Fee
+  Expenses:Pic:P123456002:Fees:USD                     3.62 USD ; Transaction taxes
+  Assets:Pic:P123456002:USD                        31533.19 USD
+  Income:Pic:P123456002:GB00BLD4ZL17:Realized
+  no: 1141960480

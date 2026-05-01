@@ -10,7 +10,7 @@ import structlog
 import typer
 from rich.console import Console
 
-from banking_pipeline import beancount_writer, portfolio_aggregate
+from banking_pipeline import beancount_writer, portfolio_aggregate, prices_extract
 from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.classifiers.bank import BANK_RULES, BankRuleClassifier
 from banking_pipeline.classifiers.language import LANGUAGE_RULES, LanguageRuleClassifier
@@ -65,6 +65,75 @@ def ingest(
 
 
 @app.command()
+def prices(
+    data_dir: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Directory containing per-year *.beancount ingest output.",
+        ),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Prices output file. Defaults to "
+            "``<data_dir>/prices.beancount``.",
+        ),
+    ] = None,
+    statements: Annotated[
+        list[Path],
+        typer.Option(
+            "--statement",
+            help="Pictet monthly-statement PDF (or pre-extracted "
+            "``.txt`` dump). Repeat the flag for multiple statements. "
+            "The Portfolio valuation page's per-ISIN market prices "
+            "are merged into the trade-derived price database; on "
+            "(date, ISIN) collisions the statement value wins because "
+            "it's the authoritative quote for that date.",
+        ),
+    ] = [],
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Extract ``price`` directives and write a beancount
+    price-database file under ``data_dir``.
+
+    Two complementary sources:
+
+      - **Per-trade inventory annotations** (always on): the
+        ``{<price> <ccy>}`` cost-basis braces on buys and the
+        ``{} @ <price> <ccy>`` market-price annotation on sells in
+        ``data_dir/*.beancount`` give one price point per trade
+        date per ISIN.
+      - **Monthly-statement valuations** (opt-in via ``--statement``):
+        Pictet's portfolio-valuation page lists every held ISIN's
+        market price on the statement date, so a year of monthly
+        statements gives ~12 price points per holding regardless of
+        whether the position traded that month. This is what
+        densifies the price timeline for stale holdings (a fund
+        bought in 2022 and held since trades-derives only one price
+        on the buy date; statements add monthly quotes from then on).
+    """
+
+    _configure_logging(verbose)
+    output_path, total = prices_extract.generate(
+        data_dir=data_dir,
+        output=output,
+        statement_files=statements,
+    )
+    extras = (
+        f", {len(statements)} statement(s) merged" if statements else ""
+    )
+    err_console.print(
+        f"Wrote {output_path} ({total} price directive(s){extras})"
+    )
+
+
+@app.command()
 def portfolio(
     data_dir: Annotated[
         Path,
@@ -94,6 +163,17 @@ def portfolio(
             "multi-currency view; defaults to ``GBP``.",
         ),
     ] = ["GBP"],
+    booking_method: Annotated[
+        str,
+        typer.Option(
+            "--booking-method",
+            help="Inventory-reduction policy on sells. One of "
+            "``FIFO`` (first-in-first-out, the default), ``LIFO``, "
+            "``AVERAGE`` (weighted-average; deprecated in beancount v3), "
+            "``STRICT`` (sells must specify lot labels), or ``NONE``. "
+            "Pass an empty string to omit the directive.",
+        ),
+    ] = "FIFO",
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
     """Regenerate the portfolio-aggregate file (central account opens
@@ -104,6 +184,7 @@ def portfolio(
         data_dir=data_dir,
         output=output,
         operating_currencies=operating_currency,
+        booking_method=booking_method or None,
     )
     err_console.print(
         f"Wrote {output_path} ({total} accounts; "

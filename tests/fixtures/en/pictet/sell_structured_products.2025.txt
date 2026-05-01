@@ -1,0 +1,48 @@
+--- page 1/1 ---
+SECURITY
+Sell structured products
+Sell 360 BTC (COINSHARES) -ETC- 21/PERP at USD 88.16
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Client: FIRST MIDDLE LASTNAMES
+Account no.: P-123456.002
+Transaction no.: 1141960480 | Publication date: 28.11.2025
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 28.11.2025
+Value date 02.12.2025
+Booking date 28.11.2025
+Instruction
+Order type At Market
+Execution
+Operation type Sell
+Market place SIX Swiss Exchange (XSWX)
+Execution date 28.11.2025 at 11:04:54 am
+Executed quantity -360
+Execution price USD 88.16
+Gross amount USD 31'737.60
+Trading capacity Agent
+Costs
+Commission/Fee USD -200.79
+Transaction taxes USD -3.62
+Total USD -204.41
+Product details
+Asset type Structured products
+Maturity date perpetual
+Issuer COINSHARES DIGITAL SECURITIES
+LIMIT
+OUT of portfolio P-123456.002
+BTC (COINSHARES) -ETC- 21/PERP 360
+ISIN/Internal ref.: GB00BLD4ZL17 Telekurs ID/Internal ref.: 58943992 
+CASH EFFECTin portfolio P-123456.002
+Gross amount USD 31'737.60
+Costs USD -204.41
+Net amount USD 31'533.19
+Current account P-123456.002.00.USD/Ordinary IBAN?LU091980012345600200

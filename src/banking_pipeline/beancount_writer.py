@@ -434,7 +434,7 @@ def _render_security_sell_with_breakdown(
 
     Used for stock-exchange sales where Pictet prints a per-line ``Costes``
     block (``Corretaje y/o spread`` + ``Tasa bursátil`` etc.). The shape
-    differs from the simpler sell path on three points:
+    differs from the simpler sell path on two points:
 
       - Asset leg first (mirroring the switch_salida convention),
         followed by the fee legs, the FX-aware cash leg, and the
@@ -443,9 +443,17 @@ def _render_security_sell_with_breakdown(
         with the item's description as an inline ``; <description>``
         comment — preserves the audit detail Pictet prints rather than
         collapsing to a single aggregate fees leg.
-      - Income leg uses ``Income:<prefix>:<ISIN>`` (no ``:Realized``
-        suffix) — matches the convention the user's golden file
-        establishes for this shape.
+
+    Income leg uses the same ``Income:<prefix>:<portfolio>:<ISIN>:Realized``
+    shape as :func:`_render_security_trade` for unbroken consistency
+    across all sell paths. Earlier this builder emitted a bare-ISIN
+    ``Income:<prefix>:<portfolio>:<ISIN>`` form, a vestige of when the
+    builder also emitted an inline ``open Income:…`` directive (now
+    suppressed — opens are centralised in ``portfolio.beancount``).
+    The bare form is no longer needed, and unifying on ``:Realized``
+    means a future query for "all realised gain on this security"
+    is a single account-prefix match rather than a regex over both
+    forms.
 
     The existing :func:`_render_security_trade` sell path stays in
     place for sells without a breakdown (e.g. ``reembolso_final`` with
@@ -453,9 +461,7 @@ def _render_security_sell_with_breakdown(
     breakdown presence avoids disturbing those goldens.
 
     No inline ``open`` directive is emitted: account opens are
-    centralised in ``portfolio.beancount`` and an inline
-    ``Income:<prefix>:<ISIN>`` open here would duplicate the central
-    one and fail ``bean-check``.
+    centralised in ``portfolio.beancount``.
     """
 
     sec_ccy = tx.security_currency or tx.currency
@@ -517,10 +523,11 @@ def _render_security_sell_with_breakdown(
         )
     )
 
-    # Elastic income leg — beancount auto-balances against the cost
-    # basis pulled from inventory and the proceeds.
+    # Elastic ``Income:<prefix>:<portfolio>:<ISIN>:Realized`` posting —
+    # beancount auto-balances against the cost basis pulled from
+    # inventory and the cash proceeds.
     if tx.isin:
-        lines.append(f"  Income:{prefix}:{portfolio}:{isin}")
+        lines.append(f"  Income:{prefix}:{portfolio}:{isin}:Realized")
 
     # Trailing reference comment.
     if tx.transaction_number:

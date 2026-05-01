@@ -10,9 +10,12 @@ established by ``venta.beancount``:
   - Asset leg first (sell-from-inventory at market).
   - One expense leg per fee component with ``; <description>`` comment.
   - FX-aware cash leg with ``@@`` total-cost annotation.
-  - Elastic ``Income:<prefix>:<ISIN>`` posting (no ``:Realized``
-    suffix — distinct from the simpler sell-without-breakdown shape
-    used by ``reembolso_final``).
+  - Elastic ``Income:<prefix>:<portfolio>:<ISIN>:Realized`` posting —
+    same shape as the regular sell path. (Earlier this builder
+    emitted a bare-ISIN form without the ``:Realized`` suffix; the
+    suffix was unified across both sell paths after inline
+    ``open Income`` directives moved to the central
+    ``portfolio.beancount`` aggregate.)
   - Trailing ``no:`` reference comment.
 """
 
