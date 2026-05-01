@@ -33,6 +33,7 @@ from banking_pipeline.templates.pictet._common import (
     find_transaction_number,
     parse_pictet_date,
     resolve_account_number,
+    resolve_counterparty,
 )
 
 # Case-sensitive title gate — the load-bearing discriminator from
@@ -94,6 +95,11 @@ class PictetPagoEntranteTemplate:
                 title="Pago entrante",
                 currency=currency,
                 amount=amount,
+                # ``Ordenante`` → mapped income-account segment via
+                # ``settings.counterparty_account_map`` when the name
+                # resolves; ``None`` otherwise. Writer falls back to
+                # ``Income:<prefix>:<portfolio>:Other`` on those.
+                counterparty_account=resolve_counterparty(ordenante),
                 account_number=resolve_account_number(text, ES_LABELS),
                 transaction_number=find_transaction_number(text, ES_LABELS),
                 source_path=doc.path,

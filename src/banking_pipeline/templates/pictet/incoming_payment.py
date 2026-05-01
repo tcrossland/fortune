@@ -28,6 +28,7 @@ from banking_pipeline.templates.pictet._common import (
     find_transaction_number,
     parse_pictet_date,
     resolve_account_number,
+    resolve_counterparty,
 )
 
 
@@ -79,6 +80,12 @@ class PictetIncomingPaymentTemplate:
                 title="Incoming payment",
                 currency=currency,
                 amount=amount,
+                # ``Instructing party`` → mapped income-account segment
+                # via ``settings.counterparty_account_map`` when the
+                # name resolves; ``None`` otherwise. The writer routes
+                # the elastic counter-leg to the mapped account in
+                # place of the catch-all ``:Other`` placeholder.
+                counterparty_account=resolve_counterparty(instructing_party),
                 account_number=resolve_account_number(text, EN_LABELS),
                 transaction_number=find_transaction_number(text, EN_LABELS),
                 source_path=doc.path,

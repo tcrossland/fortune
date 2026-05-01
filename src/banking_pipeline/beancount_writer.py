@@ -1190,11 +1190,22 @@ def _render_third_party_payment(
             tx.currency,
         )
     )
-    # Elastic counter-leg, keyed on direction.
-    if tx.amount >= 0:
-        lines.append(f"  Income:{prefix}:{portfolio}:Other")
+    # Elastic counter-leg, keyed on direction. When the extractor
+    # resolved the counterparty name via
+    # ``settings.counterparty_account_map`` (e.g. ``Beneficiary``
+    # ``ACME EMPLOYER`` → ``External:Earnout:Acme``), use the mapped
+    # segment in place of the catch-all ``:Other`` placeholder. The
+    # ``Income:`` / ``Expenses:`` family is picked from the cash-leg
+    # sign, so a single map entry covers a counterparty that flows in
+    # either direction.
+    if tx.counterparty_account is not None:
+        counter_segment = tx.counterparty_account
     else:
-        lines.append(f"  Expenses:{prefix}:{portfolio}:Other")
+        counter_segment = f"{prefix}:{portfolio}:Other"
+    if tx.amount >= 0:
+        lines.append(f"  Income:{counter_segment}")
+    else:
+        lines.append(f"  Expenses:{counter_segment}")
 
     if tx.transaction_number:
         lines.append(f"  no: {tx.transaction_number}")

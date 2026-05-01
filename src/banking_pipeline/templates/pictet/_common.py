@@ -136,8 +136,19 @@ EN_LABELS = PictetLabels(
     transaction_number_re=re.compile(
         r"^Transaction\s+no\.\s*:\s*(\d+)", re.M
     ),
+    # Matches both ``Exchange rate (EUR/GBP): 9.99999999`` (used on
+    # internal-transfer and FX-buy advices, with the colon) and
+    # ``Execution rate (EUR/USD) 1.151695`` (used on spot and
+    # settle_fx_forward, no colon). Pictet uses two label words
+    # ("Exchange" / "Execution") for the same field across doctypes.
+    # ``Forward rate`` and ``Market rate`` lines on FX-forward
+    # advices are intentionally excluded — those are different
+    # quotes (the contractual forward rate and the spot reference
+    # rate) and should not be confused with the actual conversion
+    # rate the cash flow used.
     exchange_rate_re=re.compile(
-        r"\bExchange\s+rate\b[^:]*:\s*([\d.]+)", re.I
+        r"\b(?:Exchange|Execution)\s+rate\b\s*(?:\([^)]+\))?\s*:?\s*([\d.]+)",
+        re.I,
     ),
     headline_verbs=("Purchase", "Sale", "Buy", "Sell"),
 )
@@ -609,6 +620,40 @@ def resolve_account_number(
         validated = normalise_iban(iban)
         if validated:
             return validated
+    return None
+
+
+def resolve_counterparty(name: str | None) -> str | None:
+    """Map a third-party counterparty name to the writer's account
+    segment via :data:`settings.counterparty_account_map`.
+
+    Looks up substrings from the map; the first map entry whose key is
+    a substring of ``name`` (case-insensitive) wins. Returns the
+    mapped account segment (e.g., ``"External:Earnout:Acme"``) on a
+    hit; ``None`` otherwise — the writer falls back to the catch-all
+    ``Income:<prefix>:<portfolio>:Other`` /
+    ``Expenses:<prefix>:<portfolio>:Other`` shape on those.
+
+    The map is empty by default. Populate via the
+    ``BANKPIPE_COUNTERPARTY_ACCOUNT_MAP`` env var or the
+    ``counterparty_account_map`` field on
+    :class:`banking_pipeline.config.Settings`.
+
+    Mirrors :func:`payment._resolve_counter_account` (which maps
+    self-to-self banks) — same substring-match shape but a different
+    map and a different writer route.
+    """
+
+    # Local import to avoid a module-load circle: ``settings`` reads
+    # env vars at import time and pulls in pydantic-settings.
+    from banking_pipeline.config import settings
+
+    if not name:
+        return None
+    upper = name.upper()
+    for needle, segment in settings.counterparty_account_map.items():
+        if needle.upper() in upper:
+            return segment
     return None
 
 

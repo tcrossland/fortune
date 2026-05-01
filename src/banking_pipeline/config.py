@@ -54,5 +54,34 @@ class Settings(BaseSettings):
         }
     )
 
+    # Counterparty-name → account-segment map. Used by the writer's
+    # third-party-payment path (incoming + outgoing wires that aren't
+    # self-to-self) to route the elastic counter-leg to a named
+    # account instead of the catch-all ``:Other`` placeholder.
+    #
+    # Lookup is a case-insensitive substring match on Pictet's printed
+    # name field — ``Beneficiary`` for outgoing PAYMENT, ``Instructing
+    # party`` for INCOMING_PAYMENT, ``Ordenante`` for PAGO_ENTRANTE.
+    # The first map entry whose key is a substring of the name wins.
+    #
+    # The mapped value is the account segment after the family root —
+    # the writer prepends ``Income:`` for incoming payments (cash in)
+    # and ``Expenses:`` for outgoing (cash out), so a single map entry
+    # covers both directions for a counterparty that flows both ways
+    # (rare; most are unidirectional).
+    #
+    # Examples::
+    #
+    #     {
+    #         "ACME EMPLOYER": "External:Earnout:Acme",
+    #         "JOHN SMITH LAW FIRM": "External:Legal:Smith",
+    #     }
+    #
+    # ``ACME EMPLOYER`` paying you produces ``Income:External:Earnout:Acme``;
+    # paying ``JOHN SMITH LAW FIRM`` produces ``Expenses:External:Legal:Smith``.
+    # Override via ``BANKPIPE_COUNTERPARTY_ACCOUNT_MAP`` env var as a
+    # JSON-encoded dict, or by editing this default.
+    counterparty_account_map: dict[str, str] = Field(default_factory=dict)
+
 
 settings = Settings()

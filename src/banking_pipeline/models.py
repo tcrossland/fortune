@@ -414,6 +414,24 @@ class Transaction(BaseModel):
     gross_amount: Decimal | None = None
     counter_account: str | None = None
 
+    # --- Third-party counterparty routing ------------------------------
+    # Set on third-party PAYMENT / INCOMING_PAYMENT / PAGO_ENTRANTE
+    # advices when the printed counterparty name (``Beneficiary`` /
+    # ``Instructing party`` / ``Ordenante``) matches a substring needle
+    # in :data:`banking_pipeline.config.settings.counterparty_account_map`.
+    # The mapped value is the account segment after the family root;
+    # the writer prepends ``Income:`` (cash in) or ``Expenses:`` (cash
+    # out) and emits the elastic counter-leg there instead of the
+    # catch-all ``Income:<prefix>:<portfolio>:Other`` /
+    # ``Expenses:<prefix>:<portfolio>:Other`` placeholder. ``None`` on
+    # advices that don't resolve, falling back to the elastic shape.
+    #
+    # Distinct from ``counter_account`` (which carries an account-name
+    # *segment* used in self-to-self routing as ``Assets:<segment>:<ccy>``);
+    # ``counterparty_account`` carries a path *segment* used as
+    # ``Income:<segment>`` / ``Expenses:<segment>``.
+    counterparty_account: str | None = None
+
     # --- Account identifiers --------------------------------------------
     account_number: str | None = None  # IBAN, broker account, etc.
     # Pictet's per-document reference (``N° de transacción``). Emitted by

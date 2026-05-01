@@ -49,6 +49,7 @@ from banking_pipeline.templates.pictet._common import (
     find_transaction_number,
     parse_pictet_date,
     resolve_account_number,
+    resolve_counterparty,
 )
 
 def _resolve_counter_account(bank_field: str | None) -> str | None:
@@ -190,6 +191,17 @@ class PictetPaymentTemplate:
             if costs_match is not None:
                 fees_currency, fees = costs_match  # type: ignore[assignment]
 
+        # Counterparty resolution — only when self-to-self routing
+        # didn't fire (counter_account is None, i.e., the destination
+        # bank isn't in beneficiary_bank_map). On genuine third-party
+        # outgoing wires the Beneficiary name is the load-bearing
+        # signal for routing the elastic ``Expenses:...`` leg.
+        counterparty_account = (
+            resolve_counterparty(beneficiary)
+            if counter_account is None
+            else None
+        )
+
         return [
             Transaction(
                 trade_date=parse_pictet_date(trade_date_raw),
@@ -207,6 +219,7 @@ class PictetPaymentTemplate:
                 amount=amount,
                 gross_amount=gross_amount,  # type: ignore[arg-type]
                 counter_account=counter_account,
+                counterparty_account=counterparty_account,
                 fees=fees,  # type: ignore[arg-type]
                 fees_currency=fees_currency,  # type: ignore[arg-type]
                 account_number=resolve_account_number(text, EN_LABELS),
