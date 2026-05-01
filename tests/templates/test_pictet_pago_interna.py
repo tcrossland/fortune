@@ -53,3 +53,8 @@ def test_pago_interna_extracts_single_transaction() -> None:
     # K- prefix because this is the Luxembourg-issued ES advice (the
     # other ES fixtures use P-).
     assert tx.account_number == "K-999999.999"
+    # Source-bank resolution: ``Banco REVOLUT PAYMENTS UAB`` matches
+    # the ``REVOLUT`` needle in ``settings.beneficiary_bank_map``,
+    # producing the ``Revolut`` segment that the writer routes the
+    # source-leg debit to.
+    assert tx.counter_account == "Revolut"

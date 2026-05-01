@@ -125,33 +125,44 @@ _FEE_ADVICE_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.DEBITO_DE_GASTOS,
 })
 
-# Doctypes routed through ``_render_third_party_payment`` — simple
-# cash-in/cash-out entries with an elastic ``Income:<prefix>:Other``
-# (incoming) or ``Expenses:<prefix>:Other`` (outgoing) posting that
-# beancount auto-balances. Direction is keyed on the cash-leg sign
-# inside the renderer; the doctype membership just routes here.
+# Doctypes routed through ``_render_third_party_payment``. The
+# renderer handles four shapes, picked on what the extractor
+# populated:
 #
-# ``PAGO_INTERNA`` (self-to-self) stays on the legacy Jinja
-# ``_CASH_IN_TEMPLATE`` for now — its real shape is asset→asset across
-# the user's own external accounts, not income/expense, and that needs
-# a separate builder once a golden lands.
+#   - ``counter_account`` + ``gross_amount`` → outgoing self-to-self
+#     three-leg form (PAYMENT → Revolut etc.).
+#   - ``counter_account`` + positive ``amount`` → incoming
+#     self-to-self two-leg form (PAGO_INTERNA: Revolut → Pictet).
+#   - no ``counter_account``, positive ``amount`` → genuine
+#     third-party incoming, elastic ``Income:<prefix>:<portfolio>:Other``.
+#   - no ``counter_account``, negative ``amount`` → genuine
+#     third-party outgoing, elastic ``Expenses:<prefix>:<portfolio>:Other``.
 _THIRD_PARTY_PAYMENT_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.INCOMING_PAYMENT,
     DocumentType.PAGO_ENTRANTE,
+    DocumentType.PAGO_INTERNA,
     DocumentType.PAYMENT,
 })
 
 # Doctypes routed through ``_render_internal_transfer`` — cross-currency
-# book transfers between the user's own current accounts. The single
-# entry holds the source-currency debit leg, the destination-currency
-# credit leg with an ``@@ <abs_source> <src_ccy>`` annotation, and the
-# trailing ``no:`` reference. ``SPOT`` keeps using the legacy
-# ``_FX_LEG_TEMPLATE`` until it gets its own golden; ``FX_FORWARD``'s
-# template returns ``[]`` (the opening has no cash impact; the matching
-# ``SETTLE_FX_FORWARD`` advice books the cash exchange at maturity and
-# is routed through ``_render_fx_settlement`` — see below).
+# book transfers between two of the user's own current accounts. The
+# single entry holds the source-currency debit leg, the
+# destination-currency credit leg with an ``@@ <abs_source> <src_ccy>``
+# annotation, and the trailing ``no:`` reference. Both
+# ``INTERNAL_TRANSFER`` and ``SPOT`` produce the same shape: source
+# and destination are both ``Assets:Pic:<portfolio>:<ccy>`` accounts
+# at the same Pictet portfolio, with FX inside the document. Earlier
+# ``SPOT`` rendered through the legacy ``_FX_LEG_TEMPLATE`` which
+# emitted two entries balanced against ``Equity:Uncategorized``;
+# routing it here gives a single self-balancing entry.
+#
+# ``FX_FORWARD``'s template returns ``[]`` (the opening has no cash
+# impact; the matching ``SETTLE_FX_FORWARD`` advice books the cash
+# exchange at maturity and is routed through ``_render_fx_settlement``
+# below).
 _INTERNAL_TRANSFER_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.INTERNAL_TRANSFER,
+    DocumentType.SPOT,
 })
 
 # Doctypes routed through ``_render_fx_settlement`` — physical-settlement
@@ -318,24 +329,6 @@ def _inline_open_directive(
     return f"{entry_date} open Assets:{prefix}:{portfolio}:{tx.isin} {tx.isin}\n"
 
 
-_CASH_IN_TEMPLATE = _ENV.from_string(
-    """\
-{{ tx.trade_date }} * "{{ narration }}"
-  Assets:{{ prefix }}:{{ tx.account_number | portfolio_segment }}:{{ tx.currency }}  {{ tx.amount }} {{ tx.currency }}
-  Equity:Uncategorized                           {{ -tx.amount }} {{ tx.currency }}
-"""
-)
-
-# Single cash leg of an FX trade or internal transfer. Two of these per
-# document balance each other when viewed together; each is valid alone.
-_FX_LEG_TEMPLATE = _ENV.from_string(
-    """\
-{{ tx.trade_date }} * "{{ narration }}"
-  Assets:{{ prefix }}:{{ tx.account_number | portfolio_segment }}:{{ tx.currency }}  {{ tx.amount }} {{ tx.currency }}
-  Equity:Uncategorized                           {{ -tx.amount }} {{ tx.currency }}
-"""
-)
-
 _TEMPLATES = {
     # --- Security trades ---
     # Routed through ``_render_security_trade`` (the Python builder), not
@@ -369,24 +362,22 @@ _TEMPLATES = {
     # doctype that never landed a fixture and has been removed from
     # the model entirely.
     # --- Cash movements ---
-    # ``INCOMING_PAYMENT`` and ``PAYMENT`` route through
-    # ``_render_third_party_payment`` (the Python builder); see
-    # ``_THIRD_PARTY_PAYMENT_TYPES``. ``PAGO_INTERNA`` (self-to-self)
-    # stays on the legacy ``_CASH_IN_TEMPLATE`` for now — its real
-    # shape is asset→asset across the user's own external accounts,
-    # not income/expense, which needs a separate builder.
-    DocumentType.PAGO_INTERNA: _CASH_IN_TEMPLATE,
+    # ``INCOMING_PAYMENT`` / ``PAYMENT`` / ``PAGO_ENTRANTE`` /
+    # ``PAGO_INTERNA`` all route through ``_render_third_party_payment``
+    # (the Python builder); see ``_THIRD_PARTY_PAYMENT_TYPES``.
+    # ``PAGO_INTERNA`` is the Spanish-locale incoming self-to-self
+    # variant (Revolut → Pictet) and uses the same renderer's
+    # incoming-self-to-self branch — counter_account resolves the
+    # source bank via ``settings.beneficiary_bank_map``.
     # --- FX advices ---
-    # ``INTERNAL_TRANSFER`` routes through ``_render_internal_transfer``
-    # (a Python builder) — see ``_INTERNAL_TRANSFER_TYPES``.
-    # ``SETTLE_FX_FORWARD`` routes through ``_render_fx_settlement`` —
-    # see ``_FX_SETTLEMENT_TYPES``. ``FX_FORWARD``'s template returns
-    # ``[]`` (the contract opening has no cash impact; the matching
-    # ``SETTLE_FX_FORWARD`` advice books the cash exchange at maturity),
-    # so the writer never sees a Transaction for it. ``SPOT`` keeps
-    # the legacy two-leg-per-document Jinja path for now until it
-    # gets its own golden.
-    DocumentType.SPOT: _FX_LEG_TEMPLATE,
+    # ``INTERNAL_TRANSFER`` and ``SPOT`` route through
+    # ``_render_internal_transfer`` (Python builder) — see
+    # ``_INTERNAL_TRANSFER_TYPES``. ``SETTLE_FX_FORWARD`` routes
+    # through ``_render_fx_settlement`` — see ``_FX_SETTLEMENT_TYPES``.
+    # ``FX_FORWARD``'s template returns ``[]`` (the contract opening
+    # has no cash impact; the matching ``SETTLE_FX_FORWARD`` advice
+    # books the cash exchange at maturity), so the writer never sees
+    # a Transaction for it.
     # --- Non-cash events ---
     DocumentType.LIMIT_EXTENSION: _ENV.from_string(
         """\
@@ -1061,42 +1052,58 @@ def _render_third_party_payment(
 ) -> str:
     """Render a third-party / self-to-self payment advice as a beancount entry.
 
-    Three render shapes, keyed on what the extractor populated:
+    Four render shapes, keyed on what the extractor populated:
 
-    **Self-to-self payment** (``tx.counter_account`` set — outgoing
-    payment to one of the user's own external accounts, e.g. Revolut)::
+    **Outgoing self-to-self payment** (``tx.counter_account`` set,
+    ``tx.gross_amount`` set, ``tx.amount < 0`` — user wired to one of
+    their own external accounts, e.g. Pictet → Revolut)::
 
         <booking_date> * "<title>" "<narration>"
           Assets:<counter_account>:<currency>     <gross_amount> <ccy> ; Gross amount
           Assets:<prefix>:<portfolio>:<currency>  <amount>      <ccy> ; Net amount
-          Expenses:<prefix>:Fees:<ccy>            <abs_fees>    <ccy> ; Payment fees
+          Expenses:<prefix>:<portfolio>:Fees:<ccy>  <abs_fees>  <ccy> ; Payment fees
           no: <transaction_number>
 
     Three legs that balance arithmetically: the user receives
     ``gross_amount`` in their external account, the Pictet portfolio's
     cash account decreases by ``amount`` (which is gross + fees, signed
-    negative), and the wire fee posts to ``Expenses:<prefix>:Fees:<ccy>``.
+    negative), and the wire fee posts to
+    ``Expenses:<prefix>:<portfolio>:Fees:<ccy>``.
 
-    **Incoming third-party payment** (``tx.amount > 0`` — third party
-    paid the user)::
+    **Incoming self-to-self payment** (``tx.counter_account`` set,
+    ``tx.amount > 0`` — user-owned external account credited the
+    Pictet portfolio, e.g. Revolut → Pictet)::
+
+        <booking_date> * "<title>" "<narration>"
+          Assets:<prefix>:<portfolio>:<currency>  <amount>  <ccy>
+          Assets:<counter_account>:<currency>     -<amount> <ccy>
+          no: <transaction_number>
+
+    Two legs that balance: Pictet portfolio credited with the cash
+    in, the source external account debited with the same amount.
+    No fee leg in the typical case (Pictet's incoming Pago Interna
+    advice doesn't carry a Pictet-side fee).
+
+    **Incoming third-party payment** (no ``counter_account``,
+    ``tx.amount > 0`` — external counterparty paid the user)::
 
         <booking_date> * "<title>" "<narration>"
           Assets:<prefix>:<portfolio>:<currency>  <amount> <ccy>
-          Income:<prefix>:Other
+          Income:<prefix>:<portfolio>:Other
           no: <transaction_number>
 
-    **Outgoing third-party payment** (``tx.amount < 0`` — user paid a
-    third party who isn't them)::
+    **Outgoing third-party payment** (no ``counter_account``,
+    ``tx.amount < 0`` — user paid an external counterparty)::
 
         <booking_date> * "<title>" "<narration>"
           Assets:<prefix>:<portfolio>:<currency>  <amount> <ccy>
-          Expenses:<prefix>:Other
+          Expenses:<prefix>:<portfolio>:Other
           no: <transaction_number>
 
-    The elastic counter-leg ``Income:<prefix>:Other`` /
-    ``Expenses:<prefix>:Other`` carries no amount; beancount
-    auto-balances against the cash leg. ``Other`` is a placeholder
-    that the user can rewire to payer/payee-specific accounts.
+    The elastic counter-leg ``Income:<prefix>:<portfolio>:Other`` /
+    ``Expenses:<prefix>:<portfolio>:Other`` carries no amount;
+    beancount auto-balances against the cash leg. ``Other`` is a
+    placeholder the user can rewire to payer/payee-specific accounts.
     """
 
     entry_date = tx.booking_date or tx.trade_date
@@ -1108,7 +1115,7 @@ def _render_third_party_payment(
 
     portfolio = _portfolio_segment(tx.account_number)
 
-    # --- Self-to-self three-leg shape ---------------------------------
+    # --- Outgoing self-to-self three-leg shape -------------------------
     if tx.counter_account is not None and tx.gross_amount is not None:
         # Destination leg — user's external account credited with the
         # principal sent. Positive amount, no portfolio (the external
@@ -1146,7 +1153,36 @@ def _render_third_party_payment(
             lines.append(f"  no: {tx.transaction_number}")
         return "\n".join(lines) + "\n"
 
-    # --- Two-leg-elastic shape (incoming / non-self-to-self outgoing) -
+    # --- Incoming self-to-self two-leg shape ---------------------------
+    # Source-bank resolution succeeded (counter_account set) and the
+    # cash leg is positive (Pictet receiving the wire). Mirror of the
+    # outgoing three-leg shape with the legs sign-flipped and no fee
+    # leg — incoming Pago Interna advices don't carry a Pictet-side
+    # fee.
+    if tx.counter_account is not None and tx.amount >= 0:
+        # Destination leg — Pictet portfolio credited with the cash
+        # in, signed as Pictet printed it.
+        lines.append(
+            _align(
+                _cash_account(prefix, tx.account_number, tx.currency),
+                _format_amount(tx.amount),
+                tx.currency,
+            )
+        )
+        # Source leg — user's external account debited with the same
+        # amount, sign-flipped to balance.
+        lines.append(
+            _align(
+                f"Assets:{tx.counter_account}:{tx.currency}",
+                _format_amount(-tx.amount),
+                tx.currency,
+            )
+        )
+        if tx.transaction_number:
+            lines.append(f"  no: {tx.transaction_number}")
+        return "\n".join(lines) + "\n"
+
+    # --- Two-leg-elastic shape (genuine third-party in either direction) -
     lines.append(
         _align(
             _cash_account(prefix, tx.account_number, tx.currency),
@@ -1325,21 +1361,19 @@ def _render_internal_transfer(
     single entry rather than splitting into two ``Equity:Uncategorized``-
     balanced entries.
 
-    Skips its job if ``counter_currency`` / ``counter_amount`` aren't
-    populated (legacy callers that built ``Transaction`` objects without
-    the cross-leg fields), falling back to a single-leg render via
-    ``_FX_LEG_TEMPLATE``-style shape — but in practice every fresh
-    extraction populates both fields.
+    Falls back to the default Jinja template if ``counter_currency`` /
+    ``counter_amount`` aren't populated (legacy callers that built
+    ``Transaction`` objects without the cross-leg fields). In
+    practice every current extractor populates both fields, so the
+    fallback is a defensive only.
     """
 
     if tx.counter_currency is None or tx.counter_amount is None:
-        # Defensive fallback: legacy/incomplete Transaction. Render the
-        # single leg with the legacy account naming so the entry at
-        # least balances against ``Equity:Uncategorized``.
-        return _TEMPLATES[DocumentType.INTERNAL_TRANSFER].render(
-            tx=tx, doc_type=doc_type, narration=_escape(tx.narration)
-        ) if doc_type in _TEMPLATES else _DEFAULT_TEMPLATE.render(
-            tx=tx, doc_type=doc_type, narration=_escape(tx.narration)
+        return _DEFAULT_TEMPLATE.render(
+            tx=tx,
+            doc_type=doc_type,
+            prefix=prefix,
+            narration=_escape(tx.narration),
         )
 
     entry_date = tx.booking_date or tx.trade_date

@@ -44,7 +44,13 @@ class Settings(BaseSettings):
     # or by editing this default for project-local conventions.
     beneficiary_bank_map: dict[str, str] = Field(
         default_factory=lambda: {
-            "REVOLUT BANK UAB": "Revolut",
+            # Substring match against Pictet's printed bank field, so a
+            # single ``REVOLUT`` needle covers both Revolut Bank UAB
+            # (the licensed bank, named on outgoing wires) and Revolut
+            # Payments UAB (the EMI, named on incoming wires from
+            # Revolut Pay) — same external pot from the user's
+            # perspective.
+            "REVOLUT": "Revolut",
         }
     )
 

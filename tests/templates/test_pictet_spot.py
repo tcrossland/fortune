@@ -19,35 +19,38 @@ def test_spot_template_is_registered() -> None:
     assert TEMPLATE_REGISTRY["pictet.spot.v1"].template_id == "pictet.spot.v1"
 
 
-def test_spot_extracts_two_legs() -> None:
+def test_spot_extracts_single_two_leg_transaction() -> None:
     template = PictetSpotTemplate()
     txs = template.extract(_load("spot.txt"))
 
-    # Spot trade = two cash legs (sold currency out, bought currency in).
-    assert len(txs) == 2
-    sold, bought = txs
+    # The two CASH EFFECT blocks collapse into one Transaction —
+    # source on currency/amount (signed negative, cash out), dest on
+    # counter_currency/counter_amount (signed positive, cash in).
+    # Mirrors INTERNAL_TRANSFER's shape so the writer's
+    # ``_render_internal_transfer`` builder can render both with the
+    # same ``@@ <abs_source> <src_ccy>`` annotation form.
+    assert len(txs) == 1
+    tx = txs[0]
 
-    assert sold.trade_date == date(2026, 3, 16)
-    assert sold.settlement_date == date(2026, 3, 18)
-    assert sold.currency == "USD"
-    # Sold leg: cash leaves the USD account.
-    assert sold.amount == Decimal("-69920.99")
-    assert sold.account_number == "P-999999.999"
-
-    # Bought leg shares trade/settlement dates with sold (FX spot is
-    # settled T+2 on both sides).
-    assert bought.trade_date == date(2026, 3, 16)
-    assert bought.settlement_date == date(2026, 3, 18)
-    assert bought.currency == "EUR"
-    assert bought.amount == Decimal("60711.38")
-    assert bought.account_number == "P-999999.999"
-
-    # Shared narration carries the headline so the two legs are
-    # rejoinable as a single FX event by source_path or narration.
-    assert sold.narration == bought.narration
-    assert "Sell USD" in sold.narration
-    assert "Buy EUR" in sold.narration
-    assert "1.151695" in sold.narration
+    assert tx.title == "Spot"
+    assert tx.trade_date == date(2026, 3, 16)
+    assert tx.settlement_date == date(2026, 3, 18)
+    assert tx.booking_date == date(2026, 3, 16)
+    # Source (debit) leg.
+    assert tx.currency == "USD"
+    assert tx.amount == Decimal("-69920.99")
+    # Destination (credit) leg.
+    assert tx.counter_currency == "EUR"
+    assert tx.counter_amount == Decimal("60711.38")
+    # Both legs sit in the same Pictet portfolio.
+    assert tx.account_number == "P-999999.999"
+    # Headline preserved as narration.
+    assert "Sell USD" in tx.narration
+    assert "Buy EUR" in tx.narration
+    assert "1.151695" in tx.narration
+    # Exchange rate parsed off the in-block ``Execution rate`` line.
+    assert tx.exchange_rate == Decimal("1.151695")
+    assert tx.transaction_number == "1174874179"
 
 
 def test_spot_template_rejects_non_spot_doc() -> None:
