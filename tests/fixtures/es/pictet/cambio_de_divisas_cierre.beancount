@@ -1,0 +1,5 @@
+2023-07-10 * "Cambio de divisas a plazo (cierre)" "Compra GBP 635'000.00 contra EUR a 0.855819519497"
+  Assets:Pic:K123456001:EUR                      -744204.58 EUR
+  Expenses:Pic:K123456001:Spread:EUR                2225.71 EUR ; Forward spread
+  Assets:Pic:K123456001:GBP                       635000.00 GBP @@ 741978.87 EUR
+  no: 884473488

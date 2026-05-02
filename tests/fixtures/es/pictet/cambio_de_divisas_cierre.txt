@@ -1,0 +1,90 @@
+--- page 1/2 ---
+MERCADO DE DIVISAS
+Cambio de divisas a plazo (cierre)
+Compra GBP 635'000.00 contra EUR a 0.855819519497
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG / Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 
+Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/2 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 884473488 | Fecha de publicación: 10.07.2023
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 10.07.2023
+Fecha valor 10.07.2023
+Fecha contable 10.07.2023
+Contrato
+Número de contrato 34540550 O6KS
+Fecha de apertura 10.07.2023
+Fecha de vencimiento 10.07.2023
+Instrucción
+Fecha de la orden 10.07.2023 a las 12:08:44
+Tipo de orden Al mercado
+Ejecución
+Tipo de operación Compra
+Plaza bursátil Fuera de bolsa
+Fecha de ejecución 10.07.2023 a las 12:08:44
+Monto ejecutado GBP 635'000.00
+Tasa de ejecución
+(EUR/GBP)
+0.855819519497
+Importe bruto EUR -741'978.87
+Costes
+Spread EUR -2'225.71
+Total EUR -2'225.71
+Tipo de cambio
+Tipo al contado (EUR/GBP) 0.855899519497
+Ajuste (tipo a plazo) -0.000080000000
+Tipo a plazo (EUR/GBP) 0.855819519497
+Otro
+Contrapartida Bank Pictet & Cie (Europe) AG,
+succursale de Luxembourg
+ID de transacción único 549300GSSPQ1QSKI1376FXFWLUX
+884473477
+Tipo a plazo neto*
+(EUR/GBP)
+0.853260000000
+* incluyendo diferencial
+SALIDAde la cartera K-123456.001
+Forex Forward GBP/EUR, 10.07.23 (34540550) GBP 635'000.00
+ISIN: ZZ00XA4XVA 0 N° Telekurs: ZZZXA4XVA 
+ENTRADAen la cartera K-123456.001
+Forex Forward GBP/EUR, 10.07.23 (34540550) EUR 744'204.58
+ISIN: ZZ00XA4XVA 0 N° Telekurs: ZZZXA4XVA 
+EFECTO CASHen la cartera K-123456.001
+Importe bruto GBP 635'000.00
+Costes GBP 0.00
+Importe neto GBP 635'000.00
+Cuenta corriente K-123456.001.00.GBP/Ordinario IBAN?LU901980012345600100
+
+--- page 2/2 ---
+MERCADO DE DIVISAS
+Cambio de divisas a plazo (cierre)
+Compra GBP 635'000.00 contra EUR a 0.855819519497
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG / Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 
+Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+2/2 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 884473488 | Fecha de publicación: 10.07.2023
+S.E. & O.
+Atentamente
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Aviso sin firma
+EFECTO CASHen la cartera K-123456.001
+Importe bruto EUR -741'978.87
+Costes EUR -2'225.71
+Importe neto EUR -744'204.58
+Cuenta corriente K-123456.001.00.EUR/Ordinario IBAN?LU901980012345600100
+Nota:
+Este documento constituye y / o complementa la Confirmación o (según corresponda) el aviso de
+transacción, tal como se hace referencia en la documentación aplicable a dicha transacción. Consulte la
+documentación que se aplica a la transacción, como, entre otros, el TOFF, el Acuerdo Marco (para
+transacciones de derivados extrabursátiles), la Long Form Confirmation y/o las Condiciones comerciales
+generales del banco (en función de la aplicabilidad de cada documento a la transacción).
+Bank Pictet & Cie (Europe) AG actúa para esta transacción como Principal.

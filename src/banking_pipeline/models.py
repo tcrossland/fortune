@@ -93,6 +93,27 @@ class DocumentType(StrEnum):
     # ``Settle FX forward`` title and non-zero CASH EFFECT amounts.
     SETTLE_FX_FORWARD = "settle_fx_forward"
     SPOT = "spot"
+    # Spanish-locale FX advices issued by Pictet's Madrid branch under the
+    # ``MERCADO DE DIVISAS`` banner. The three sub-types mirror the EN
+    # ``SPOT`` / ``FX_FORWARD`` / ``SETTLE_FX_FORWARD`` triple:
+    #
+    #   - ``CAMBIO_DE_DIVISAS`` — spot FX exchange (``Cambio de divisas
+    #     al contado``). Two ``EFECTO CASH`` legs in opposite signs;
+    #     same render shape as ``SPOT`` (single Transaction with both
+    #     legs, routed through the internal-transfer builder).
+    #   - ``CAMBIO_DE_DIVISAS_APERTURA`` — forward opening
+    #     (``Cambio de divisas a plazo (apertura)``). Both ``EFECTO
+    #     CASH`` blocks carry zero — paper-trail only; the matching
+    #     ``CAMBIO_DE_DIVISAS_CIERRE`` advice books the cash leg at
+    #     maturity. No-emit (same precedent as ``FX_FORWARD``).
+    #   - ``CAMBIO_DE_DIVISAS_CIERRE`` — forward settlement
+    #     (``Cambio de divisas a plazo (cierre)``). Carries a ``Spread``
+    #     fee in one leg's currency; same render shape as
+    #     ``SETTLE_FX_FORWARD`` (fee-bearing leg + counter leg + spread
+    #     posting), routed through the fx-settlement builder.
+    CAMBIO_DE_DIVISAS = "cambio_de_divisas"
+    CAMBIO_DE_DIVISAS_APERTURA = "cambio_de_divisas_apertura"
+    CAMBIO_DE_DIVISAS_CIERRE = "cambio_de_divisas_cierre"
 
     # --- Income events ---
     DIVIDEND_NOTICE = "dividend_notice"

@@ -26,6 +26,15 @@ from banking_pipeline.writer.format import (
 
 FX_SETTLEMENT_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.SETTLE_FX_FORWARD,
+    # Spanish-locale FX-forward settlement ("MERCADO DE DIVISAS /
+    # Cambio de divisas a plazo (cierre)") — same fee-bearing-leg +
+    # counter-leg + spread shape as ``SETTLE_FX_FORWARD``, just from
+    # the Pictet Madrid template family. The advice prints the
+    # forward spread as ``Spread <CCY> <amount>`` (vs the EN
+    # sibling's ``Forward spread``); the template flattens both into
+    # the same ``Transaction.fees`` field so this builder stays
+    # locale-agnostic.
+    DocumentType.CAMBIO_DE_DIVISAS_CIERRE,
 })
 
 

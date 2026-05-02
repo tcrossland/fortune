@@ -48,8 +48,8 @@ def _load(name: str) -> RawDocument:
     )
 
 
-def test_switch_entrada_202308_renders_to_golden_beancount() -> None:
-    txs = PictetSwitchEntradaTemplate().extract(_load("switch_entrada.202308.txt"))
+def test_switch_entrada_2023_renders_to_golden_beancount() -> None:
+    txs = PictetSwitchEntradaTemplate().extract(_load("switch_entrada.2023.txt"))
     assert len(txs) == 1, "Expected exactly one transaction from the fixture"
 
     classification = Classification(
@@ -66,12 +66,12 @@ def test_switch_entrada_202308_renders_to_golden_beancount() -> None:
     )
 
     rendered = beancount_writer.render_entry(txs[0], classification)
-    golden = (FIXTURES / "switch_entrada.202308.beancount").read_text(
+    golden = (FIXTURES / "switch_entrada.2023.beancount").read_text(
         encoding="utf-8"
     )
 
     assert rendered == golden, (
-        "Rendered switch_entrada.202308 entry doesn't match the golden file.\n"
+        "Rendered switch_entrada.2023 entry doesn't match the golden file.\n"
         f"--- rendered ---\n{rendered}"
         f"--- golden ---\n{golden}"
     )

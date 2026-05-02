@@ -39,6 +39,10 @@ INTERNAL_TRANSFER_TYPES: frozenset[DocumentType] = frozenset({
     # ``Internal money transfer``.
     DocumentType.TRANSFERENCIA_INTERNA,
     DocumentType.SPOT,
+    # Spanish-locale spot FX trade ("MERCADO DE DIVISAS / Cambio de
+    # divisas al contado") — same two-cash-leg shape as ``SPOT``, just
+    # in the Pictet Madrid template family.
+    DocumentType.CAMBIO_DE_DIVISAS,
 })
 
 

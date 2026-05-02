@@ -890,6 +890,106 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
             re.compile(r"\bSubtotal\b", re.I),
         ),
     ),
+    # ES-locale FX advices ("MERCADO DE DIVISAS"). The three sub-types
+    # share the same banner, the same Pictet ES portfolio shorthand
+    # (``EFECTO CASHen la cartera``), and the same headline shape
+    # (``Compra``/``Venta`` <CCY> <amount> contra <CCY> a <rate>);
+    # the load-bearing discriminators are the title qualifiers
+    # ``al contado`` (spot) vs. ``a plazo (apertura)`` /
+    # ``a plazo (cierre)`` (forward open / close). The cierre rule
+    # additionally fires on the ``Spread <CCY>`` cost line that's
+    # absent from both the apertura (no fees on opening) and the
+    # spot (no forward spread).
+    #
+    # NOTE: ``CAMBIO_DE_DIVISAS_CIERRE`` is listed BEFORE the apertura
+    # variant on purpose. Settlement and opening advices share the
+    # ``a plazo`` qualifier and the ``Forex Forward`` security
+    # narrative, so the apertura rule's patterns also fire on a
+    # cierre fixture (matching the shared markers). Listing cierre
+    # first lets ``RuleClassifier``'s strict ``>`` tie-break keep
+    # cierre on settlement docs while the apertura rule still wins
+    # on opening docs (where cierre's spread/cost-line markers
+    # miss). Mirrors the EN ``SETTLE_FX_FORWARD``-before-``FX_FORWARD``
+    # ordering above.
+    Rule(
+        doc_type=DocumentType.CAMBIO_DE_DIVISAS_CIERRE,
+        template_id="pictet.cambio_de_divisas_cierre.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            re.compile(r"\bMERCADO\s+DE\s+DIVISAS\b", re.I),
+            # Title — load-bearing tell from the apertura/spot variants.
+            re.compile(
+                r"^Cambio\s+de\s+divisas\s+a\s+plazo\s+\(cierre\)\s*$",
+                re.M | re.I,
+            ),
+            # Forward-spread cost — present on cierre, absent on
+            # apertura (which has zero costs) and on spot (which has
+            # no costs section at all).
+            re.compile(
+                r"^Spread\s+[A-Z]{3}\s+-?\d", re.M
+            ),
+            # Settlement-only execution rate line (cierre prints the
+            # rate the cash settled at; apertura prints only the
+            # contract's forward rate).
+            re.compile(r"\bTasa\s+de\s+ejecuci[oó]n\b", re.I),
+            # Security narrative — shared with the apertura advice;
+            # included so the cierre rule still scores 5/5 on the
+            # settlement document.
+            re.compile(r"\bForex\s+Forward\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.CAMBIO_DE_DIVISAS_APERTURA,
+        template_id="pictet.cambio_de_divisas_apertura.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            re.compile(r"\bMERCADO\s+DE\s+DIVISAS\b", re.I),
+            # Title — load-bearing tell from the cierre/spot variants.
+            re.compile(
+                r"^Cambio\s+de\s+divisas\s+a\s+plazo\s+\(apertura\)\s*$",
+                re.M | re.I,
+            ),
+            # Contract-block markers — apertura always carries them;
+            # spot doesn't (spot is a single-event advice with no
+            # contract identity).
+            re.compile(r"\bN[uú]mero\s+de\s+contrato\b", re.I),
+            re.compile(r"\bFecha\s+de\s+vencimiento\b", re.I),
+            # Security narrative shared with the cierre advice; the
+            # title pattern above is what separates them.
+            re.compile(r"\bForex\s+Forward\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.CAMBIO_DE_DIVISAS,
+        template_id="pictet.cambio_de_divisas.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            re.compile(r"\bMERCADO\s+DE\s+DIVISAS\b", re.I),
+            # Title — load-bearing tell from the apertura/cierre
+            # variants.
+            re.compile(
+                r"^Cambio\s+de\s+divisas\s+al\s+contado\s*$",
+                re.M | re.I,
+            ),
+            # Spot trades carry the ``SPOTLUX`` suffix on the
+            # ``ID de transacción único`` line — the EN ``SPOT`` rule
+            # uses the same marker, and the forward variants use
+            # ``FXFWLUX`` instead.
+            re.compile(r"SPOTLUX\b"),
+            # ``Tipo de operación`` line confirms the document is a
+            # trade advice rather than the ``MERCADO DE DIVISAS``
+            # banner appearing on a portfolio statement.
+            re.compile(
+                r"\btipo\s+de\s+(?:operaci[oó]n|ejecuci[oó]n)\s+(?:compra|venta)\b",
+                re.I,
+            ),
+            # Both legs post into ``EFECTO CASH`` blocks, same as the
+            # forward variants. Pictet's PDF-to-text extractor
+            # sometimes glues the words ("EFECTO CASHen la cartera"),
+            # so we don't require a space.
+            re.compile(r"\bEFECTO\s*CASH"),
+        ),
+    ),
     Rule(
         doc_type=DocumentType.ESTADO_MENSUAL,
         template_id="pictet.estado_mensual.v1",

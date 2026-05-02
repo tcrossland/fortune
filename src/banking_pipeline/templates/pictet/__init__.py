@@ -15,11 +15,12 @@ Templates are organised by locale:
     ``limit_extension``, ``order_information_report``, ``payment``,
     ``redemption_notice``, ``settle_fx_forward``, ``spot``,
     ``subscription_notice``.
-  - Spanish (Madrid branch): ``compra``, ``debito_de_gastos``,
-    ``distribucion``, ``factura``, ``pago_entrante``, ``pago_interna``,
-    ``reembolso``, ``reembolso_final``, ``suscripcion``,
-    ``switch_entrada``, ``switch_salida``, ``transferencia_interna``,
-    ``venta``.
+  - Spanish (Madrid branch): ``cambio_de_divisas``,
+    ``cambio_de_divisas_apertura``, ``cambio_de_divisas_cierre``,
+    ``compra``, ``debito_de_gastos``, ``distribucion``, ``factura``,
+    ``pago``, ``pago_entrante``, ``pago_interna``, ``reembolso``,
+    ``reembolso_final``, ``suscripcion``, ``switch_entrada``,
+    ``switch_salida``, ``transferencia_interna``, ``venta``.
 """
 
 from __future__ import annotations
@@ -29,6 +30,15 @@ from banking_pipeline.templates.pictet.buy_etf import PictetBuyEtfTemplate
 from banking_pipeline.templates.pictet.buy_shares import PictetBuySharesTemplate
 from banking_pipeline.templates.pictet.buy_structured_products import (
     PictetBuyStructuredProductsTemplate,
+)
+from banking_pipeline.templates.pictet.cambio_de_divisas import (
+    PictetCambioDeDivisasTemplate,
+)
+from banking_pipeline.templates.pictet.cambio_de_divisas_apertura import (
+    PictetCambioDeDivisasAperturaTemplate,
+)
+from banking_pipeline.templates.pictet.cambio_de_divisas_cierre import (
+    PictetCambioDeDivisasCierreTemplate,
 )
 from banking_pipeline.templates.pictet.compra import PictetCompraTemplate
 from banking_pipeline.templates.pictet.debit_of_fees import PictetDebitOfFeesTemplate
@@ -113,6 +123,9 @@ PICTET_TEMPLATES: tuple[object, ...] = (
     PictetBuyEtfTemplate(),
     PictetBuySharesTemplate(),
     PictetBuyStructuredProductsTemplate(),
+    PictetCambioDeDivisasTemplate(),
+    PictetCambioDeDivisasAperturaTemplate(),
+    PictetCambioDeDivisasCierreTemplate(),
     PictetCompraTemplate(),
     PictetDebitOfFeesTemplate(),
     PictetDebitoDeGastosTemplate(),
@@ -153,6 +166,9 @@ __all__ = [
     "PictetBuyEtfTemplate",
     "PictetBuySharesTemplate",
     "PictetBuyStructuredProductsTemplate",
+    "PictetCambioDeDivisasTemplate",
+    "PictetCambioDeDivisasAperturaTemplate",
+    "PictetCambioDeDivisasCierreTemplate",
     "PictetCompraTemplate",
     "PictetDebitOfFeesTemplate",
     "PictetDebitoDeGastosTemplate",

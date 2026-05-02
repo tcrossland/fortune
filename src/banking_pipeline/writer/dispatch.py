@@ -81,6 +81,11 @@ from banking_pipeline.writer.format import bank_prefix, portfolio_segment
 # postings if a statement classifies but its template misses.
 NO_EMIT_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.FX_FORWARD,
+    # ES-locale FX-forward opening — companion of ``FX_FORWARD`` from
+    # Pictet Madrid. Both ``EFECTO CASH`` blocks carry zero amounts;
+    # the matching ``CAMBIO_DE_DIVISAS_CIERRE`` advice books the cash
+    # exchange at maturity.
+    DocumentType.CAMBIO_DE_DIVISAS_APERTURA,
     # Periodic-valuation statements (English / Pictet Luxembourg).
     DocumentType.MONTHLY_STATEMENT,
     DocumentType.QUARTERLY_STATEMENT,

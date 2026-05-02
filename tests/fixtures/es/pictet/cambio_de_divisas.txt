@@ -1,0 +1,54 @@
+--- page 1/1 ---
+MERCADO DE DIVISAS
+Cambio de divisas al contado
+Venta USD -314'751.92 contra GBP a 1.284784
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG / Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 
+Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 884472676 | Fecha de publicación: 10.07.2023
+S.E. & O.
+Atentamente
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 10.07.2023
+Fecha valor 10.07.2023
+Fecha contable 10.07.2023
+Instrucción
+Fecha de la orden 10.07.2023 a las 12:03:51
+Tipo de orden Al mercado
+Ejecución
+Tipo de operación Venta
+Plaza bursátil Fuera de bolsa
+Fecha de ejecución 10.07.2023 a las 12:03:52
+Monto ejecutado USD -314'751.92
+Tasa de ejecución
+(GBP/USD)
+1.284784
+Importe bruto GBP 244'984.31
+Otro
+Contrapartida Bank Pictet & Cie (Europe) AG,
+succursale de Luxembourg
+ID de transacción único 549300GSSPQ1QSKI1376SPOTLUX
+884472676
+EFECTO CASHen la cartera K-123456.001
+Importe bruto USD -314'751.92
+Importe neto USD -314'751.92
+Cuenta corriente K-123456.001.00.USD/Ordinario IBAN?LU901980012345600100
+EFECTO CASHen la cartera K-123456.001
+Importe bruto GBP 244'984.31
+Importe neto GBP 244'984.31
+Cuenta corriente K-123456.001.00.GBP/Ordinario IBAN?LU901980012345600100
+Nota:
+Este documento constituye y / o complementa la Confirmación o (según corresponda) el aviso de
+transacción, tal como se hace referencia en la documentación aplicable a dicha transacción. Consulte la
+documentación que se aplica a la transacción, como, entre otros, el TOFF, el Acuerdo Marco (para
+transacciones de derivados extrabursátiles), la Long Form Confirmation y/o las Condiciones comerciales
+generales del banco (en función de la aplicabilidad de cada documento a la transacción).
+Bank Pictet & Cie (Europe) AG actúa para esta transacción como Principal.

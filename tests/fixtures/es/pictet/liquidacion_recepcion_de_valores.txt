@@ -1,0 +1,37 @@
+--- page 1/1 ---
+LIQUIDACIÓN
+RECEPCIÓN DE VALORES (GRATUITA)
+ARCHIVE
+0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 742426196 | Fecha de publicación: 15.12.2021
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 14.12.2021
+Fecha valor 14.12.2021
+Fecha contable 15.12.2021
+Transferencia
+Fecha 14.12.2021
+Valor de mercado CHF 45'508.24
+Tipo de cambio (CHF/EUR) 0.9600476183618707
+Estimacion de transferencia EUR 43'690.08
+Coste unitario Transferencias al valor del
+mercado actual
+Ordenante
+Banco ING BANK NV
+Ciudad MADRID
+Pais España
+ENTRADA en la cartera K-123456.001
+PICTET-ST MONEY MARKET EUR-I 319.20882
+ISIN: LU0128494944 N° Telekurs: 1226070 
+EFECTO CASH en la cartera K-123456.001
+Importe bruto EUR 0.00
+Costes EUR 0.00
+Importe neto EUR 0.00
