@@ -61,9 +61,9 @@ class PictetFinalRedemptionTemplate:
 
         subject = find_subject_line(text, "Redemption")
         narration = (
-            f"Pictet final redemption - {subject}"
+            f"Final redemption - {subject}"
             if subject
-            else "Pictet final redemption"
+            else "Final redemption"
         )[:140]
 
         tx = Transaction(
