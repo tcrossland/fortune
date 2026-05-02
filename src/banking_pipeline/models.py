@@ -142,6 +142,18 @@ class DocumentType(StrEnum):
     # the user routes the payer to) rather than to a self-owned external
     # asset account.
     PAGO_ENTRANTE = "pago_entrante"
+    # Spanish-locale outgoing third-party payment — counterpart to the
+    # English ``PAYMENT`` doctype. Pictet prints it under ``TRÁFICO DE
+    # PAGOS / Pago`` (mixed-case ``Pago``, alone on its own line) with
+    # a ``Beneficiario`` block carrying the destination details. Same
+    # render shape as ``PAYMENT``: self-to-self three-leg form when
+    # the destination bank resolves via ``beneficiary_bank_map``;
+    # third-party two-leg-elastic form otherwise (with optional
+    # counterparty-name routing via ``counterparty_account_map``).
+    # Distinct from ``PAGO_ENTRANTE`` (mixed-case ``Pago entrante``,
+    # incoming third-party) and ``PAGO_INTERNA`` (all-caps ``PAGO
+    # ENTRANTE``, incoming self-to-self).
+    PAGO = "pago"
 
     # --- Periodic financial statements ---
     # Monthly portfolio report ("Financial Statement", "As at <day> <month>

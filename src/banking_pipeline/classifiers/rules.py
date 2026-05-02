@@ -799,6 +799,36 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
             re.compile(r"\bEFECTO\s+CASH\s*en\s+la\s+cartera\b", re.I),
         ),
     ),
+    # ES-locale outgoing third-party payment — Pictet prints the title
+    # as a bare ``Pago`` (mixed case, on its own line) under the
+    # ``TRÁFICO DE PAGOS`` banner. The two-character title is short but
+    # the load-bearing distinction from the incoming variants is the
+    # ``Beneficiario`` field (vs the incoming variants' ``Ordenante``);
+    # the title's ``^Pago\s*$`` anchor and the case-sensitivity rule
+    # the case-shifted ``PAGO ENTRANTE`` / mixed-case ``Pago entrante``
+    # variants out.
+    Rule(
+        doc_type=DocumentType.PAGO,
+        template_id="pictet.pago.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            re.compile(r"\bTR[ÁA]FICO\s+DE\s+PAGOS\b", re.I),
+            # Title — case-sensitive bare ``Pago`` on its own line.
+            # ``re.I`` deliberately omitted so this doesn't match the
+            # all-caps ``PAGO ENTRANTE`` self-to-self variant.
+            re.compile(r"^Pago\s*$", re.M),
+            # The load-bearing distinction from incoming wires
+            # (which use ``Ordenante``).
+            re.compile(r"\bBeneficiario\b", re.I),
+            # ES-specific outgoing-fee label — distinguishes from the
+            # incoming variants which don't carry ES-locale fees on
+            # the receiving side.
+            re.compile(r"\bGastos\s+de\s+pago\b", re.I),
+            # Free-text wire memo, present on outgoing advices and
+            # absent (or named differently) on incoming.
+            re.compile(r"\bComunicaci[oó]n\b", re.I),
+        ),
+    ),
     Rule(
         doc_type=DocumentType.ESTADO_MENSUAL,
         template_id="pictet.estado_mensual.v1",

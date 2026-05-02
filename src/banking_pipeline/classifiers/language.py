@@ -30,7 +30,6 @@ from anthropic import Anthropic
 from banking_pipeline.config import settings
 from banking_pipeline.models import Language, LanguageClassification, RawDocument
 
-
 # Stopword lists kept non-overlapping. Every entry below is either (a)
 # exclusive to its language or (b) so overwhelmingly more common in that
 # language that cross-hits don't distort the ranking. The lists mix two
@@ -152,13 +151,13 @@ class LanguageRuleClassifier:
         )
 
 
-_LLM_SYSTEM = """You identify the language a document is written in.
+_LLM_SYSTEM = f"""You identify the language a document is written in.
 Return a single JSON object with keys:
-  - language: an ISO 639-1 two-letter code, one of {languages}
+  - language: an ISO 639-1 two-letter code, one of {[lang.value for lang in Language]}
   - confidence: float in [0, 1]
 If the document is too short or mixed to decide, return language="unknown" and
 a low confidence. Do not include any other text.
-""".format(languages=[lang.value for lang in Language])
+"""
 
 
 @dataclass

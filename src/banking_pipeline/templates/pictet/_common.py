@@ -430,7 +430,7 @@ def find_fee_breakdown(
     *,
     costs_label: str = "Costes",
     total_label: str = "Total",
-) -> list["FeeItem"]:
+) -> list[FeeItem]:
     """Walk the ``Costes`` / ``Costs`` block and extract per-line fee items.
 
     Pictet quarterly fee advices print a costs block with one line per
@@ -551,7 +551,7 @@ def find_switch_fund_name(text: str, side: str) -> str | None:
         rf"^{re.escape(side)}\s*(?:de|en)\s+la\s+cartera\b", re.I
     )
     quantity_tail_re = re.compile(
-        rf"\s+-?\d{{1,3}}(?:'\d{{3}})*(?:\.\d+)?\s*$"
+        r"\s+-?\d{1,3}(?:'\d{3})*(?:\.\d+)?\s*$"
     )
     lines = text.splitlines()
     for i, line in enumerate(lines):

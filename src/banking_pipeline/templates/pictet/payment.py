@@ -52,6 +52,7 @@ from banking_pipeline.templates.pictet._common import (
     resolve_counterparty,
 )
 
+
 def _resolve_counter_account(bank_field: str | None) -> str | None:
     """Map Pictet's ``Bank`` field to the destination account-name segment.
 

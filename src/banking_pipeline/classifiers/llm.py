@@ -10,12 +10,12 @@ from anthropic import Anthropic
 from banking_pipeline.config import settings
 from banking_pipeline.models import Classification, DocumentType, RawDocument
 
-_SYSTEM = """You are an expert at classifying banking correspondence.
+_SYSTEM = f"""You are an expert at classifying banking correspondence.
 Return a single JSON object with keys:
-  - document_type: one of {types}
+  - document_type: one of {[t.value for t in DocumentType]}
   - confidence: float in [0, 1]
 Do not include any other text.
-""".format(types=[t.value for t in DocumentType])
+"""
 
 
 @dataclass

@@ -1,0 +1,35 @@
+--- page 1/1 ---
+TRÁFICO DE PAGOS
+Pago
+ARCHIVE
+0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 819390728 | Fecha de publicación: 28.10.2022
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 28.10.2022
+Fecha valor 28.10.2022
+Fecha contable 28.10.2022
+Fecha de la orden 28.10.2022 a las 12:30:33
+Pago
+Beneficiario NOMBRE BENEFICIARIO
+IBAN ES99 9999 9999 9999 9999 9999
+Banco BANCO SANTANDER SA
+Pais España
+Comunicación X2420238V
+Importe bruto EUR 666'666.66
+Costes
+Gastos de pago EUR -22.22
+Total EUR -22.22
+EFECTO CASHen la cartera K-123456.001
+Importe bruto EUR -666'666.66
+Costes EUR -22.22
+Importe neto EUR -666'688.88
+Cuenta corriente K-123456.001.00.EUR/Ordinario IBAN?LU901980012345600100

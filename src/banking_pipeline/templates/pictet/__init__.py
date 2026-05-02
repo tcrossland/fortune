@@ -59,6 +59,7 @@ from banking_pipeline.templates.pictet.limit_extension import (
 from banking_pipeline.templates.pictet.order_information_report import (
     PictetOrderInformationReportTemplate,
 )
+from banking_pipeline.templates.pictet.pago import PictetPagoTemplate
 from banking_pipeline.templates.pictet.pago_entrante import (
     PictetPagoEntranteTemplate,
 )
@@ -117,6 +118,7 @@ PICTET_TEMPLATES: tuple[object, ...] = (
     PictetInternalTransferTemplate(),
     PictetLimitExtensionTemplate(),
     PictetOrderInformationReportTemplate(),
+    PictetPagoTemplate(),
     PictetPagoEntranteTemplate(),
     PictetPagoInternaTemplate(),
     PictetPaymentTemplate(),
@@ -154,6 +156,7 @@ __all__ = [
     "PictetInternalTransferTemplate",
     "PictetLimitExtensionTemplate",
     "PictetOrderInformationReportTemplate",
+    "PictetPagoTemplate",
     "PictetPagoEntranteTemplate",
     "PictetPagoInternaTemplate",
     "PictetPaymentTemplate",

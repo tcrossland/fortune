@@ -125,12 +125,12 @@ class BankRuleClassifier:
         return BankClassification(bank=best_bank, confidence=confidence, source="rules")
 
 
-_LLM_SYSTEM = """You identify which bank issued a piece of banking correspondence.
+_LLM_SYSTEM = f"""You identify which bank issued a piece of banking correspondence.
 Return a single JSON object with keys:
-  - bank: one of {banks}
+  - bank: one of {[b.value for b in BankId]}
   - confidence: float in [0, 1]
 If you can't tell, return bank="unknown" and a low confidence. Do not include any other text.
-""".format(banks=[b.value for b in BankId])
+"""
 
 
 @dataclass

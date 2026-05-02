@@ -10,7 +10,12 @@ import structlog
 import typer
 from rich.console import Console
 
-from banking_pipeline import beancount_writer, portfolio_aggregate, prices_extract
+from banking_pipeline import (
+    balances_extract,
+    beancount_writer,
+    portfolio_aggregate,
+    prices_extract,
+)
 from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.classifiers.bank import BANK_RULES, BankRuleClassifier
 from banking_pipeline.classifiers.language import LANGUAGE_RULES, LanguageRuleClassifier
@@ -130,6 +135,63 @@ def prices(
     )
     err_console.print(
         f"Wrote {output_path} ({total} price directive(s){extras})"
+    )
+
+
+@app.command()
+def balances(
+    data_dir: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Directory where ``balances.beancount`` will be written.",
+        ),
+    ],
+    statements: Annotated[
+        list[Path],
+        typer.Option(
+            "--statement",
+            help="Pictet monthly-statement PDF (or pre-extracted "
+            "``.txt`` dump). Repeat for multiple statements; one "
+            "balance assertion per holding and per cash sub-account "
+            "is emitted, dated one day after each statement's "
+            "``As at`` anchor (beancount's beginning-of-day "
+            "evaluation convention).",
+        ),
+    ] = [],
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Balances output file. Defaults to "
+            "``<data_dir>/balances.beancount``.",
+        ),
+    ] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Extract per-holding and per-cash-sub-account balance
+    assertions from Pictet monthly statements.
+
+    The output is consumed by ``bean-check`` on every load: the
+    moment the running ledger drifts from the statement's recorded
+    inventory (a missed ingest, an extraction bug, a writer
+    regression), the next load fails with the source statement
+    date in the error message.
+    """
+
+    _configure_logging(verbose)
+    output_path, total = balances_extract.generate(
+        data_dir=data_dir,
+        statement_files=statements,
+        output=output,
+    )
+    err_console.print(
+        f"Wrote {output_path} ({total} balance assertion(s) "
+        f"from {len(statements)} statement(s))"
     )
 
 

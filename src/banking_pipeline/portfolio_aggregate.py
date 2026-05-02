@@ -279,10 +279,13 @@ def generate(
         output = data_dir / "portfolio.beancount"
 
     # Auxiliary files that the aggregate ``include``s but doesn't
-    # treat as transaction sources. Currently just ``prices.beancount``
-    # (the price-database extracted from per-trade inventory
-    # annotations); add more here as new auxiliary outputs land.
-    aux_filenames = ("prices.beancount",)
+    # treat as transaction sources. ``prices.beancount`` is the
+    # price-database extracted from per-trade inventory annotations
+    # (and optionally monthly-statement valuations);
+    # ``balances.beancount`` is the per-holding /
+    # per-cash-sub-account assertion set extracted from monthly
+    # statements. Both are optional — included only when present.
+    aux_filenames = ("prices.beancount", "balances.beancount")
     aux_present = [
         name for name in aux_filenames if (data_dir / name).is_file()
     ]

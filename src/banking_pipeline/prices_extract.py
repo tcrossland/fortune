@@ -38,7 +38,6 @@ from collections.abc import Iterable
 from datetime import date
 from pathlib import Path
 
-
 # English and Spanish month names, lowercased for case-insensitive
 # lookup. Both locales' Pictet statements anchor the valuation date as
 # ``<day> <Month> <year>``; the locale-specific month name is the only
