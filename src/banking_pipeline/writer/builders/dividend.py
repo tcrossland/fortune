@@ -20,6 +20,11 @@ from banking_pipeline.writer.format import (
 
 DIVIDEND_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.DIVIDEND_NOTICE,
+    # Spanish-locale fund distribution / ordinary dividend — same
+    # income-leg + cash-leg shape, just emitted in Spanish under
+    # ``Distribución / Dividendo ordinario`` rather than ``Distribution
+    # / Ordinary dividend``.
+    DocumentType.DISTRIBUCION,
 })
 
 

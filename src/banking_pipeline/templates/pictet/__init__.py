@@ -15,9 +15,10 @@ Templates are organised by locale:
     ``limit_extension``, ``order_information_report``, ``payment``,
     ``redemption_notice``, ``settle_fx_forward``, ``spot``,
     ``subscription_notice``.
-  - Spanish (Madrid branch): ``compra``, ``debito_de_gastos``, ``factura``,
-    ``pago_entrante``, ``pago_interna``, ``reembolso``, ``reembolso_final``,
-    ``suscripcion``, ``switch_entrada``, ``switch_salida``, ``venta``.
+  - Spanish (Madrid branch): ``compra``, ``debito_de_gastos``,
+    ``distribucion``, ``factura``, ``pago_entrante``, ``pago_interna``,
+    ``reembolso``, ``reembolso_final``, ``suscripcion``,
+    ``switch_entrada``, ``switch_salida``, ``venta``.
 """
 
 from __future__ import annotations
@@ -32,6 +33,9 @@ from banking_pipeline.templates.pictet.compra import PictetCompraTemplate
 from banking_pipeline.templates.pictet.debit_of_fees import PictetDebitOfFeesTemplate
 from banking_pipeline.templates.pictet.debito_de_gastos import (
     PictetDebitoDeGastosTemplate,
+)
+from banking_pipeline.templates.pictet.distribucion import (
+    PictetDistribucionTemplate,
 )
 from banking_pipeline.templates.pictet.dividend_notice import (
     PictetDividendNoticeTemplate,
@@ -108,6 +112,7 @@ PICTET_TEMPLATES: tuple[object, ...] = (
     PictetCompraTemplate(),
     PictetDebitOfFeesTemplate(),
     PictetDebitoDeGastosTemplate(),
+    PictetDistribucionTemplate(),
     PictetDividendNoticeTemplate(),
     PictetFacturaTemplate(),
     PictetFinalRedemptionTemplate(),
@@ -146,6 +151,7 @@ __all__ = [
     "PictetCompraTemplate",
     "PictetDebitOfFeesTemplate",
     "PictetDebitoDeGastosTemplate",
+    "PictetDistribucionTemplate",
     "PictetDividendNoticeTemplate",
     "PictetFacturaTemplate",
     "PictetFinalRedemptionTemplate",

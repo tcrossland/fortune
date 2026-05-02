@@ -681,6 +681,34 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
+        doc_type=DocumentType.DISTRIBUCION,
+        template_id="pictet.distribucion.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Banner — shared with REEMBOLSO_FINAL and (rare future ES
+            # security-event variants); load-bearing only in combination
+            # with the title patterns below.
+            re.compile(r"^\s*HECHOS\s+RELEVANTES\s*$", re.M | re.I),
+            # Subtitle — the load-bearing discriminator from REEMBOLSO_FINAL
+            # (whose subtitle is ``Reembolso final``). Anchored to a full
+            # line so unrelated mentions of the word don't false-match.
+            re.compile(r"^Distribuci[oó]n\s*$", re.M | re.I),
+            # ES counterpart of ``Ordinary dividend`` / ``Extraordinary``
+            # / ``Special`` from the EN DIVIDEND_NOTICE rule.
+            re.compile(r"\bDividendo\s+(?:ordinario|extraordinario|especial)\b", re.I),
+            # Income-per-unit line — unique to distributions among ES
+            # security-event advices (reembolso_final uses ``Precio de
+            # rembolso`` instead).
+            re.compile(r"\bRenta\s+unitaria\b", re.I),
+            # Held-quantity field — ``Cantidad detenida`` is Pictet's ES
+            # label for the underlying position that generated the
+            # distribution. Shared with reembolso_final's ``CANTIDAD
+            # DETENIDA`` block but the four patterns above already
+            # separate this rule from that one.
+            re.compile(r"\bCantidad\s+detenida\b", re.I),
+        ),
+    ),
+    Rule(
         doc_type=DocumentType.REEMBOLSO_FINAL,
         template_id="pictet.reembolso_final.v1",
         bank=BankId.PICTET,

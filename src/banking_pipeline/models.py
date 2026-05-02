@@ -224,6 +224,15 @@ class DocumentType(StrEnum):
     # ``Tipo de operación`` / ``Plaza bursátil`` and uses ``Cantidad`` /
     # ``Precio de rembolso`` instead of the trade-advice labels.
     REEMBOLSO_FINAL = "reembolso_final"
+    # Spanish-locale fund distribution / ordinary dividend — Pictet's
+    # Madrid-branch counterpart to the EN ``DIVIDEND_NOTICE``. Issued under
+    # ``HECHOS RELEVANTES / Distribución / Dividendo ordinario`` when a
+    # held fund pays an income distribution. Field skeleton mirrors the
+    # EN advice: ``Cantidad detenida`` (Quantity held) records the
+    # underlying position and ``Renta unitaria`` (Income per unit)
+    # records the per-share dividend; trade/value/booking dates align
+    # with ex/payment/booking dates the same way.
+    DISTRIBUCION = "distribucion"
 
     UNKNOWN = "unknown"
 

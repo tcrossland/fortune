@@ -1,0 +1,42 @@
+--- page 1/1 ---
+HECHOS RELEVANTES
+Distribución
+Dividendo ordinario
+ARCHIVE
+0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+1/1 
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 829677165 | Fecha de publicación: 08.12.2022
+S.E. & O.
+Atentamente
+Pictet & Cie (Europe) S.A.
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 01.12.2022
+Fecha valor 08.12.2022
+Fecha contable 08.12.2022
+Hechos relevantes
+Frecuencia Anual
+Período 01.12.2022 - 30.11.2023
+Fecha Ex 01.12.2022
+Fecha de pago 08.12.2022
+Dividendo - MUZINICH-SUST.CREDIT S HGD EUR
+Tipo Dividendo ordinario
+Cantidad detenida 1'415.198
+Renta unitaria EUR 1.444955
+Importe bruto EUR 2'044.90
+Otro
+Fecha de última distribución 01.06.2022
+Depósito ALLFUNDS BANK INTERNATIONAL
+SA
+CANTIDAD DETENIDAen la cartera K-123456.001
+MUZINICH-SUST.CREDIT S HGD EUR 1'415.198
+ISIN: IE00B8Y2XY28 N° Telekurs: 26853607 
+EFECTO CASHen la cartera K-123456.001
+Importe bruto EUR 2'044.90
+Costes EUR 0.00
+Importe neto EUR 2'044.90
+Cuenta corriente K-123456.001.00.EUR/Ordinario IBAN?LU901980012345600100

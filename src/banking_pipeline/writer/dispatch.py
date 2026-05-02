@@ -187,7 +187,7 @@ def render_open_directives(
             portfolio = portfolio_segment(tx.account_number)
             if doc_type in SECURITY_TRADE_TYPES:
                 asset_accounts[(prefix, portfolio, isin)] = commodity
-            elif doc_type == DocumentType.DIVIDEND_NOTICE:
+            elif doc_type in DIVIDEND_TYPES:
                 income_accounts[(prefix, portfolio, isin)] = commodity
 
     lines: list[str] = []
