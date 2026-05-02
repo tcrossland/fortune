@@ -34,6 +34,7 @@ from banking_pipeline.writer.builders import (
     render_security_trade,
     render_switch_trade,
     render_third_party_payment,
+    render_transfer_in,
 )
 from banking_pipeline.writer.builders.bond_trade import BOND_TRADE_TYPES
 from banking_pipeline.writer.builders.dividend import DIVIDEND_TYPES
@@ -51,6 +52,7 @@ from banking_pipeline.writer.builders.security_trade import (
     SECURITY_TRADE_TYPES,
 )
 from banking_pipeline.writer.builders.switch_trade import SWITCH_TYPES
+from banking_pipeline.writer.builders.transfer_in import TRANSFER_IN_TYPES
 from banking_pipeline.writer.format import bank_prefix, portfolio_segment
 
 # Doctypes that produce no beancount output whatsoever — neither the
@@ -86,6 +88,11 @@ NO_EMIT_TYPES: frozenset[DocumentType] = frozenset({
     # the matching ``CAMBIO_DE_DIVISAS_CIERRE`` advice books the cash
     # exchange at maturity.
     DocumentType.CAMBIO_DE_DIVISAS_APERTURA,
+    # ES-locale free-of-payment securities-transfer pre-notice —
+    # informational only, the paired ``RECEPCION_DE_VALORES`` advice
+    # books the position at the cost basis the originating custodian
+    # establishes at transfer.
+    DocumentType.LIQUIDACION_AVISO_PREVIO_RECEPCION,
     # Periodic-valuation statements (English / Pictet Luxembourg).
     DocumentType.MONTHLY_STATEMENT,
     DocumentType.QUARTERLY_STATEMENT,
@@ -192,6 +199,13 @@ def render_open_directives(
             portfolio = portfolio_segment(tx.account_number)
             if doc_type in SECURITY_TRADE_TYPES:
                 asset_accounts[(prefix, portfolio, isin)] = commodity
+            elif doc_type in TRANSFER_IN_TYPES:
+                # Transfer-in advices open a new ISIN-keyed asset
+                # account just like a security buy — the position
+                # arrives with a cost basis and lives in the same
+                # ``Assets:<prefix>:<portfolio>:<ISIN>`` slot a
+                # subsequent buy of the same ISIN would land in.
+                asset_accounts[(prefix, portfolio, isin)] = commodity
             elif doc_type in DIVIDEND_TYPES:
                 income_accounts[(prefix, portfolio, isin)] = commodity
 
@@ -255,6 +269,8 @@ def _render_transaction(
         return render_internal_transfer(tx, doc_type, prefix)
     if doc_type in FX_SETTLEMENT_TYPES:
         return render_fx_settlement(tx, doc_type, prefix)
+    if doc_type in TRANSFER_IN_TYPES:
+        return render_transfer_in(tx, doc_type, prefix)
     if doc_type in DIVIDEND_TYPES:
         return render_dividend(tx, doc_type, prefix)
     if doc_type in INTEREST_TYPES:

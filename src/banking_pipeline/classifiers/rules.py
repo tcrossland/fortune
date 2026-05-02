@@ -990,6 +990,75 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
             re.compile(r"\bEFECTO\s*CASH"),
         ),
     ),
+    # ES-locale free-of-payment securities-transfer advices
+    # (``LIQUIDACIÓN`` banner). Two paired sub-types — pre-arrival
+    # notice and actual receipt — share most structural markers
+    # (the banner, ``ENTRADA en la cartera`` block, ``Ordenante``
+    # block describing the source bank, zero-amount ``EFECTO
+    # CASH`` block). The load-bearing discriminators are the
+    # standalone-line titles ``AVISO PREVIO - RECEPCIÓN DE
+    # VALORES`` (pre-notice) and ``RECEPCIÓN DE VALORES
+    # (GRATUITA)`` (actual receipt).
+    #
+    # Rule ordering: the recepcion rule is listed first so on a
+    # recepcion fixture (where both rules' shared markers fire) the
+    # strict ``>`` tie-break keeps recepcion winning over the
+    # aviso-previo. This is the same pattern used by
+    # SETTLE_FX_FORWARD-before-FX_FORWARD and CIERRE-before-APERTURA.
+    Rule(
+        doc_type=DocumentType.LIQUIDACION_RECEPCION_DE_VALORES,
+        template_id="pictet.liquidacion_recepcion_de_valores.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Banner — shared with the aviso-previo variant; the
+            # title pattern below is what separates them.
+            re.compile(r"^\s*LIQUIDACI[OÓ]N\s*$", re.M | re.I),
+            # Title — the load-bearing discriminator. ``GRATUITA``
+            # is what distinguishes a free-of-payment receipt from
+            # any future paid-transfer variants.
+            re.compile(
+                r"^RECEPCI[OÓ]N\s+DE\s+VALORES\s+\(GRATUITA\)\s*$",
+                re.M | re.I,
+            ),
+            # Cost-basis block — present on the recepcion, absent on
+            # the aviso-previo (which has only the announcement, not
+            # the post-arrival market-value computation). The
+            # ``Estimacion de transferencia`` line is the most
+            # reliable structural marker.
+            re.compile(r"\bEstimaci[oó]n\s+de\s+transferencia\b", re.I),
+            re.compile(r"\bValor\s+de\s+mercado\b", re.I),
+            # Position-arrival block shared with the aviso-previo;
+            # included so the rule denominator reaches 5 and the
+            # saturating confidence reaches ~0.95 on a clean match.
+            re.compile(r"\bENTRADA\s*en\s+la\s+cartera\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.LIQUIDACION_AVISO_PREVIO_RECEPCION,
+        template_id="pictet.liquidacion_aviso_previo_recepcion.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            re.compile(r"^\s*LIQUIDACI[OÓ]N\s*$", re.M | re.I),
+            # Title — the load-bearing discriminator from the
+            # recepcion sibling.
+            re.compile(
+                r"^AVISO\s+PREVIO\s*-\s*RECEPCI[OÓ]N\s+DE\s+VALORES\s*$",
+                re.M | re.I,
+            ),
+            # The ``Un aviso seguirá a la recepción real…``
+            # boilerplate — Pictet always prints this on the
+            # pre-notice; absent from the actual recepcion advice.
+            re.compile(
+                r"\bUn\s+aviso\s+seguir[aá]\s+a\s+la\s+recepci[oó]n\b",
+                re.I,
+            ),
+            # Position block shared with the recepcion sibling.
+            re.compile(r"\bENTRADA\s*en\s+la\s+cartera\b", re.I),
+            # Originating-bank block — both variants carry this; the
+            # title pattern above is what separates them.
+            re.compile(r"^Ordenante\s*$", re.M),
+        ),
+    ),
     Rule(
         doc_type=DocumentType.ESTADO_MENSUAL,
         template_id="pictet.estado_mensual.v1",

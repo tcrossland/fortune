@@ -18,9 +18,11 @@ Templates are organised by locale:
   - Spanish (Madrid branch): ``cambio_de_divisas``,
     ``cambio_de_divisas_apertura``, ``cambio_de_divisas_cierre``,
     ``compra``, ``debito_de_gastos``, ``distribucion``, ``factura``,
-    ``pago``, ``pago_entrante``, ``pago_interna``, ``reembolso``,
-    ``reembolso_final``, ``suscripcion``, ``switch_entrada``,
-    ``switch_salida``, ``transferencia_interna``, ``venta``.
+    ``liquidacion_aviso_previo_recepcion``,
+    ``liquidacion_recepcion_de_valores``, ``pago``, ``pago_entrante``,
+    ``pago_interna``, ``reembolso``, ``reembolso_final``,
+    ``suscripcion``, ``switch_entrada``, ``switch_salida``,
+    ``transferencia_interna``, ``venta``.
 """
 
 from __future__ import annotations
@@ -70,6 +72,12 @@ from banking_pipeline.templates.pictet.internal_transfer import (
 )
 from banking_pipeline.templates.pictet.limit_extension import (
     PictetLimitExtensionTemplate,
+)
+from banking_pipeline.templates.pictet.liquidacion_aviso_previo_recepcion import (
+    PictetLiquidacionAvisoPrevioRecepcionTemplate,
+)
+from banking_pipeline.templates.pictet.liquidacion_recepcion_de_valores import (
+    PictetLiquidacionRecepcionDeValoresTemplate,
 )
 from banking_pipeline.templates.pictet.order_information_report import (
     PictetOrderInformationReportTemplate,
@@ -139,6 +147,8 @@ PICTET_TEMPLATES: tuple[object, ...] = (
     PictetInterestScaleTemplate(),
     PictetInternalTransferTemplate(),
     PictetLimitExtensionTemplate(),
+    PictetLiquidacionAvisoPrevioRecepcionTemplate(),
+    PictetLiquidacionRecepcionDeValoresTemplate(),
     PictetOrderInformationReportTemplate(),
     PictetPagoTemplate(),
     PictetPagoEntranteTemplate(),
@@ -182,6 +192,8 @@ __all__ = [
     "PictetInterestScaleTemplate",
     "PictetInternalTransferTemplate",
     "PictetLimitExtensionTemplate",
+    "PictetLiquidacionAvisoPrevioRecepcionTemplate",
+    "PictetLiquidacionRecepcionDeValoresTemplate",
     "PictetOrderInformationReportTemplate",
     "PictetPagoTemplate",
     "PictetPagoEntranteTemplate",

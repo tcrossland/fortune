@@ -34,6 +34,9 @@ from banking_pipeline.writer.builders.security_trade import (
 from banking_pipeline.writer.builders.switch_trade import (
     render as render_switch_trade,
 )
+from banking_pipeline.writer.builders.transfer_in import (
+    render as render_transfer_in,
+)
 
 __all__ = [
     "render_bond_trade",
@@ -47,4 +50,5 @@ __all__ = [
     "render_security_trade",
     "render_switch_trade",
     "render_third_party_payment",
+    "render_transfer_in",
 ]

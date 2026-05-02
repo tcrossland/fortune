@@ -264,6 +264,34 @@ class DocumentType(StrEnum):
     # with ex/payment/booking dates the same way.
     DISTRIBUCION = "distribucion"
 
+    # --- Spanish-locale securities transfers (free-of-payment) ----------
+    # Pictet's Madrid branch issues these under ``LIQUIDACIÓN`` when
+    # securities move *into* a portfolio from another custodian without
+    # a cash payment (the originating bank delivers the position; no
+    # purchase happens at Pictet). Two paired sub-types cover the
+    # arrival, mirroring the FX_FORWARD/SETTLE_FX_FORWARD pattern:
+    #
+    #   - ``LIQUIDACION_AVISO_PREVIO_RECEPCION`` — pre-arrival notice
+    #     (``LIQUIDACIÓN / AVISO PREVIO - RECEPCIÓN DE VALORES``).
+    #     Pictet announces upcoming transfers from an external bank;
+    #     the document carries the ENTRADA blocks for the announced
+    #     positions but the comment ``Un aviso seguirá a la recepción
+    #     real de cada posición`` makes clear that this is informational
+    #     only — the actual booking happens in the paired
+    #     ``RECEPCION_DE_VALORES`` advice. No-emit (same precedent as
+    #     ``FX_FORWARD`` / ``CAMBIO_DE_DIVISAS_APERTURA``).
+    #
+    #   - ``LIQUIDACION_RECEPCION_DE_VALORES`` — actual receipt
+    #     (``LIQUIDACIÓN / RECEPCIÓN DE VALORES (GRATUITA)``). Books
+    #     the position with cost basis at the transfer's market value
+    #     (``Estimacion de transferencia EUR ...``). Renders through a
+    #     dedicated transfer-in builder that emits an asset leg with
+    #     total-cost ``{{<total> <ccy>, <lot_date>}}`` braces and an
+    #     ``Equity:<prefix>:<portfolio>:Transfers`` offset leg — no
+    #     cash leg, since the receipt is free of payment.
+    LIQUIDACION_AVISO_PREVIO_RECEPCION = "liquidacion_aviso_previo_recepcion"
+    LIQUIDACION_RECEPCION_DE_VALORES = "liquidacion_recepcion_de_valores"
+
     UNKNOWN = "unknown"
 
 
