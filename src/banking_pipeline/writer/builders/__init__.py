@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from banking_pipeline.writer.builders.bond_trade import render as render_bond_trade
 from banking_pipeline.writer.builders.dividend import render as render_dividend
+from banking_pipeline.writer.builders.fallback import render as render_fallback
 from banking_pipeline.writer.builders.fee_advice import render as render_fee_advice
 from banking_pipeline.writer.builders.fx_settlement import (
     render as render_fx_settlement,
@@ -20,6 +21,9 @@ from banking_pipeline.writer.builders.fx_settlement import (
 from banking_pipeline.writer.builders.interest import render as render_interest
 from banking_pipeline.writer.builders.internal_transfer import (
     render as render_internal_transfer,
+)
+from banking_pipeline.writer.builders.limit_extension import (
+    render as render_limit_extension,
 )
 from banking_pipeline.writer.builders.payment import (
     render as render_third_party_payment,
@@ -34,10 +38,12 @@ from banking_pipeline.writer.builders.switch_trade import (
 __all__ = [
     "render_bond_trade",
     "render_dividend",
+    "render_fallback",
     "render_fee_advice",
     "render_fx_settlement",
     "render_interest",
     "render_internal_transfer",
+    "render_limit_extension",
     "render_security_trade",
     "render_switch_trade",
     "render_third_party_payment",

@@ -12,10 +12,14 @@ Public surface:
   ``open`` directive per (bank, portfolio, ISIN).
 
 Internals are split by render shape under :mod:`banking_pipeline.writer.builders`,
-with bank-specific configuration under :mod:`banking_pipeline.writer.profile`
-and the dispatcher / routing tables under :mod:`banking_pipeline.writer.dispatch`.
-The legacy :mod:`banking_pipeline.beancount_writer` module re-exports this
-package's public API for callers that import the old path.
+with bank-specific configuration under :mod:`banking_pipeline.writer.profile`,
+shared formatting helpers in :mod:`banking_pipeline.writer.format`, and the
+dispatcher / routing tables in :mod:`banking_pipeline.writer.dispatch`. Every
+render shape is plain Python — there's no templating engine; output is
+assembled from f-strings via the helpers in ``format.py`` so the producer
+keeps a single, traceable execution path. The legacy
+:mod:`banking_pipeline.beancount_writer` module re-exports this package's
+public API for callers that import the old path.
 """
 
 from __future__ import annotations

@@ -1,4 +1,0 @@
-{{ tx.trade_date }} * "{{ narration }}"
-  ; TODO review — document type: {{ doc_type }}
-  Assets:{{ prefix }}:{{ tx.account_number | portfolio_segment }}:{{ tx.currency }}  {{ tx.amount }} {{ tx.currency }}
-  Equity:Uncategorized                           {{ -tx.amount }} {{ tx.currency }}

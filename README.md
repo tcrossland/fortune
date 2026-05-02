@@ -59,7 +59,6 @@ Every runtime dependency is MIT, BSD, or Apache-2.0 except `python-stdnum`
 | LLM fallback | `anthropic` | MIT | Official Claude SDK, supports tool use for structured output |
 | CLI | `typer` | MIT | Type-hint driven, Click-backed |
 | Pretty output | `rich` | MIT | Tables, colour, tracebacks |
-| Templating | `jinja2` | BSD-3-Clause | Beancount entry rendering |
 | Logging | `structlog` | Apache-2.0 / MIT | Structured logs for pipeline stages |
 
 ### Why not PyMuPDF?

@@ -4,9 +4,11 @@ The entry points :func:`render`, :func:`render_entry`, :func:`render_all`,
 and :func:`render_open_directives` route :class:`~banking_pipeline.models.Transaction`
 objects to the per-shape builder under
 :mod:`banking_pipeline.writer.builders` indicated by the document's
-:class:`~banking_pipeline.models.DocumentType`. Doctypes not handled by
-any builder fall through to the static Jinja templates registered in
-:mod:`banking_pipeline.writer.jinja_env`.
+:class:`~banking_pipeline.models.DocumentType`. Doctypes the dispatcher
+doesn't recognise fall through to
+:func:`banking_pipeline.writer.builders.fallback.render`, which emits a
+parseable but ``Equity:Uncategorized``-balanced entry with a ``TODO
+review`` audit comment.
 """
 
 from __future__ import annotations
@@ -23,10 +25,12 @@ from banking_pipeline.models import (
 from banking_pipeline.writer.builders import (
     render_bond_trade,
     render_dividend,
+    render_fallback,
     render_fee_advice,
     render_fx_settlement,
     render_interest,
     render_internal_transfer,
+    render_limit_extension,
     render_security_trade,
     render_switch_trade,
     render_third_party_payment,
@@ -39,17 +43,15 @@ from banking_pipeline.writer.builders.interest import INTEREST_TYPES
 from banking_pipeline.writer.builders.internal_transfer import (
     INTERNAL_TRANSFER_TYPES,
 )
+from banking_pipeline.writer.builders.limit_extension import (
+    LIMIT_EXTENSION_TYPES,
+)
 from banking_pipeline.writer.builders.payment import THIRD_PARTY_PAYMENT_TYPES
 from banking_pipeline.writer.builders.security_trade import (
     SECURITY_TRADE_TYPES,
 )
 from banking_pipeline.writer.builders.switch_trade import SWITCH_TYPES
-from banking_pipeline.writer.format import (
-    bank_prefix,
-    escape,
-    portfolio_segment,
-)
-from banking_pipeline.writer.jinja_env import DEFAULT_TEMPLATE, TEMPLATES
+from banking_pipeline.writer.format import bank_prefix, portfolio_segment
 
 # Doctypes that produce no beancount output whatsoever — neither the
 # ``;`` audit header nor any transaction lines. Used for documents
@@ -228,9 +230,12 @@ def _render_transaction(
     sets so :func:`render_open_directives` finds their ISINs), then
     bond trades (extra accrued-interest leg), then fee advices
     (multi-leg per-component breakdown), then payments / internal
-    transfers / FX settlements, then dividends / interest, and
-    finally regular security trades. Everything else falls through
-    to the Jinja templates registered in :mod:`banking_pipeline.writer.jinja_env`.
+    transfers / FX settlements, then dividends / interest, then
+    regular security trades, then non-cash limit-extension advices.
+    Everything else falls through to
+    :func:`banking_pipeline.writer.builders.fallback.render`, which
+    emits a parseable ``Equity:Uncategorized``-balanced entry with a
+    ``TODO review`` audit comment.
     """
 
     if doc_type in SWITCH_TYPES:
@@ -251,10 +256,6 @@ def _render_transaction(
         return render_interest(tx, doc_type, prefix)
     if doc_type in SECURITY_TRADE_TYPES:
         return render_security_trade(tx, doc_type, prefix)
-    template = TEMPLATES.get(doc_type, DEFAULT_TEMPLATE)
-    return template.render(
-        tx=tx,
-        doc_type=doc_type,
-        prefix=prefix,
-        narration=escape(tx.narration),
-    )
+    if doc_type in LIMIT_EXTENSION_TYPES:
+        return render_limit_extension(tx, doc_type, prefix)
+    return render_fallback(tx, doc_type, prefix)

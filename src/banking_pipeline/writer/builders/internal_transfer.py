@@ -21,6 +21,7 @@ exchange at maturity and is routed through
 from __future__ import annotations
 
 from banking_pipeline.models import DocumentType, Transaction
+from banking_pipeline.writer.builders.fallback import render as render_fallback
 from banking_pipeline.writer.format import (
     align,
     cash_account,
@@ -28,7 +29,6 @@ from banking_pipeline.writer.format import (
     header_line,
     transaction_number_comment,
 )
-from banking_pipeline.writer.jinja_env import DEFAULT_TEMPLATE
 
 INTERNAL_TRANSFER_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.INTERNAL_TRANSFER,
@@ -54,22 +54,16 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     single entry rather than splitting into two ``Equity:Uncategorized``-
     balanced entries.
 
-    Falls back to the default Jinja template if ``counter_currency`` /
-    ``counter_amount`` aren't populated (legacy callers that built
-    ``Transaction`` objects without the cross-leg fields). In
-    practice every current extractor populates both fields, so the
-    fallback is a defensive only.
+    Falls back to the catch-all
+    :mod:`banking_pipeline.writer.builders.fallback` builder if
+    ``counter_currency`` / ``counter_amount`` aren't populated
+    (legacy callers that built ``Transaction`` objects without the
+    cross-leg fields). In practice every current extractor populates
+    both fields, so the fallback is defensive only.
     """
 
     if tx.counter_currency is None or tx.counter_amount is None:
-        from banking_pipeline.writer.format import escape
-
-        return DEFAULT_TEMPLATE.render(
-            tx=tx,
-            doc_type=doc_type,
-            prefix=prefix,
-            narration=escape(tx.narration),
-        )
+        return render_fallback(tx, doc_type, prefix)
 
     lines: list[str] = [header_line(tx)]
 
