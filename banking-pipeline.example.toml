@@ -56,3 +56,19 @@ balances = false     # ``banking-pipeline balances <data_dir> --statement ...``
 # Uncomment and populate when ``balances = true``:
 # [[post.balances_args.statement]]
 # path = "~/Documents/Banking/2026/2026-04-30-statement.pdf"
+
+
+# bean-check validation. Runs after every other post-step so it sees
+# the freshly-built ledger. Default ledger is
+# ``<data_dir>/portfolio.beancount`` — the aggregate the ``portfolio``
+# step writes, which ``include``s every per-year file plus prices and
+# balances. Override ``ledger`` to point at a parent ``main.beancount``
+# carrying user-curated opens / commodities / metadata.
+#
+# Requires the ``bean-check`` binary on $PATH (``uv tool install
+# beancount``). When the binary is missing the rebuild prints a
+# warning and continues — set ``enabled = false`` to suppress it.
+[post.check]
+enabled = true
+ledger = ""          # empty = <data_dir>/portfolio.beancount
+strict = false       # set true to treat bean-check warnings as errors

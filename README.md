@@ -129,8 +129,11 @@ uv run banking-pipeline scan -r path/to/inbox/ --json -o results.jsonl
 # End-to-end: classify, extract transactions, emit beancount
 uv run banking-pipeline ingest path/to/statement.pdf --output out.beancount
 
-# Optional validation against your ledger
-bean-check examples/accounts.beancount out.beancount
+# Validate the new entries against your ledger in the same step
+uv run banking-pipeline ingest statement.pdf -o out.beancount --check ledger.beancount
+
+# Or check an existing ledger ad-hoc
+uv run banking-pipeline check examples/accounts.beancount
 ```
 
 ## Batch rebuild
@@ -151,8 +154,23 @@ uv run banking-pipeline rebuild             # actually rebuild
 iCloud paths that shouldn't land in the repo. The schema lives in
 `src/banking_pipeline/batch_config.py`: `data_dir`, a list of
 `[[sources]]` (each `label` becomes `<data_dir>/<label>.beancount`),
-and a `[post]` block toggling the `prices` / `portfolio` / `balances`
-post-processing steps.
+and a `[post]` block toggling the `prices` / `portfolio` / `balances` /
+`check` post-processing steps.
+
+## Validation
+
+The pipeline ships with a `bean-check` integration so writer
+regressions and balance drift surface inside the rebuild instead of
+lurking until the next ledger load. The validator runs as the final
+post-step of `rebuild` (gated on `[post.check]`); it can also be
+invoked standalone via `banking-pipeline check <ledger>`, or piggy-backed
+on a single-PDF `ingest` via `--check <ledger>`. All three exit with
+`bean-check`'s own return code so cron / CI can branch on success.
+
+`bean-check` itself comes from the `beancount` package (GPL-2.0). We
+shell out rather than import — install with `uv tool install beancount`.
+A missing binary degrades to a warning, not a failure; set
+`[post.check] enabled = false` to skip the step entirely.
 
 ## Authoring classifier rules
 

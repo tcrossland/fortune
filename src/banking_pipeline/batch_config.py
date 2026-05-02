@@ -83,6 +83,45 @@ class Source(BaseModel):
         return sorted(project_root.glob(self.glob))
 
 
+class CheckStep(BaseModel):
+    """Configuration for the ``bean-check`` validation step.
+
+    ``bean-check`` is the official beancount validator — it loads the
+    ledger, follows ``include`` directives, runs every plugin, and
+    reports balance / inventory / parse errors. We shell out to it
+    rather than linking against ``beancount`` itself (which is GPL-2.0;
+    see the README for the licence story).
+
+    The default ledger is ``<data_dir>/portfolio.beancount`` because
+    that's the aggregate file the ``portfolio`` step writes — it
+    ``include``s every per-year output, the prices file, and the
+    balances file (when present), so checking it transitively checks
+    everything the rebuild produced.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Whether to run bean-check at the end of every rebuild. Default
+    # true: the validator catches the regression class — missed
+    # ingests, writer bugs, balance drift — that would otherwise only
+    # surface on the next ledger load.
+    enabled: bool = True
+
+    # Ledger entry point. Empty string (the default) is interpreted as
+    # ``<data_dir>/portfolio.beancount``. Set to a different path to
+    # check against a parent ledger that ``include``s the rebuild
+    # output (e.g. a master ``main.beancount`` carrying user-curated
+    # opens / commodities / metadata).
+    ledger: str = ""
+
+    # When true, treat ``bean-check`` warnings (in addition to errors)
+    # as a failed check. Off by default because beancount emits
+    # warnings on a wide range of benign conditions (missing prices for
+    # holdings on certain dates, etc.) that would noise up the rebuild
+    # output. Turn on when you want a strict CI gate.
+    strict: bool = False
+
+
 class PostSteps(BaseModel):
     """Toggles for the post-ingest aggregator commands."""
 
@@ -116,6 +155,11 @@ class PostSteps(BaseModel):
     # Booking-method override for ``banking-pipeline portfolio``. Empty
     # string lets the CLI fall back to its own default (``"FIFO"``).
     booking_method: str = ""
+
+    # bean-check validation step — runs after every other post-step so
+    # it sees the freshly-built ledger. Defaults to enabled; set
+    # ``[post.check] enabled = false`` to skip.
+    check: CheckStep = Field(default_factory=CheckStep)
 
 
 class BatchConfig(BaseModel):

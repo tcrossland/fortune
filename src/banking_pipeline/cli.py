@@ -12,11 +12,12 @@ from rich.console import Console
 
 from banking_pipeline import (
     balances_extract,
+    bean_check,
     beancount_writer,
     portfolio_aggregate,
     prices_extract,
 )
-from banking_pipeline.batch_config import BatchConfig, Source, load_config
+from banking_pipeline.batch_config import BatchConfig, CheckStep, Source, load_config
 from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.classifiers.bank import BANK_RULES, BankRuleClassifier
 from banking_pipeline.classifiers.language import LANGUAGE_RULES, LanguageRuleClassifier
@@ -50,11 +51,39 @@ def ingest(
         Path | None,
         typer.Option("--output", "-o", help="Write beancount entries to this file instead of stdout."),
     ] = None,
+    check: Annotated[
+        Path | None,
+        typer.Option(
+            "--check",
+            help="After writing, run ``bean-check`` against this ledger "
+            "to validate that the new entries don't break it. The ledger "
+            "must already ``include`` the output file (or the output is "
+            "the ledger itself). Exits with bean-check's return code on "
+            "failure. Requires ``--output`` to be set; ``--check`` against "
+            "stdout is meaningless.",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            "-s",
+            help="When --check is set, treat bean-check warnings as errors.",
+        ),
+    ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
     """Classify and extract one or more PDFs, then render beancount entries."""
 
     _configure_logging(verbose)
+
+    if check is not None and output is None:
+        err_console.print(
+            "[red]error:[/red] --check requires --output (validation "
+            "against stdout is meaningless)"
+        )
+        raise typer.Exit(code=2)
+
     pipeline = Pipeline()
 
     chunks: list[str] = []
@@ -68,6 +97,10 @@ def ingest(
     else:
         output.write_text(rendered, encoding="utf-8")
         err_console.print(f"Wrote {output}")
+
+    if check is not None:
+        err_console.print(f"[bold]check[/bold] {check}")
+        _run_check_or_exit(check, strict=strict)
 
 
 @app.command()
@@ -256,6 +289,43 @@ def portfolio(
 
 
 @app.command()
+def check(
+    ledger: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            readable=True,
+            help="Beancount ledger to validate. Can be the rebuild's "
+            "``portfolio.beancount`` aggregate, a parent ``main.beancount`` "
+            "that includes it, or any individual ``.beancount`` file.",
+        ),
+    ],
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            "-s",
+            help="Treat bean-check warnings as errors. Off by default — "
+            "beancount emits warnings on benign conditions (missing "
+            "prices for stale holdings etc.) that would otherwise noise "
+            "up the output. Turn on for a strict CI gate.",
+        ),
+    ] = False,
+) -> None:
+    """Run ``bean-check`` against a ledger.
+
+    Exits with the same return code as ``bean-check`` itself so cron /
+    CI jobs can branch on success vs. failure. A missing ``bean-check``
+    binary surfaces as a warning rather than a hard error — install
+    with ``uv tool install beancount``. (We shell out rather than link
+    against beancount because beancount is GPL-2.0; the README has
+    the full licence rationale.)
+    """
+
+    _run_check_or_exit(ledger, strict=strict)
+
+
+@app.command()
 def rebuild(
     config: Annotated[
         Path | None,
@@ -403,6 +473,67 @@ def _do_rebuild(
             err_console.print(
                 f"  wrote {output_path} ({total} balance assertion(s))"
             )
+
+    # --- Step 4: bean-check validation -----------------------------------
+    # Runs last so it sees every freshly-built file. A non-zero exit
+    # from bean-check raises typer.Exit so cron / CI notices.
+    if cfg.post.check.enabled:
+        ledger = _resolve_check_ledger(cfg.post.check, data_dir)
+        err_console.print(
+            f"[bold]check[/bold] {ledger}"
+            + (" (strict)" if cfg.post.check.strict else "")
+        )
+        if not dry_run:
+            _run_check_or_exit(ledger, strict=cfg.post.check.strict)
+
+
+def _resolve_check_ledger(check: CheckStep, data_dir: Path) -> Path:
+    """Pick the ledger entry-point bean-check should validate.
+
+    Defaults to ``<data_dir>/portfolio.beancount`` (the aggregate the
+    ``portfolio`` step writes — it ``include``s everything else, so
+    checking it transitively checks the whole rebuild). An explicit
+    ``[post.check] ledger = "..."`` overrides — useful when you have
+    a parent ``main.beancount`` that ``include``s the rebuild output
+    alongside hand-curated opens / commodities / metadata.
+    """
+
+    if not check.ledger:
+        return data_dir / "portfolio.beancount"
+    explicit = Path(check.ledger).expanduser()
+    if explicit.is_absolute():
+        return explicit
+    return (data_dir.parent / explicit).resolve()
+
+
+def _run_check_or_exit(ledger: Path, *, strict: bool) -> None:
+    """Run bean-check and ``typer.Exit`` on failure.
+
+    Missing ledger → fatal (rebuild bug, the file should always exist
+    after the portfolio step ran). Missing bean-check binary → warning
+    (user opted out of validation by not installing it). Non-zero
+    return code → echo bean-check's report verbatim, exit with the
+    same code so callers (cron, CI, ``run.sh``) can branch on it.
+    """
+
+    if not ledger.exists():
+        err_console.print(
+            f"[red]bean-check skipped: ledger {ledger} doesn't exist[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    result = bean_check.run_bean_check(ledger, strict=strict)
+    if result.binary_missing:
+        err_console.print(f"[yellow]warning:[/yellow] {result.stderr}")
+        return
+    if result.ok:
+        err_console.print("  [green]ok[/green]")
+        return
+    err_console.print(
+        f"[red]bean-check failed (rc={result.returncode}) on {ledger}:[/red]"
+    )
+    err_console.print(result.stderr, markup=False, highlight=False, soft_wrap=True)
+    raise typer.Exit(code=result.returncode or 1)
 
 
 def _expand_globs(globs: list[str], project_root: Path) -> list[Path]:
