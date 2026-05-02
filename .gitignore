@@ -1,6 +1,10 @@
 # Local environment
 .env
 
+# Per-machine rebuild config — Dropbox / iCloud paths shouldn't end up
+# in the repo. Copy from banking-pipeline.example.toml and edit.
+banking-pipeline.toml
+
 # Python-generated files
 __pycache__/
 *.py[oc]

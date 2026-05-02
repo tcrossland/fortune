@@ -133,6 +133,27 @@ uv run banking-pipeline ingest path/to/statement.pdf --output out.beancount
 bean-check examples/accounts.beancount out.beancount
 ```
 
+## Batch rebuild
+
+The full year-by-year rebuild that used to live in `run.sh` is now
+config-driven. Copy the example, edit your local paths, then run the
+single rebuild command:
+
+```bash
+cp banking-pipeline.example.toml banking-pipeline.toml
+$EDITOR banking-pipeline.toml          # change the Dropbox paths to yours
+
+uv run banking-pipeline rebuild --dry-run   # preview what each step would do
+uv run banking-pipeline rebuild             # actually rebuild
+```
+
+`banking-pipeline.toml` is gitignored — it carries personal Dropbox /
+iCloud paths that shouldn't land in the repo. The schema lives in
+`src/banking_pipeline/batch_config.py`: `data_dir`, a list of
+`[[sources]]` (each `label` becomes `<data_dir>/<label>.beancount`),
+and a `[post]` block toggling the `prices` / `portfolio` / `balances`
+post-processing steps.
+
 ## Authoring classifier rules
 
 To see what text the classifier is working from, dump it:

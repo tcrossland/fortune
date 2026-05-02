@@ -1,0 +1,58 @@
+# Copy to ``banking-pipeline.toml`` (gitignored) and edit for your local
+# folder layout. ``banking-pipeline rebuild`` reads it to drive the
+# end-to-end pipeline: one ingest call per [[sources]] entry, then the
+# post-processing steps configured under [post].
+#
+# All paths support ``~`` expansion. Globs are passed through to
+# ``pathlib.Path.glob`` after expansion, so any pattern Python's stdlib
+# accepts works (``**``, ``*.pdf``, ``[KP]-*.001`` etc.).
+
+# Where per-batch beancount outputs are written (and where prices /
+# portfolio / balances read from). Relative paths are relative to the
+# project root.
+data_dir = "data"
+
+# Glob of stale outputs to delete before rebuilding. Defaults to
+# matching every ``<label>.beancount`` produced by the [[sources]]
+# below. Set to an empty string to skip the cleanup step.
+clean_glob = "20*.beancount"
+
+
+# --- One [[sources]] entry per ingest call -----------------------------
+# ``label`` becomes the output filename: ``<data_dir>/<label>.beancount``.
+# ``glob`` is the PDF source pattern. The pattern is expanded relative
+# to ``cwd`` (the project root) — use absolute paths or ``~`` for paths
+# under the user's home directory.
+
+[[sources]]
+label = "2023"
+glob = "~/Documents/Banking/2023/*.pdf"
+
+[[sources]]
+label = "2024"
+glob = "~/Documents/Banking/2024/*.pdf"
+
+[[sources]]
+label = "2025"
+glob = "~/Documents/Banking/2025/*.pdf"
+
+[[sources]]
+label = "2026"
+glob = "~/Documents/Banking/2026/*.pdf"
+
+
+# --- Post-ingest steps -------------------------------------------------
+# Toggles for the aggregator commands that run after every [[sources]]
+# entry has been ingested. Each defaults to ``true`` so a stripped-down
+# config still produces the full set of derived files.
+
+[post]
+prices = true        # ``banking-pipeline prices <data_dir>``
+portfolio = true     # ``banking-pipeline portfolio <data_dir>``
+balances = false     # ``banking-pipeline balances <data_dir> --statement ...``
+                     # — opt-in; requires an explicit ``[post.balances_args]``
+                     # block listing the statements to consume.
+
+# Uncomment and populate when ``balances = true``:
+# [[post.balances_args.statement]]
+# path = "~/Documents/Banking/2026/2026-04-30-statement.pdf"

@@ -16,6 +16,7 @@ from banking_pipeline import (
     portfolio_aggregate,
     prices_extract,
 )
+from banking_pipeline.batch_config import BatchConfig, Source, load_config
 from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.classifiers.bank import BANK_RULES, BankRuleClassifier
 from banking_pipeline.classifiers.language import LANGUAGE_RULES, LanguageRuleClassifier
@@ -252,6 +253,171 @@ def portfolio(
         f"Wrote {output_path} ({total} accounts; "
         f"operating_currency={','.join(operating_currency)})"
     )
+
+
+@app.command()
+def rebuild(
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to the rebuild config TOML. Defaults to "
+            "``banking-pipeline.toml`` in the project root.",
+        ),
+    ] = None,
+    project_root: Annotated[
+        Path,
+        typer.Option(
+            "--project-root",
+            help="Project root used to resolve relative paths and "
+            "locate the default config. Defaults to the current "
+            "working directory.",
+        ),
+    ] = Path.cwd(),
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Print what each step would do (delete / ingest / "
+            "prices / portfolio / balances) without executing anything.",
+        ),
+    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """End-to-end rebuild driven by ``banking-pipeline.toml``.
+
+    Replaces the historical ``run.sh`` shell script with a typed,
+    config-driven equivalent. The config lives in
+    ``banking-pipeline.toml`` (gitignored — copy from
+    ``banking-pipeline.example.toml`` and edit for your local folder
+    layout). The command:
+
+    1. Deletes stale outputs under ``<data_dir>/<clean_glob>``.
+    2. Runs ``ingest`` once per ``[[sources]]`` entry, writing to
+       ``<data_dir>/<label>.beancount``.
+    3. Runs ``prices`` / ``portfolio`` / ``balances`` according to the
+       ``[post]`` toggles.
+
+    Globs that match zero files surface as a non-fatal warning rather
+    than an error — handy when a year-partition hasn't received any
+    documents yet. ``--dry-run`` previews every step without touching
+    the filesystem; useful before the first real run on a new config.
+    """
+
+    _configure_logging(verbose)
+    cfg = load_config(project_root, config_path=config)
+    _do_rebuild(cfg, project_root=project_root, dry_run=dry_run)
+
+
+def _do_rebuild(
+    cfg: BatchConfig,
+    *,
+    project_root: Path,
+    dry_run: bool,
+) -> None:
+    """Execute (or preview) the steps described by ``cfg``."""
+
+    data_dir = cfg.resolve_data_dir(project_root)
+    if not dry_run:
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- Step 1: clean ----------------------------------------------------
+    stale = list(cfg.stale_files(project_root))
+    if stale:
+        for path in stale:
+            err_console.print(
+                f"[dim]rm[/dim] {path}" if dry_run else f"Removing {path}"
+            )
+            if not dry_run:
+                path.unlink()
+
+    # --- Step 2: ingest ---------------------------------------------------
+    pipeline: Pipeline | None = None
+    for src in cfg.sources:
+        out_path = data_dir / f"{src.label}.beancount"
+        pdfs = src.expand(project_root)
+        if not pdfs:
+            err_console.print(
+                f"[yellow]warning:[/yellow] source {src.label!r} matched "
+                f"zero files (glob={src.glob!r}); skipping"
+            )
+            continue
+        err_console.print(
+            f"[bold]ingest[/bold] {src.label} → {out_path} "
+            f"({len(pdfs)} PDF{'s' if len(pdfs) != 1 else ''})"
+        )
+        if dry_run:
+            continue
+        # Lazy-init the pipeline on the first ingest that actually runs —
+        # keeps the dry-run path free of any heavy imports.
+        if pipeline is None:
+            pipeline = Pipeline()
+        chunks = [
+            beancount_writer.render(pipeline.process(pdf)) for pdf in pdfs
+        ]
+        out_path.write_text("\n\n".join(chunks), encoding="utf-8")
+
+    # --- Step 3: post-processing -----------------------------------------
+    if cfg.post.prices:
+        err_console.print(f"[bold]prices[/bold] {data_dir}")
+        if not dry_run:
+            output_path, total = prices_extract.generate(
+                data_dir=data_dir,
+                output=None,
+                statement_files=[],
+            )
+            err_console.print(
+                f"  wrote {output_path} ({total} price directive(s))"
+            )
+
+    if cfg.post.portfolio:
+        operating = cfg.post.operating_currencies or ["GBP"]
+        err_console.print(
+            f"[bold]portfolio[/bold] {data_dir} "
+            f"(operating={','.join(operating)})"
+        )
+        if not dry_run:
+            output_path, total = portfolio_aggregate.generate(
+                data_dir=data_dir,
+                output=None,
+                operating_currencies=operating,
+                booking_method=cfg.post.booking_method or None,
+            )
+            err_console.print(
+                f"  wrote {output_path} ({total} accounts)"
+            )
+
+    if cfg.post.balances:
+        statements = _expand_globs(cfg.post.balance_statements, project_root)
+        err_console.print(
+            f"[bold]balances[/bold] {data_dir} "
+            f"({len(statements)} statement{'s' if len(statements) != 1 else ''})"
+        )
+        if not dry_run:
+            output_path, total = balances_extract.generate(
+                data_dir=data_dir,
+                statement_files=statements,
+                output=None,
+            )
+            err_console.print(
+                f"  wrote {output_path} ({total} balance assertion(s))"
+            )
+
+
+def _expand_globs(globs: list[str], project_root: Path) -> list[Path]:
+    """Expand a list of TOML-supplied glob strings to a flat path list.
+
+    Mirrors :meth:`Source.expand` but for the post-processing steps
+    that take a flat list of files rather than a single labelled glob.
+    Sorted for stable output and deduplicated so repeated globs don't
+    double-count.
+    """
+
+    seen: set[Path] = set()
+    for glob in globs:
+        seen.update(Source(label="_", glob=glob).expand(project_root))
+    return sorted(seen)
 
 
 @app.command()
