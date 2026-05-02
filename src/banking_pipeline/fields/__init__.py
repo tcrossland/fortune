@@ -1,3 +1,3 @@
-from banking_pipeline.fields.hybrid import HybridExtractor
+from banking_pipeline.fields.hybrid import HybridExtractor, TemplateExtractionError
 
-__all__ = ["HybridExtractor"]
+__all__ = ["HybridExtractor", "TemplateExtractionError"]

@@ -23,6 +23,7 @@ from banking_pipeline.classifiers.bank import BANK_RULES, BankRuleClassifier
 from banking_pipeline.classifiers.language import LANGUAGE_RULES, LanguageRuleClassifier
 from banking_pipeline.classifiers.rules import DEFAULT_RULES, RuleClassifier
 from banking_pipeline.extractors import extract_pages, load_pdf
+from banking_pipeline.fields import HybridExtractor, TemplateExtractionError
 from banking_pipeline.models import Classification
 from banking_pipeline.pipeline import Pipeline
 
@@ -68,7 +69,11 @@ def ingest(
         typer.Option(
             "--strict",
             "-s",
-            help="When --check is set, treat bean-check warnings as errors.",
+            help="Fail on quality issues instead of warning. Two effects: "
+            "(a) when a per-template extractor returns zero transactions "
+            "for a doctype that should produce output, raise instead of "
+            "silently skipping the document; (b) when --check is set, "
+            "treat bean-check warnings as errors.",
         ),
     ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
@@ -84,11 +89,17 @@ def ingest(
         )
         raise typer.Exit(code=2)
 
-    pipeline = Pipeline()
+    pipeline = Pipeline(extractor=HybridExtractor(strict=strict))
 
     chunks: list[str] = []
     for path in pdf_paths:
-        result = pipeline.process(path)
+        try:
+            result = pipeline.process(path)
+        except TemplateExtractionError as exc:
+            err_console.print(
+                f"[red]extraction error:[/red] {exc}"
+            )
+            raise typer.Exit(code=1) from exc
         chunks.append(beancount_writer.render(result))
 
     rendered = "\n\n".join(chunks)
@@ -353,6 +364,19 @@ def rebuild(
             "prices / portfolio / balances) without executing anything.",
         ),
     ] = False,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            "-s",
+            help="Fail on quality issues instead of warning. Two effects: "
+            "(a) when a per-template extractor returns zero transactions "
+            "for a doctype that should produce output, raise instead of "
+            "silently skipping the document; (b) the bean-check post-step "
+            "treats warnings as errors regardless of the [post.check] "
+            "config setting.",
+        ),
+    ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
     """End-to-end rebuild driven by ``banking-pipeline.toml``.
@@ -377,7 +401,7 @@ def rebuild(
 
     _configure_logging(verbose)
     cfg = load_config(project_root, config_path=config)
-    _do_rebuild(cfg, project_root=project_root, dry_run=dry_run)
+    _do_rebuild(cfg, project_root=project_root, dry_run=dry_run, strict=strict)
 
 
 def _do_rebuild(
@@ -385,6 +409,7 @@ def _do_rebuild(
     *,
     project_root: Path,
     dry_run: bool,
+    strict: bool = False,
 ) -> None:
     """Execute (or preview) the steps described by ``cfg``."""
 
@@ -420,12 +445,22 @@ def _do_rebuild(
         if dry_run:
             continue
         # Lazy-init the pipeline on the first ingest that actually runs —
-        # keeps the dry-run path free of any heavy imports.
+        # keeps the dry-run path free of any heavy imports. ``strict``
+        # propagates into HybridExtractor so a template returning [] for
+        # a doctype that should produce output raises rather than warns.
         if pipeline is None:
-            pipeline = Pipeline()
-        chunks = [
-            beancount_writer.render(pipeline.process(pdf)) for pdf in pdfs
-        ]
+            pipeline = Pipeline(extractor=HybridExtractor(strict=strict))
+        chunks: list[str] = []
+        for pdf in pdfs:
+            try:
+                result = pipeline.process(pdf)
+            except TemplateExtractionError as exc:
+                err_console.print(
+                    f"[red]extraction error[/red] in source "
+                    f"{src.label!r}: {exc}"
+                )
+                raise typer.Exit(code=1) from exc
+            chunks.append(beancount_writer.render(result))
         out_path.write_text("\n\n".join(chunks), encoding="utf-8")
 
     # --- Step 3: post-processing -----------------------------------------
@@ -479,12 +514,16 @@ def _do_rebuild(
     # from bean-check raises typer.Exit so cron / CI notices.
     if cfg.post.check.enabled:
         ledger = _resolve_check_ledger(cfg.post.check, data_dir)
+        # CLI ``--strict`` overrides the config — when set, escalate
+        # bean-check warnings to errors regardless of what
+        # ``[post.check] strict`` says.
+        check_strict = cfg.post.check.strict or strict
         err_console.print(
             f"[bold]check[/bold] {ledger}"
-            + (" (strict)" if cfg.post.check.strict else "")
+            + (" (strict)" if check_strict else "")
         )
         if not dry_run:
-            _run_check_or_exit(ledger, strict=cfg.post.check.strict)
+            _run_check_or_exit(ledger, strict=check_strict)
 
 
 def _resolve_check_ledger(check: CheckStep, data_dir: Path) -> Path:

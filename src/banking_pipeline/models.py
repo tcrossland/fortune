@@ -315,6 +315,51 @@ class Language(StrEnum):
     UNKNOWN = "unknown"
 
 
+# Doctypes that legitimately produce no transactions / no beancount
+# output. Two callers consult this set:
+#
+#   - The **writer** short-circuits at the top of :func:`render` /
+#     :func:`render_entry` — if the doctype is in this set, no header,
+#     no postings, no warnings; the document is paper-trail-only.
+#   - The **extractor** treats a per-template ``[]`` return as
+#     *expected* when the doctype is in this set (template did the
+#     right thing). For doctypes NOT in this set, an empty extraction
+#     is treated as a regression — the regex/LLM fallback is skipped
+#     so the broken template doesn't get papered over with an
+#     ``Equity:Uncategorized`` placeholder, and the failure is logged
+#     loudly (or raised, in strict mode).
+#
+# Two families:
+#
+#   - **Paired-advice openings**: ``FX_FORWARD`` /
+#     ``CAMBIO_DE_DIVISAS_APERTURA`` /
+#     ``LIQUIDACION_AVISO_PREVIO_RECEPCION`` — the opening of a
+#     contract or a pre-arrival notice with zero cash effect; the
+#     paired settlement / arrival advice is the canonical paper trail
+#     for the cash exchange or position arrival.
+#   - **Periodic valuation statements**: monthly / quarterly / annual
+#     reports across both locales. These describe portfolio
+#     valuations at a point in time, not transactions; their cash
+#     events have already been booked by the per-trade and
+#     per-cash-movement advices that fed them, so emitting any
+#     postings would double-count.
+NO_OUTPUT_DOCTYPES: frozenset["DocumentType"] = frozenset({
+    DocumentType.FX_FORWARD,
+    DocumentType.CAMBIO_DE_DIVISAS_APERTURA,
+    DocumentType.LIQUIDACION_AVISO_PREVIO_RECEPCION,
+    # Periodic-valuation statements (English / Pictet Luxembourg).
+    DocumentType.MONTHLY_STATEMENT,
+    DocumentType.QUARTERLY_STATEMENT,
+    DocumentType.ANNUAL_STATEMENT,
+    # Periodic-valuation statements (Spanish / Pictet Madrid).
+    DocumentType.ESTADO_MENSUAL,
+    DocumentType.ESTADO_TRIMESTRAL,
+    DocumentType.ESTADO_ANUAL,
+    # Generic non-bank-specific account statement.
+    DocumentType.ACCOUNT_STATEMENT,
+})
+
+
 class BankClassification(BaseModel):
     bank: BankId
     confidence: float = Field(ge=0.0, le=1.0)
