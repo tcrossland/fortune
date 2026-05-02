@@ -16,6 +16,7 @@ from banking_pipeline.writer.format import (
     align,
     cash_account,
     escape,
+    fee_segment,
     format_amount,
     inline_open_directive,
     portfolio_segment,
@@ -40,7 +41,7 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
 
         <booking_date> * "Sell bonds" "<narration>"
           Assets:<prefix>:<portfolio>:<currency>     <net>     <ccy>  ; Net amount
-          Expenses:<prefix>:Fees:<ccy>               <fees>    <ccy>  ; Commission/Fee
+          Expenses:<prefix>:Brokerage:<ccy>          <fees>    <ccy>  ; Commission/Fee
           Income:<prefix>:<ISIN>:Interest            <-int>    <ccy>  ; Accrued interest
           Assets:<prefix>:<portfolio>:<ISIN>         <-nominal> <ISIN> {} @ <unit_px> <ccy>
           Income:<prefix>:<ISIN>:Realized
@@ -50,7 +51,7 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
 
         <booking_date> * "Buy bonds" "<narration>"
           Assets:<prefix>:<portfolio>:<ISIN>         <+nominal> <ISIN> {<unit_px> <ccy>}
-          Expenses:<prefix>:Fees:<ccy>               <fees>    <ccy>  ; Brokerage
+          Expenses:<prefix>:Brokerage:<ccy>          <fees>    <ccy>  ; Brokerage
           Income:<prefix>:<ISIN>:Interest            <+int>    <ccy>  ; Accrued interest
           Assets:<prefix>:<portfolio>:<currency>     <net>     <ccy>  ; Net amount
           no: <transaction_number>
@@ -62,10 +63,11 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
         (proceeds in); buys are negative (cash out). Posted to
         ``Assets:<prefix>:<portfolio>:<currency>``.
       - Fee leg ``+abs(fees)`` — Pictet's brokerage / commission,
-        posted positive on ``Expenses:<prefix>:Fees:<ccy>`` regardless
-        of direction. The inline comment branches on direction
-        because the per-line cost label differs (``Brokerage`` on
-        buys, ``Commission/Fee`` on sells).
+        posted positive on ``Expenses:<prefix>:Brokerage:<ccy>``
+        regardless of direction (mapped from Pictet's per-line label
+        via :func:`fee_segment`). The inline comment branches on
+        direction because the per-line cost label differs
+        (``Brokerage`` on buys, ``Commission/Fee`` on sells).
       - Interest leg ``-accrued_interest`` — accrued interest paid
         alongside the principal, recognised on
         ``Income:<prefix>:<ISIN>:Interest``. Pictet prints the
@@ -128,16 +130,20 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     )
 
     # Fee leg — Pictet prints negative inside the CASH EFFECT block on
-    # both directions; expense accounts hold positive amounts.
+    # both directions; expense accounts hold positive amounts. The
+    # account segment comes from :func:`fee_segment` rather than a
+    # hardcoded ``Fees`` so broker commissions land in
+    # ``Expenses:<prefix>:<portfolio>:Brokerage:<ccy>`` (queryable
+    # separately from generic management fees and statutory taxes).
     fee_line: str | None = None
     if tx.fees is not None and tx.fees != 0:
         fees_ccy = tx.fees_currency or tx.currency
-        fee_label = " ; Brokerage" if is_buy else " ; Commission/Fee"
+        description = "Brokerage" if is_buy else "Commission/Fee"
         fee_line = align(
-            f"Expenses:{prefix}:{portfolio}:Fees:{fees_ccy}",
+            f"Expenses:{prefix}:{portfolio}:{fee_segment(description)}:{fees_ccy}",
             format_amount(abs(tx.fees)),
             fees_ccy,
-            extras=fee_label,
+            extras=f" ; {description}",
         )
 
     # Interest leg — direction-agnostic; ``-accrued_interest`` flips

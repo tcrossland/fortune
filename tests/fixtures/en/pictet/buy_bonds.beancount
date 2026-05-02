@@ -1,6 +1,6 @@
 2023-11-24 * "Buy bonds" "Purchase EUR 90'000.00 2.30% GERMANY 23/33 SR GREEN at 97.512%"
   Assets:Pic:K123456001:DE000BU3Z005               90000.00 DE000BU3Z005 {0.97512 EUR}
-  Expenses:Pic:K123456001:Fees:EUR                   408.28 EUR ; Brokerage
+  Expenses:Pic:K123456001:Brokerage:EUR              408.28 EUR ; Brokerage
   Income:Pic:K123456001:DE000BU3Z005:Interest       1809.12 EUR ; Accrued interest
   Assets:Pic:K123456001:EUR                       -89978.20 EUR ; Net amount
   no: 920228676

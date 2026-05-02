@@ -14,6 +14,7 @@ from banking_pipeline.writer.format import (
     align,
     cash_account,
     escape,
+    fee_segment,
     format_amount,
     header_line,
     inline_open_directive,
@@ -153,7 +154,7 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
         for item in tx.fee_breakdown:
             fees_lines.append(
                 align(
-                    f"Expenses:{prefix}:{portfolio}:Fees:{item.currency}",
+                    f"Expenses:{prefix}:{portfolio}:{fee_segment(item.description)}:{item.currency}",
                     format_amount(abs(item.amount)),
                     item.currency,
                     extras=f" ; {item.description}",
@@ -161,6 +162,11 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
             )
     elif tx.fees is not None and tx.fees != 0:
         fees_ccy = tx.fees_currency or sec_ccy
+        # Single in-block ``Costes`` aggregate has no per-line
+        # description to categorise on, so it lands in the catch-all
+        # ``Fees:<ccy>`` bucket. Per-line breakdowns above route to
+        # the appropriate category (Spread / Brokerage / Tax /
+        # Management) via :func:`fee_segment`.
         fees_lines.append(
             align(
                 f"Expenses:{prefix}:{portfolio}:Fees:{fees_ccy}",
@@ -273,13 +279,16 @@ def _render_sell_with_breakdown(
         )
     )
 
-    # Per-item expense legs. Each fee item becomes its own posting with
-    # the item's description as an inline beancount comment, so the
-    # rendered entry preserves the audit detail Pictet printed.
+    # Per-item expense legs. Each fee item becomes its own posting
+    # with the item's description as an inline beancount comment AND
+    # a category-specific account segment via :func:`fee_segment`
+    # (e.g. ``Corretaje y/o spread`` → ``Spread:<ccy>``, ``Tasa
+    # bursátil`` → ``Tax:<ccy>``) so cost analysis splits cleanly by
+    # category rather than collapsing every component into ``Fees``.
     for item in tx.fee_breakdown:
         lines.append(
             align(
-                f"Expenses:{prefix}:{portfolio}:Fees:{item.currency}",
+                f"Expenses:{prefix}:{portfolio}:{fee_segment(item.description)}:{item.currency}",
                 format_amount(abs(item.amount)),
                 item.currency,
                 extras=f" ; {item.description}",

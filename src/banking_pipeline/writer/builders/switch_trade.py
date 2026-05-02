@@ -17,6 +17,7 @@ from banking_pipeline.models import DocumentType, Transaction
 from banking_pipeline.writer.format import (
     align,
     escape,
+    fee_segment,
     format_amount,
     inline_open_directive,
     portfolio_segment,
@@ -32,15 +33,20 @@ SWITCH_TYPES: frozenset[DocumentType] = frozenset({
 def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     """Render a Pictet switch leg as a beancount entry.
 
-    Switch advices have **no cash effect**: the proceeds (salida) or
-    cost (entrada) land in an intermediate ``Assets:<prefix>:Switch:<ccy>``
-    holding account that the paired leg later debits or credits, so the
-    pair nets to zero across the two-document switch.
+    Switch advices have **no external cash effect**: the proceeds
+    (salida) or cost (entrada) land in an intermediate
+    ``Assets:<prefix>:Switch:<ccy>`` holding account that the paired
+    leg later debits or credits, so the pair nets to zero across the
+    two-document switch. Pictet may still levy a small spread / fee
+    on the trade, charged against the holding-account proceeds; when
+    present it surfaces as a separate ``Expenses:<prefix>:<portfolio>:Fees:<ccy>``
+    leg between the asset and switch-holding postings.
 
     Salida (sale) layout::
 
         <booking_date> * "<title>" "<narration>" ^<txn_no>
           Assets:<prefix>:<portfolio>:<ISIN>          <quantity> <ISIN> {} @ <price> <ccy>
+          [Expenses:<prefix>:<portfolio>:Fees:<ccy>   <abs_fees> <ccy>]
           Assets:<prefix>:Switch:<ccy>    <amount>   <ccy>
           Income:<prefix>:<ISIN>:Unrealized
           no: <txn_no>
@@ -58,6 +64,20 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     Entrada (buy) layout omits the Unrealized leg and uses the standard
     ``{<price> <ccy>}`` cost-basis braces — new units enter the
     inventory at the purchase price.
+
+    Fees leg
+    --------
+    Emitted whenever the document carries a non-zero ``Costes`` line,
+    regardless of FX status. The shape mirrors
+    :mod:`banking_pipeline.writer.builders.security_trade`: a single
+    aggregate ``Expenses:<prefix>:<portfolio>:Fees:<ccy>`` posting at
+    ``abs(tx.fees)`` when ``len(fee_breakdown) <= 1``, or one posting
+    per breakdown item with the item description as an inline ``;
+    <description>`` comment when the document itemises multiple fee
+    components. ``Costes 0.00`` advices skip the leg entirely (the
+    ``tx.fees != 0`` guard), which keeps the older non-zero-spread
+    goldens (``switch_entrada.2021`` / ``switch_entrada.2023``)
+    byte-stable.
 
     Header link
     -----------
@@ -113,6 +133,39 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
             extras=cost_extras,
         )
     )
+
+    # --- Fees leg(s) ---------------------------------------------------
+    # Per-line items get one posting each with the item description as
+    # an inline ``; <description>`` comment AND a category-specific
+    # account segment via :func:`fee_segment` (e.g. ``Spread`` →
+    # ``Spread:<ccy>``, future ``Tasa bursátil`` → ``Tax:<ccy>``).
+    # This shares the same taxonomy as every other builder so a
+    # year-by-year spread-cost query lands a single
+    # account-prefix match across switches, FX settlements, and
+    # security trades. When only the in-block aggregate ``tx.fees``
+    # is set, fall back to the generic ``Fees:<ccy>`` segment. The
+    # ``tx.fees != 0`` guard skips the leg entirely on zero-fee
+    # advices, keeping ``switch_entrada.2021`` / ``switch_entrada.2023``
+    # / ``switch_salida.2021`` byte-stable.
+    if tx.fee_breakdown:
+        for item in tx.fee_breakdown:
+            lines.append(
+                align(
+                    f"Expenses:{prefix}:{portfolio}:{fee_segment(item.description)}:{item.currency}",
+                    format_amount(abs(item.amount)),
+                    item.currency,
+                    extras=f" ; {item.description}",
+                )
+            )
+    elif tx.fees is not None and tx.fees != 0:
+        fees_ccy = tx.fees_currency or sec_ccy
+        lines.append(
+            align(
+                f"Expenses:{prefix}:{portfolio}:Fees:{fees_ccy}",
+                format_amount(abs(tx.fees)),
+                fees_ccy,
+            )
+        )
 
     # --- Switch holding leg --------------------------------------------
     # Sign is as printed by Pictet's ``Importe neto``: positive on salida

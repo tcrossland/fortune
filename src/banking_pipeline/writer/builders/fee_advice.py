@@ -14,6 +14,7 @@ from banking_pipeline.models import DocumentType, Transaction
 from banking_pipeline.writer.format import (
     align,
     cash_account,
+    fee_segment,
     format_amount,
     header_line,
     portfolio_segment,
@@ -53,11 +54,20 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     portfolio = portfolio_segment(tx.account_number)
 
     # --- Expense legs ---------------------------------------------------
+    # Per-item legs route to a category account picked by
+    # :func:`fee_segment` (e.g. ``Honorarios de gestión`` →
+    # ``Management:<ccy>``, ``IVA extranjero`` → ``Tax:<ccy>``) so a
+    # year-by-year breakdown of management fees vs taxes is a single
+    # account-prefix match. Pictet descriptions outside the curated
+    # map fall back to ``Fees:<ccy>`` (the catch-all). Bare aggregate
+    # advices that don't carry a per-line breakdown still post to
+    # ``Fees:<ccy>`` because there's no per-line description to
+    # categorise on.
     if tx.fee_breakdown:
         for item in tx.fee_breakdown:
             lines.append(
                 align(
-                    f"Expenses:{prefix}:{portfolio}:Fees:{item.currency}",
+                    f"Expenses:{prefix}:{portfolio}:{fee_segment(item.description)}:{item.currency}",
                     format_amount(abs(item.amount)),
                     item.currency,
                     extras=f" ; {item.description}",

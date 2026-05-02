@@ -182,3 +182,76 @@ def transaction_number_comment(tx: Transaction) -> str | None:
     if not tx.transaction_number:
         return None
     return f"  no: {tx.transaction_number}"
+
+
+# Map Pictet's printed cost-line descriptions to a canonical beancount
+# account segment. Pictet uses "Costes" / "Costs" as a deliberately
+# broad term that covers three economically distinct things:
+#
+#   - **Spread** — bid-ask transaction cost; a market-microstructure
+#     cost that's conceptually part of the trade basis, not a service
+#     fee. Includes Pictet's ``Spread``, ``Forward spread``, ``Forex
+#     spread``, and the combined ``Corretaje y/o spread`` line that
+#     Pictet uses on Spanish stock-exchange trades when they don't
+#     break broker commission out separately.
+#   - **Brokerage** — explicit broker commission for executing a
+#     trade. Pictet's bond advices print this as ``Brokerage`` (buy)
+#     or ``Commission/Fee`` (sell).
+#   - **Tax** — statutory levies (stock-exchange tax, foreign VAT,
+#     transaction taxes). Distinct from fees because they're mandated,
+#     and because some jurisdictions allow different deductibility
+#     treatment.
+#   - **Management** — service fees the bank levies for managing or
+#     custodying the account. Pictet's quarterly ``Débito de gastos``
+#     advice itemises ``Honorarios de gestión``, ``Administration
+#     flat fee``, and ``Account maintenance fees`` here.
+#   - **Wire** — payment / transfer service fees on outgoing wires.
+#
+# Anything not in the map falls back to ``Fees`` — generic catch-all
+# for descriptions we haven't categorised yet (extending the map is
+# preferable to letting the catch-all grow). Lookup is exact-match,
+# case-sensitive: Pictet's labels are stable enough that a fuzzy
+# match would more often hide a typo than help.
+FEE_CATEGORIES: dict[str, str] = {
+    # --- Spread / transaction cost ---
+    "Spread": "Spread",
+    "Forward spread": "Spread",
+    "Forex spread": "Spread",
+    "Corretaje y/o spread": "Spread",
+    # --- Broker commission ---
+    "Brokerage": "Brokerage",
+    "Commission/Fee": "Brokerage",
+    # --- Statutory levies ---
+    "Tasa bursátil": "Tax",
+    "IVA extranjero": "Tax",
+    "Transaction taxes": "Tax",
+    # --- Service fees (bank-side) ---
+    "Honorarios de gestión": "Management",
+    "Administration flat fee (subject to VAT)": "Management",
+    "Account maintenance fees": "Management",
+    # --- Cash-movement fees ---
+    "Payment fees": "Wire",
+}
+
+
+def fee_segment(description: str | None) -> str:
+    """Map a Pictet cost-line description to its canonical account segment.
+
+    Returns the matching :data:`FEE_CATEGORIES` value when ``description``
+    is a known label; otherwise returns ``"Fees"`` so unknown / missing
+    descriptions still land in a parseable account. ``None`` and the
+    empty string both fall back to ``"Fees"`` — the in-block aggregate
+    ``Costes`` line on a trade advice has no description, and lumping
+    those into the catch-all is the right default since we genuinely
+    don't know what kind of cost they are.
+
+    Adding support for a new description is data-only: extend
+    :data:`FEE_CATEGORIES`. Per-bank category schemes (e.g. an IBKR
+    profile that uses a different vocabulary) can override by promoting
+    this map onto :class:`~banking_pipeline.writer.profile.BankWriterProfile`
+    when the second bank lands.
+    """
+
+    if not description:
+        return "Fees"
+    return FEE_CATEGORIES.get(description, "Fees")

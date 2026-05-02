@@ -2,43 +2,50 @@
 BOLSA DE VALORES
 Cambio ("switch") de fondos (entrada)
 ARCHIVE
-0A08 Pictet & Cie (Europe) S.A. / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
-Tel. +352 46 71 71-1 / Fax +352 22 48 68 / grupo.pictet
+0A08 Bank Pictet & Cie (Europe) AG / Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 
+Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
 1/1 
 Cliente: FIRST MIDDLE LASTNAMES
 N° de cuenta: K-123456.001
-N° de transacción: 846210315 | Fecha de publicación: 20.02.2023
+N° de transacción: 889875156 | Fecha de publicación: 02.08.2023
 S.E. & O.
 Atentamente
-Pictet & Cie (Europe) S.A.
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
 Aviso sin firma
 INFORMACIÓN ADICIONAL
 General
-Fecha de transacción 17.02.2023
-Fecha valor 21.02.2023
-Fecha contable 20.02.2023
+Fecha de transacción 02.08.2023
+Fecha valor 08.08.2023
+Fecha contable 02.08.2023
 Transacción
-Switch entre MIROVA-GBL GREEN BD SI/A
-EUR-ACC.
-y PICTET-USD GOVERNMENT BDS-HI
+Switch entre PICTET-BIOTECH-I USD
+y FEDERAT.HERMES IF-GL.EM.M.EQ.F
 EUR
 Instrucción
-Fecha de la orden 15.02.2023 a las 13:38:07
-Tipo de orden A mercado
+Fecha de la orden 31.07.2023 a las 10:06:57
+Tipo de orden Válido hasta revocación
+Validez de la orden 31.12.2025 a las 23:59:59
 Ejecución
 Tipo de operación Compra
 Plaza bursátil All Funds
-Fecha de ejecución 15.02.2023 a las 13:56:51
-Cantidad ejecutada 96.37836
-Precio de ejecución EUR 499.55
-Importe bruto EUR -48'145.81
+Fecha de ejecución 31.07.2023 a las 10:10:09
+Cantidad ejecutada 4'285.6231
+Precio de ejecución EUR 4.0718
+Importe bruto EUR -17'450.20
+Costes
+Spread EUR 0.08
+Total EUR 0.08
 Otro
-Depositario ALLFUNDS BANK INTERNATIONAL
-SA
+Depositario ALLFUNDS BANK S.A.U.,
+LUXEMBOURG BRANCH
 ENTRADAen la cartera K-123456.001
-PICTET-USD GOVERNMENT BDS-HI EUR 96.37836
-ISIN: LU1226265632 N° Telekurs: 27988760 
+FEDERAT.HERMES IF-GL.EM.M.EQ.F EUR 4'285.6231
+ISIN: IE00B3DJ5M15 N° Telekurs: 12855582 
 EFECTO CASH
-Importe bruto EUR -48'145.81
-Costes EUR 0.00
-Importe neto EUR -48'145.81
+Importe bruto EUR -17'450.20
+Costes EUR 0.08
+Subtotal EUR -17'450.12
+Tipo de cambio (EUR/USD): 1.10117294
+Importe neto USD -19'215.60

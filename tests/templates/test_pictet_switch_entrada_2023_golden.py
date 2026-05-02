@@ -1,18 +1,25 @@
-"""Golden-file test for the 2023-era ``switch_entrada`` render.
+"""Golden-file test for the FX-bridged ``switch_entrada`` render with
+a non-zero spread.
 
-Distinct from ``test_pictet_switch_entrada_golden`` (the 2021 fixture)
-in two structural ways:
+Distinct from ``test_pictet_switch_entrada_2023_golden`` (which has
+``Costes 0.00`` and so emits no fees leg) on two fronts:
 
-  - The portfolio header in the document is ``ENTRADAen la cartera``
-    with no whitespace between ``ENTRADA`` and ``en`` (Pictet's PDF
-    extractor occasionally squishes the words together). The
-    ``find_switch_fund_name`` helper accepts ``\\s*`` between the side
-    and the preposition to tolerate this; older fixtures have the
-    space.
-  - No paired ``link_id`` is set on the entrada Transaction here, so
-    the writer falls back to ``transaction_number`` for the ``^link``
-    in the header — distinct from the 2021 fixture's test, which
-    patches ``link_id`` to demonstrate the salida↔entrada pairing.
+  - **FX bridge.** The underlying fund is in EUR but the source
+    portfolio's CASH EFFECT amount is in USD — the document carries
+    ``Subtotal EUR -17,450.12`` + ``Tipo de cambio (EUR/USD)`` +
+    ``Importe neto USD -19,215.60``. The Switch holding leg ends up in
+    USD with an ``@@ 17450.12 EUR`` annotation so beancount can
+    reconcile the two cash currencies on a single entry.
+  - **Spread fee.** The standalone ``Costes`` block lists ``Spread
+    EUR 0.08`` — surfaces as a per-component
+    ``Expenses:<prefix>:<portfolio>:Spread:EUR  0.08 EUR`` posting
+    using the item description as the account segment (so a
+    cross-year spread-cost query is a single account-prefix match,
+    distinct from generic management / brokerage fees).
+
+The PDF-extractor kerning artifact (``ENTRADAen`` with no inter-word
+space — see line 43 of the fixture) is the same one the 2023 test
+exercises.
 """
 
 from __future__ import annotations
@@ -41,8 +48,8 @@ def _load(name: str) -> RawDocument:
     )
 
 
-def test_switch_entrada_2023_renders_to_golden_beancount() -> None:
-    txs = PictetSwitchEntradaTemplate().extract(_load("switch_entrada.2023.txt"))
+def test_switch_entrada_202308_renders_to_golden_beancount() -> None:
+    txs = PictetSwitchEntradaTemplate().extract(_load("switch_entrada.202308.txt"))
     assert len(txs) == 1, "Expected exactly one transaction from the fixture"
 
     classification = Classification(
@@ -59,12 +66,12 @@ def test_switch_entrada_2023_renders_to_golden_beancount() -> None:
     )
 
     rendered = beancount_writer.render_entry(txs[0], classification)
-    golden = (FIXTURES / "switch_entrada.2023.beancount").read_text(
+    golden = (FIXTURES / "switch_entrada.202308.beancount").read_text(
         encoding="utf-8"
     )
 
     assert rendered == golden, (
-        "Rendered switch_entrada.2023 entry doesn't match the golden file.\n"
+        "Rendered switch_entrada.202308 entry doesn't match the golden file.\n"
         f"--- rendered ---\n{rendered}"
         f"--- golden ---\n{golden}"
     )

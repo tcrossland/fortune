@@ -2,9 +2,10 @@
 
 Same two-leg-cash shape as
 :mod:`banking_pipeline.writer.builders.internal_transfer` but with a
-third ``Expenses:<prefix>:Fees:<ccy>`` posting carrying the forward
-spread, and the ``@@`` value derived from the pre-fee gross rather
-than the post-fee net.
+third ``Expenses:<prefix>:Spread:<ccy>`` posting carrying the forward
+spread (transaction cost, mapped via :func:`fee_segment` so it
+queries alongside other spread-flavoured costs), and the ``@@``
+value derived from the pre-fee gross rather than the post-fee net.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from banking_pipeline.writer.builders.internal_transfer import (
 from banking_pipeline.writer.format import (
     align,
     cash_account,
+    fee_segment,
     format_amount,
     header_line,
     portfolio_segment,
@@ -34,7 +36,7 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
 
         <booking_date> * "<title>" "<narration>"
           Assets:<prefix>:<currency>             <amount> <ccy>
-          Expenses:<prefix>:Fees:<ccy>           <abs_fees> <ccy> ; Forward spread
+          Expenses:<prefix>:Spread:<ccy>         <abs_fees> <ccy> ; Forward spread
           Assets:<prefix>:<counter_currency>     <counter_amount> <counter_ccy> @@ <abs_gross> <ccy>
           no: <transaction_number>
 
@@ -78,10 +80,14 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
 
     # Forward-spread expense leg. Pictet writes the spread negative
     # (cash-out from the user's perspective); flip to positive for
-    # the expense account.
+    # the expense account. ``Forward spread`` maps to the canonical
+    # ``Spread`` account via :func:`fee_segment` so FX-spread costs
+    # query alongside other transaction-cost legs (Forex spread on
+    # security trades, Spread on switches) rather than getting lost
+    # in the generic ``Fees`` bucket.
     lines.append(
         align(
-            f"Expenses:{prefix}:{portfolio}:Fees:{tx.fees_currency}",
+            f"Expenses:{prefix}:{portfolio}:{fee_segment('Forward spread')}:{tx.fees_currency}",
             format_amount(abs(tx.fees)),
             tx.fees_currency,
             extras=" ; Forward spread",

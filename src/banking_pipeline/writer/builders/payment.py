@@ -18,6 +18,7 @@ from banking_pipeline.models import DocumentType, Transaction
 from banking_pipeline.writer.format import (
     align,
     cash_account,
+    fee_segment,
     format_amount,
     header_line,
     portfolio_segment,
@@ -45,14 +46,14 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
         <booking_date> * "<title>" "<narration>"
           Assets:<counter_account>:<currency>     <gross_amount> <ccy> ; Gross amount
           Assets:<prefix>:<portfolio>:<currency>  <amount>      <ccy> ; Net amount
-          Expenses:<prefix>:<portfolio>:Fees:<ccy>  <abs_fees>  <ccy> ; Payment fees
+          Expenses:<prefix>:<portfolio>:Wire:<ccy>  <abs_fees>  <ccy> ; Payment fees
           no: <transaction_number>
 
     Three legs that balance arithmetically: the user receives
     ``gross_amount`` in their external account, the Pictet portfolio's
     cash account decreases by ``amount`` (which is gross + fees, signed
     negative), and the wire fee posts to
-    ``Expenses:<prefix>:<portfolio>:Fees:<ccy>``.
+    ``Expenses:<prefix>:<portfolio>:Wire:<ccy>``.
 
     **Incoming self-to-self payment** (``tx.counter_account`` set,
     ``tx.amount > 0`` — user-owned external account credited the
@@ -118,11 +119,14 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
             )
         )
         # Wire fee leg — Pictet's payment-fee charge as an expense.
+        # Routed to ``Wire:<ccy>`` (via :func:`fee_segment`) rather
+        # than the generic ``Fees`` bucket so cash-movement costs are
+        # queryable separately from trade-related fees.
         if tx.fees is not None and tx.fees != 0:
             fees_ccy = tx.fees_currency or tx.currency
             lines.append(
                 align(
-                    f"Expenses:{prefix}:{portfolio}:Fees:{fees_ccy}",
+                    f"Expenses:{prefix}:{portfolio}:{fee_segment('Payment fees')}:{fees_ccy}",
                     format_amount(abs(tx.fees)),
                     fees_ccy,
                     extras=" ; Payment fees",

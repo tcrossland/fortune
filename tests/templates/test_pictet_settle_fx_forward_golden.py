@@ -13,8 +13,9 @@ Pins, against both fixtures (2026 buy-USD / 2025 sell-GBP):
   - Two-string narration: ``"Settle FX forward" "<headline>"``.
   - Fee-bearing cash leg first (signed as printed by Pictet — may be
     negative or positive depending on operation direction).
-  - ``Expenses:<prefix>:Fees:<ccy>`` posting with the absolute-value
-    spread and a ``; Forward spread`` comment.
+  - ``Expenses:<prefix>:Spread:<ccy>`` posting with the absolute-value
+    spread and a ``; Forward spread`` comment (Forward spread maps to
+    the canonical ``Spread`` segment via :func:`fee_segment`).
   - Counter cash leg with ``@@ <abs(amount - fees)> <ccy>`` annotation
     — the @@ value is the pre-fee gross of the fee-bearing leg, which
     is what beancount needs to cross-reconcile the two cash currencies
