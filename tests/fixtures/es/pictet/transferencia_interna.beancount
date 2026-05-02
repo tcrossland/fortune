@@ -1,0 +1,4 @@
+2021-11-10 * "Transferencia interna de efectivo" "EUR → USD"
+  Assets:Pic:K123456001:EUR                       -53104.86 EUR
+  Assets:Pic:K123456001:USD                        61188.00 USD @@ 53104.86 EUR
+  no: 733812025

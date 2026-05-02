@@ -154,6 +154,15 @@ class DocumentType(StrEnum):
     # incoming third-party) and ``PAGO_INTERNA`` (all-caps ``PAGO
     # ENTRANTE``, incoming self-to-self).
     PAGO = "pago"
+    # Spanish-locale cross-currency book transfer between two of the
+    # client's own current accounts at Pictet — counterpart to the EN
+    # ``INTERNAL_TRANSFER``. Issued under ``TRÁFICO DE PAGOS /
+    # TRANSFERENCIA INTERNA DE EFECTIVO`` with two ``EFECTO CASH``
+    # legs (debit on the source-currency account, credit on the
+    # destination-currency account) and an in-block ``Tipo de cambio``
+    # FX rate. Renders through the same single-entry-with-``@@``
+    # builder as ``INTERNAL_TRANSFER``.
+    TRANSFERENCIA_INTERNA = "transferencia_interna"
 
     # --- Periodic financial statements ---
     # Monthly portfolio report ("Financial Statement", "As at <day> <month>

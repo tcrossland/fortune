@@ -18,7 +18,8 @@ Templates are organised by locale:
   - Spanish (Madrid branch): ``compra``, ``debito_de_gastos``,
     ``distribucion``, ``factura``, ``pago_entrante``, ``pago_interna``,
     ``reembolso``, ``reembolso_final``, ``suscripcion``,
-    ``switch_entrada``, ``switch_salida``, ``venta``.
+    ``switch_entrada``, ``switch_salida``, ``transferencia_interna``,
+    ``venta``.
 """
 
 from __future__ import annotations
@@ -99,6 +100,9 @@ from banking_pipeline.templates.pictet.switch_entrada import (
 from banking_pipeline.templates.pictet.switch_salida import (
     PictetSwitchSalidaTemplate,
 )
+from banking_pipeline.templates.pictet.transferencia_interna import (
+    PictetTransferenciaInternaTemplate,
+)
 from banking_pipeline.templates.pictet.venta import PictetVentaTemplate
 
 # Concrete template instances exposed to the global registry. Order is not
@@ -139,6 +143,7 @@ PICTET_TEMPLATES: tuple[object, ...] = (
     PictetSuscripcionTemplate(),
     PictetSwitchEntradaTemplate(),
     PictetSwitchSalidaTemplate(),
+    PictetTransferenciaInternaTemplate(),
     PictetVentaTemplate(),
 )
 
@@ -178,5 +183,6 @@ __all__ = [
     "PictetSuscripcionTemplate",
     "PictetSwitchEntradaTemplate",
     "PictetSwitchSalidaTemplate",
+    "PictetTransferenciaInternaTemplate",
     "PictetVentaTemplate",
 ]

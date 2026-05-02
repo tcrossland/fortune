@@ -32,6 +32,12 @@ from banking_pipeline.writer.format import (
 
 INTERNAL_TRANSFER_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.INTERNAL_TRANSFER,
+    # Spanish-locale cross-currency book transfer between two of the
+    # client's own accounts — same source/destination ``Assets:Pic:...``
+    # shape as the EN sibling, just emitted under
+    # ``TRANSFERENCIA INTERNA DE EFECTIVO`` rather than
+    # ``Internal money transfer``.
+    DocumentType.TRANSFERENCIA_INTERNA,
     DocumentType.SPOT,
 })
 

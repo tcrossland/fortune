@@ -857,6 +857,39 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
             re.compile(r"\bComunicaci[oó]n\b", re.I),
         ),
     ),
+    # ES counterpart to the EN ``INTERNAL_TRANSFER`` rule. Shares the
+    # ``TRÁFICO DE PAGOS`` banner with PAGO / PAGO_ENTRANTE / PAGO_INTERNA;
+    # the unique title ``TRANSFERENCIA INTERNA DE EFECTIVO`` plus the
+    # FX-bridge fields (``Subtotal`` + ``Tipo de cambio``) that single-leg
+    # payment advices don't carry separate it from those rules cleanly.
+    Rule(
+        doc_type=DocumentType.TRANSFERENCIA_INTERNA,
+        template_id="pictet.transferencia_interna.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Shared banner — load-bearing only in combination with the
+            # title and FX-bridge patterns below.
+            re.compile(r"\bTR[ÁA]FICO\s+DE\s+PAGOS\b", re.I),
+            # Title — unique; the load-bearing discriminator from the
+            # ``PAGO`` / ``PAGO ENTRANTE`` / ``Pago entrante`` family.
+            re.compile(
+                r"^TRANSFERENCIA\s+INTERNA\s+DE\s+EFECTIVO\s*$", re.M | re.I
+            ),
+            # Both legs post as ``EFECTO CASH`` entries back into
+            # client-owned portfolios; Pictet's PDF-to-text extractor
+            # sometimes glues the words ("EFECTO CASHen la cartera"),
+            # so we don't require a space.
+            re.compile(r"\bEFECTO\s*CASH"),
+            # FX-bridge marker — internal transfers always cross
+            # currencies at Pictet (same-currency moves are booked as a
+            # simple adjustment, not as a TRÁFICO DE PAGOS advice).
+            re.compile(r"\bTipo\s+de\s+cambio\b", re.I),
+            # Sub-total line appears between the source-currency gross
+            # and the post-conversion net amount; absent from single-leg
+            # ``PAGO`` / ``PAGO ENTRANTE`` advices.
+            re.compile(r"\bSubtotal\b", re.I),
+        ),
+    ),
     Rule(
         doc_type=DocumentType.ESTADO_MENSUAL,
         template_id="pictet.estado_mensual.v1",
