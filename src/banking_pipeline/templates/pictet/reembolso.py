@@ -24,7 +24,7 @@ from banking_pipeline.templates.pictet._common import (
     extract_simple_trade_advice,
 )
 
-_REEMBOLSO_TITLE_RE = re.compile(r"^Reembolso\s*$", re.M)
+_REEMBOLSO_TITLE_RE = re.compile(r"^Reembolso\s*$", re.M | re.I)
 
 
 @dataclass
