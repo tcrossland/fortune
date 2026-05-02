@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Annotated
 
@@ -24,7 +25,7 @@ from banking_pipeline.classifiers.language import LANGUAGE_RULES, LanguageRuleCl
 from banking_pipeline.classifiers.rules import DEFAULT_RULES, RuleClassifier
 from banking_pipeline.extractors import extract_pages, load_pdf
 from banking_pipeline.fields import HybridExtractor, TemplateExtractionError
-from banking_pipeline.models import Classification
+from banking_pipeline.models import Classification, DocumentType
 from banking_pipeline.pipeline import Pipeline
 
 app = typer.Typer(help="Ingest banking PDFs and emit beancount entries.")
@@ -147,6 +148,31 @@ def prices(
             "it's the authoritative quote for that date.",
         ),
     ] = [],
+    statements_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--statements-dir",
+            help="Directory to scan for Pictet monthly statements. Each "
+            "PDF found is run through the layered classifier; only "
+            "documents classified as a monthly statement (EN "
+            "``MONTHLY_STATEMENT`` or ES ``ESTADO_MENSUAL``) are fed "
+            "into the price extractor — quarterly and annual reports "
+            "are skipped because they don't carry the per-ISIN "
+            "Portfolio valuation page. Combine with explicit "
+            "``--statement`` flags freely; merging is last-wins on "
+            "(date, ISIN).",
+        ),
+    ] = None,
+    statements_recursive: Annotated[
+        bool,
+        typer.Option(
+            "--statements-recursive",
+            "-R",
+            help="Descend into subdirectories under ``--statements-dir``. "
+            "Off by default so an accidental ``--statements-dir ~`` "
+            "doesn't spider the home folder.",
+        ),
+    ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
     """Extract ``price`` directives and write a beancount
@@ -159,28 +185,137 @@ def prices(
         ``{} @ <price> <ccy>`` market-price annotation on sells in
         ``data_dir/*.beancount`` give one price point per trade
         date per ISIN.
-      - **Monthly-statement valuations** (opt-in via ``--statement``):
-        Pictet's portfolio-valuation page lists every held ISIN's
-        market price on the statement date, so a year of monthly
-        statements gives ~12 price points per holding regardless of
-        whether the position traded that month. This is what
-        densifies the price timeline for stale holdings (a fund
-        bought in 2022 and held since trades-derives only one price
-        on the buy date; statements add monthly quotes from then on).
+      - **Monthly-statement valuations** (opt-in via ``--statement``
+        or ``--statements-dir``): Pictet's portfolio-valuation page
+        lists every held ISIN's market price on the statement date,
+        so a year of monthly statements gives ~12 price points per
+        holding regardless of whether the position traded that
+        month. This is what densifies the price timeline for stale
+        holdings (a fund bought in 2022 and held since trades-derives
+        only one price on the buy date; statements add monthly
+        quotes from then on).
+
+    ``--statements-dir`` is the bulk equivalent of repeated
+    ``--statement`` flags: it walks a directory, classifies every
+    PDF, and keeps the ones whose document type carries a Portfolio
+    valuation page. Add ``--statements-recursive`` to descend into
+    subdirectories.
     """
 
     _configure_logging(verbose)
+
+    discovered: dict[Path, DocumentType] = {}
+    if statements_dir is not None:
+        discovered = _discover_priced_statements(
+            statements_dir, recursive=statements_recursive
+        )
+        err_console.print(
+            f"[dim]Discovered {len(discovered)} monthly statement(s) "
+            f"under {statements_dir}"
+            + (" (recursive)" if statements_recursive else "")
+            + "[/dim]"
+        )
+
+    # Explicit ``--statement`` paths come without classifications
+    # attached; classify them here so non-monthly statements get the
+    # same skip-with-info-log treatment as the directory-scan path
+    # (point-6 tightening). Discovery results are pre-classified so
+    # they don't need a second pass.
+    explicit_doctypes = _classify_paths(statements) if statements else {}
+    statement_doctypes: dict[Path, DocumentType] = {
+        **explicit_doctypes,
+        **discovered,
+    }
+    all_statements = list(statements) + list(discovered)
     output_path, total = prices_extract.generate(
         data_dir=data_dir,
         output=output,
-        statement_files=statements,
+        statement_files=all_statements,
+        statement_doctypes=statement_doctypes,
     )
     extras = (
-        f", {len(statements)} statement(s) merged" if statements else ""
+        f", {len(all_statements)} statement(s) merged" if all_statements else ""
     )
     err_console.print(
         f"Wrote {output_path} ({total} price directive(s){extras})"
     )
+
+
+def _discover_priced_statements(
+    directory: Path, *, recursive: bool, pattern: str = "*.pdf"
+) -> dict[Path, DocumentType]:
+    """Walk ``directory`` for PDFs and keep those classified as
+    monthly statements (the only doctype with per-ISIN pricing).
+
+    Returns an insertion-ordered ``{path: DocumentType}`` mapping —
+    callers downstream forward it to
+    :func:`prices_extract.generate` as ``statement_doctypes`` so the
+    parser can short-circuit non-monthly types loudly rather than
+    silently producing empty rows.
+
+    Mirrors the ``scan`` command's case-insensitive glob plumbing so
+    ``*.pdf`` picks up ``.PDF`` and ``.Pdf`` siblings without making
+    the caller OR-glob by hand. Files that fail to load or classify
+    are skipped silently — this is a best-effort discovery walk, not
+    an audit; a corrupt PDF in the tree shouldn't abort the prices
+    rebuild.
+    """
+
+    walk = directory.rglob if recursive else directory.glob
+    seen_paths: set[Path] = set()
+    for pat in {pattern, pattern.lower(), pattern.upper()}:
+        for candidate in walk(pat):
+            if candidate.is_file():
+                seen_paths.add(candidate)
+    return _filter_priced_statements(sorted(seen_paths))
+
+
+def _filter_priced_statements(
+    paths: Iterable[Path],
+) -> dict[Path, DocumentType]:
+    """Return the subset of ``paths`` whose classification matches a
+    pricing-bearing doctype (see
+    :data:`prices_extract.PRICED_STATEMENT_DOCTYPES`), as a
+    ``{path: DocumentType}`` mapping preserving input order.
+
+    Files that fail to load or classify are silently dropped — see
+    :func:`_discover_priced_statements` for the rationale.
+    """
+
+    classifier = LayeredClassifier()
+    matches: dict[Path, DocumentType] = {}
+    for path in paths:
+        try:
+            doc = load_pdf(path)
+            classification = classifier.classify(doc)
+        except Exception:  # noqa: BLE001 — best-effort filter
+            continue
+        if classification.document_type in prices_extract.PRICED_STATEMENT_DOCTYPES:
+            matches[path] = classification.document_type
+    return matches
+
+
+def _classify_paths(paths: Iterable[Path]) -> dict[Path, DocumentType]:
+    """Classify ``paths`` and return the full ``{path: DocumentType}``
+    mapping — *no* doctype filtering applied.
+
+    Used on the ``prices`` command's explicit ``--statement`` flag
+    where the user specifically named the file: we still want the
+    classification (so the parser can short-circuit non-monthly
+    types loudly), but we don't drop the entry from the mapping
+    because the user asked for it explicitly.
+    """
+
+    classifier = LayeredClassifier()
+    out: dict[Path, DocumentType] = {}
+    for path in paths:
+        try:
+            doc = load_pdf(path)
+            classification = classifier.classify(doc)
+        except Exception:  # noqa: BLE001 — best-effort
+            continue
+        out[path] = classification.document_type
+    return out
 
 
 @app.command()
@@ -465,15 +600,43 @@ def _do_rebuild(
 
     # --- Step 3: post-processing -----------------------------------------
     if cfg.post.prices:
-        err_console.print(f"[bold]prices[/bold] {data_dir}")
+        # Expand and pre-filter statement PDFs *before* the dry-run /
+        # real-run branch so the dry-run preview shows how many
+        # documents the prices step would actually consume. ``soft_wrap``
+        # is on for both prints because the data_dir + prices.beancount
+        # paths in this step regularly exceed Rich's default 80-col
+        # width and the default cropping behaviour can swallow useful
+        # diagnostic content (the ``M of N matched`` cell, the leading
+        # ``wrote `` prefix) — soft-wrap keeps the whole line intact.
+        price_doctypes: dict[Path, DocumentType] = {}
+        if cfg.post.price_statements:
+            expanded = _expand_globs(cfg.post.price_statements, project_root)
+            price_doctypes = _filter_priced_statements(expanded)
+            err_console.print(
+                f"[bold]prices[/bold] {data_dir} "
+                f"({len(price_doctypes)} of {len(expanded)} matched "
+                f"statement(s) classified as monthly)",
+                soft_wrap=True,
+            )
+        else:
+            err_console.print(
+                f"[bold]prices[/bold] {data_dir}", soft_wrap=True
+            )
         if not dry_run:
             output_path, total = prices_extract.generate(
                 data_dir=data_dir,
                 output=None,
-                statement_files=[],
+                statement_files=list(price_doctypes),
+                statement_doctypes=price_doctypes,
+            )
+            extras = (
+                f"; {len(price_doctypes)} statement(s) merged"
+                if price_doctypes
+                else ""
             )
             err_console.print(
-                f"  wrote {output_path} ({total} price directive(s))"
+                f"  wrote {output_path} ({total} price directive(s){extras})",
+                soft_wrap=True,
             )
 
     if cfg.post.portfolio:

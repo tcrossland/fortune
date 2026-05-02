@@ -129,8 +129,17 @@ class PostSteps(BaseModel):
 
     # ``banking-pipeline prices <data_dir>``. Re-derives the price
     # database from per-trade buy / sell annotations across every ingest
-    # output.
+    # output. Optionally enriched by :attr:`price_statements`.
     prices: bool = True
+
+    # Monthly-statement PDF globs consumed by the prices step. Resolved
+    # the same way as :class:`Source.glob`. Ignored unless ``prices`` is
+    # true. Counterpart to :attr:`balance_statements`: glob entries that
+    # match documents *other* than monthly statements (annual / quarterly
+    # / non-statement PDFs) are silently dropped after classification —
+    # only the per-ISIN Portfolio valuation page on a monthly statement
+    # carries the data the price extractor needs.
+    price_statements: list[str] = Field(default_factory=list)
 
     # ``banking-pipeline portfolio <data_dir>``. Regenerates the central
     # account-opens + per-year-includes aggregate file.

@@ -12,13 +12,11 @@ dependencies = [
     "pypdfium2>=4.30.0",
     # pdfplumber: MIT. Layout-aware text + table extraction, built on pdfminer.six.
     "pdfplumber>=0.11.4",
-
     # --- Structured models / validation ---
     # pydantic: MIT. Runtime-validated models for documents, transactions, postings.
     "pydantic>=2.9",
     # pydantic-settings: MIT. 12-factor config from env vars / .env / TOML.
     "pydantic-settings>=2.6",
-
     # --- Field parsing ---
     # dateparser: BSD-3-Clause. Multi-locale date parsing ("23 avril 2026", "23/04/26", etc.).
     "dateparser>=1.2",
@@ -27,20 +25,18 @@ dependencies = [
     "python-stdnum>=1.20",
     # Babel: BSD-3-Clause. Locale-aware number/currency parsing.
     "babel>=2.16",
-
     # --- LLM fallback (classification + extraction) ---
     # anthropic: MIT. Official SDK for Claude. Used for the LLM fallback branches.
     "anthropic>=0.39",
-
     # --- CLI + output ---
     # typer: MIT. Click-based CLI with type hints.
     "typer>=0.13",
     # rich: MIT. Pretty logs, tables, tracebacks in the CLI.
     "rich>=13.9",
-
     # --- Logging ---
     # structlog: Apache-2.0 / MIT dual. Structured JSON/console logs.
     "structlog>=24.4",
+    "beancount>=3.2.2",
 ]
 
 [dependency-groups]

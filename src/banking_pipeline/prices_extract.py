@@ -37,6 +37,49 @@ import re
 from collections.abc import Iterable
 from datetime import date
 from pathlib import Path
+from typing import NamedTuple
+
+import structlog
+
+from banking_pipeline.models import DocumentType
+
+_log = structlog.get_logger(__name__)
+
+# Doctypes whose Portfolio valuation page carries per-asset market prices.
+# Only the monthly cadence (EN ``Financial Statement`` /
+# ES ``ESTADO FINANCIERO``) prints the per-ISIN ``<ccy> <price>`` row;
+# quarterly and annual statements omit it (quarterly: regulatory profile
+# only; annual: ESG/SFDR disclosures only). The ``prices`` command uses
+# this set to filter PDFs found by directory scan so the parser only sees
+# documents that can produce price rows.
+PRICED_STATEMENT_DOCTYPES: frozenset[DocumentType] = frozenset({
+    DocumentType.MONTHLY_STATEMENT,
+    DocumentType.ESTADO_MENSUAL,
+})
+
+
+class PriceRow(NamedTuple):
+    """One ``<date> price <commodity> <price> <ccy>`` data point.
+
+    ``source`` is the originating filename (the per-year
+    ``<year>.beancount`` for trade-derived rows, the statement
+    PDF / text dump for statement-derived rows). The renderer emits
+    it as a trailing ``; source: <name>`` comment so the prices file
+    doubles as its own audit trail — no need to grep through the
+    ingest output to figure out where a number came from.
+
+    Sorted lexicographically across all fields. The ``(date,
+    commodity)`` prefix is the natural ordering; ties on those are
+    rare in practice (one price per ISIN per day), so the price /
+    currency / source sort order matters only for deterministic
+    output when collisions do happen.
+    """
+
+    date: str  # ISO ``YYYY-MM-DD``
+    commodity: str  # ISIN-shaped
+    price: str  # decimal as printed
+    currency: str  # ISO 4217
+    source: str | None = None
 
 # English and Spanish month names, lowercased for case-insensitive
 # lookup. Both locales' Pictet statements anchor the valuation date as
@@ -105,18 +148,22 @@ def _normalise_amount(s: str) -> str:
     return s.replace("'", "")
 
 
-def extract_prices(files: Iterable[Path]) -> list[tuple[str, str, str, str]]:
+def extract_prices(files: Iterable[Path]) -> list[PriceRow]:
     """Walk the supplied beancount files and return a list of
-    ``(date, commodity, price, currency)`` 4-tuples — one per unique
-    (date, commodity) pair seen, with the last occurrence winning.
+    :class:`PriceRow` — one per unique ``(date, commodity)`` pair
+    seen, with the last occurrence winning.
 
     Files are read in order so a deterministic ``last-wins`` rule
     means the user's per-year files passed last (most recent year)
-    take precedence on accidental same-date duplicates.
+    take precedence on accidental same-date duplicates. Each row's
+    ``source`` is set to the originating file's name (e.g.
+    ``2024.beancount``) so the rendered output points back at its
+    provenance.
     """
 
-    seen: dict[tuple[str, str], tuple[str, str, str, str]] = {}
+    seen: dict[tuple[str, str], PriceRow] = {}
     for path in files:
+        source = path.name
         current_date: str | None = None
         for line in path.read_text(encoding="utf-8").splitlines():
             m_date = _TXN_DATE_RE.match(line)
@@ -137,24 +184,33 @@ def extract_prices(files: Iterable[Path]) -> list[tuple[str, str, str, str]]:
             currency = m_post.group(3) or m_post.group(5)
             if price is None or currency is None:
                 continue
-            seen[(current_date, commodity)] = (
-                current_date,
-                commodity,
-                _normalise_amount(price),
-                currency,
+            seen[(current_date, commodity)] = PriceRow(
+                date=current_date,
+                commodity=commodity,
+                price=_normalise_amount(price),
+                currency=currency,
+                source=source,
             )
     return sorted(seen.values())
 
 
 _DEFAULT_HEADER = (
-    ";; Price directives extracted from per-trade inventory annotations.\n"
+    ";; Price directives extracted from per-trade inventory annotations\n"
+    ";; and (optionally) Pictet monthly-statement Portfolio valuation\n"
+    ";; pages.\n"
     ";;\n"
     ";; One ``<date> price <commodity> <price> <ccy>`` directive per\n"
     ";; unique (date, commodity) pair, sourced from the cost-basis\n"
     ";; braces on buys (``{<price> <ccy>}``) and the market-price\n"
     ";; annotation on sells (``@ <price> <ccy>``). When the same\n"
     ";; (date, commodity) appears more than once the file order wins\n"
-    ";; (last write).\n"
+    ";; (last write); a structlog warning is emitted on every\n"
+    ";; price-mismatch collision so silent drift becomes visible.\n"
+    ";;\n"
+    ";; Each directive carries a trailing ``; source: <name>`` comment\n"
+    ";; pointing at the originating file (a per-year ``<year>.beancount``\n"
+    ";; for trade-derived rows, the statement PDF for statement-derived\n"
+    ";; rows) so the prices file is its own audit trail.\n"
     ";;\n"
     ";; Regenerate via ``banking-pipeline prices data/`` after\n"
     ";; re-running ingest. ``portfolio.beancount`` should\n"
@@ -163,12 +219,19 @@ _DEFAULT_HEADER = (
 )
 
 
-def render(rows: Iterable[tuple[str, str, str, str]], header: str = _DEFAULT_HEADER) -> str:
-    """Format the extracted price tuples as a beancount file body."""
+def render(rows: Iterable[PriceRow], header: str = _DEFAULT_HEADER) -> str:
+    """Format the extracted :class:`PriceRow` sequence as a beancount
+    file body. Each row with a non-empty ``source`` gets a trailing
+    ``; source: <name>`` comment; rows without a source render as a
+    bare directive (covers older fixtures and library callers that
+    don't bother with provenance)."""
 
     lines = [header.rstrip("\n"), ""]
-    for date, commodity, price, currency in rows:
-        lines.append(f"{date} price {commodity}  {price} {currency}")
+    for row in rows:
+        line = f"{row.date} price {row.commodity}  {row.price} {row.currency}"
+        if row.source:
+            line += f"  ; source: {row.source}"
+        lines.append(line)
     lines.append("")
     return "\n".join(lines)
 
@@ -178,6 +241,7 @@ def generate(
     output: Path | None = None,
     *,
     statement_files: Iterable[Path] = (),
+    statement_doctypes: dict[Path, DocumentType] | None = None,
 ) -> tuple[Path, int]:
     """Scan ``data_dir`` for ``*.beancount`` per-year files (skipping
     aggregate files like ``portfolio.beancount`` to avoid double-
@@ -190,6 +254,16 @@ def generate(
     merges into the trade-derived prices. Statement-derived prices
     win on ``(date, ISIN)`` collisions because the statement's
     valuation is the authoritative quote for that date.
+
+    ``statement_doctypes`` is an optional ``{path: DocumentType}``
+    mapping — when provided, each statement file's pre-classified
+    doctype is forwarded to :func:`extract_prices_from_statement`,
+    which short-circuits non-monthly types (quarterly / annual)
+    with an info log. When omitted the parser falls back to lenient
+    behaviour (parses every file regardless of doctype). The CLI's
+    ``--statements-dir`` flag and the rebuild config's
+    ``price_statements`` glob both pre-classify and pass the
+    mapping through.
     """
 
     if output is None:
@@ -207,14 +281,21 @@ def generate(
     # deferred until a PDF actually shows up — pypdfium2 is heavy to
     # load and the trade-only path doesn't need it; ``.txt`` test
     # fixtures don't need it either.
-    statement_rows: list[tuple[str, str, str, str]] = []
+    statement_rows: list[PriceRow] = []
     for path in statement_files:
         if path.suffix.lower() == ".txt":
             text = path.read_text(encoding="utf-8")
         else:
             from banking_pipeline.extractors import load_pdf  # type: ignore[attr-defined]
             text = load_pdf(path).text
-        statement_rows.extend(extract_prices_from_statement(text))
+        doctype = (
+            statement_doctypes.get(path) if statement_doctypes else None
+        )
+        statement_rows.extend(
+            extract_prices_from_statement(
+                text, doctype=doctype, source=path.name
+            )
+        )
 
     # Statement rows passed last so they win on (date, ISIN) collisions.
     rows = merge_prices(trade_rows, statement_rows)
@@ -288,18 +369,43 @@ _PRICE_LINE_RE = re.compile(
 )
 
 
-def extract_prices_from_statement(text: str) -> list[tuple[str, str, str, str]]:
+def extract_prices_from_statement(
+    text: str,
+    *,
+    doctype: DocumentType | None = None,
+    source: str | None = None,
+) -> list[PriceRow]:
     """Parse a monthly-statement text dump for per-ISIN market prices.
 
-    Returns a list of ``(date, commodity, price, currency)`` 4-tuples,
-    one per ISIN found. The date is the statement's ``As at`` /
-    ``al <date>`` anchor; if that can't be parsed, returns ``[]``.
+    Returns a list of :class:`PriceRow`, one per ISIN found. The
+    date is the statement's ``As at`` / ``al <date>`` anchor; if
+    that can't be parsed, returns ``[]``.
 
     Handles both English and Spanish locales (``Financial Statement``
     and ``ESTADO FINANCIERO``) since they share the same row layout
     and only differ in the locale of the date string and the column
     headers — neither of which affect the parser.
+
+    ``doctype`` is the optional pre-classified document type. When
+    provided and not in :data:`PRICED_STATEMENT_DOCTYPES`
+    (i.e. anything that isn't a monthly statement), the parser
+    short-circuits to ``[]`` with a structlog info entry so the
+    skip is observable. When ``doctype`` is ``None`` the parser
+    falls back to the lenient regex-only behaviour — handy for
+    library callers that haven't classified their input.
+
+    ``source`` is the originating filename, threaded onto every
+    emitted :class:`PriceRow` so the rendered prices file points
+    back at the statement that produced the number.
     """
+
+    if doctype is not None and doctype not in PRICED_STATEMENT_DOCTYPES:
+        _log.info(
+            "prices_extract.skip_non_monthly_statement",
+            doctype=doctype.value,
+            source=source,
+        )
+        return []
 
     date_match = _AS_AT_RE.search(text)
     if date_match is None:
@@ -309,7 +415,7 @@ def extract_prices_from_statement(text: str) -> list[tuple[str, str, str, str]]:
         return []
     date_str = parsed_date.isoformat()
 
-    rows: list[tuple[str, str, str, str]] = []
+    rows: list[PriceRow] = []
     seen_on_this_statement: set[str] = set()
     lines = text.splitlines()
     for i, line in enumerate(lines):
@@ -332,7 +438,15 @@ def extract_prices_from_statement(text: str) -> list[tuple[str, str, str, str]]:
             if m_price is None:
                 continue
             currency, price = m_price.group(1), m_price.group(2)
-            rows.append((date_str, isin, price.replace("'", ""), currency))
+            rows.append(
+                PriceRow(
+                    date=date_str,
+                    commodity=isin,
+                    price=price.replace("'", ""),
+                    currency=currency,
+                    source=source,
+                )
+            )
             seen_on_this_statement.add(isin)
             break
 
@@ -340,16 +454,38 @@ def extract_prices_from_statement(text: str) -> list[tuple[str, str, str, str]]:
 
 
 def merge_prices(
-    *price_lists: Iterable[tuple[str, str, str, str]],
-) -> list[tuple[str, str, str, str]]:
-    """Merge multiple price-tuple lists into a deduplicated, sorted
-    sequence. Last-occurrence-wins on duplicate ``(date, commodity)``
-    pairs — pass statement-derived prices last when both sources
-    cover the same date so the statement's authoritative valuation
-    overrides any same-day trade-derived price."""
+    *price_lists: Iterable[PriceRow],
+) -> list[PriceRow]:
+    """Merge multiple :class:`PriceRow` iterables into a
+    deduplicated, sorted sequence. Last-occurrence-wins on duplicate
+    ``(date, commodity)`` pairs — pass statement-derived prices last
+    when both sources cover the same date so the statement's
+    authoritative valuation overrides any same-day trade-derived
+    price.
 
-    seen: dict[tuple[str, str], tuple[str, str, str, str]] = {}
+    A structlog **warning** is emitted whenever a row overwrites a
+    previously-seen ``(date, commodity)`` pair with a *different*
+    price. Same-price overwrites stay silent (re-runs against
+    already-merged sources are normal). The warning carries both
+    prices and both sources so the user can decide which is right.
+    """
+
+    seen: dict[tuple[str, str], PriceRow] = {}
     for price_list in price_lists:
         for row in price_list:
-            seen[(row[0], row[1])] = row
+            key = (row.date, row.commodity)
+            existing = seen.get(key)
+            if existing is not None and existing.price != row.price:
+                _log.warning(
+                    "prices_extract.price_collision",
+                    date=row.date,
+                    commodity=row.commodity,
+                    old_price=existing.price,
+                    new_price=row.price,
+                    old_currency=existing.currency,
+                    new_currency=row.currency,
+                    old_source=existing.source,
+                    new_source=row.source,
+                )
+            seen[key] = row
     return sorted(seen.values())
