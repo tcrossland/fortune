@@ -27,6 +27,9 @@ from banking_pipeline.extractors import extract_pages, load_pdf
 from banking_pipeline.fields import HybridExtractor, TemplateExtractionError
 from banking_pipeline.models import Classification, DocumentType
 from banking_pipeline.pipeline import Pipeline
+from banking_pipeline.revolut import import_csvs as revolut_import_csvs
+from banking_pipeline.revolut import render as revolut_render
+from banking_pipeline.revolut.render import render_open_directives as revolut_open_directives
 
 app = typer.Typer(help="Ingest banking PDFs and emit beancount entries.")
 console = Console()
@@ -113,6 +116,45 @@ def ingest(
     if check is not None:
         err_console.print(f"[bold]check[/bold] {check}")
         _run_check_or_exit(check, strict=strict)
+
+
+@app.command()
+def revolut(
+    csv_paths: Annotated[
+        list[Path],
+        typer.Argument(
+            exists=True,
+            readable=True,
+            help="One or more Revolut Personal CSV exports. Pass every "
+            "currency pocket together so EXCHANGE legs can be paired across "
+            "files into balanced two-posting transactions.",
+        ),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Write beancount entries here instead of stdout."),
+    ] = None,
+    open_directives: Annotated[
+        bool,
+        typer.Option(
+            "--open-directives",
+            help="Prepend ``open`` directives for every Assets:Revolut:* "
+            "account encountered. One-shot bootstrap for fresh ledgers.",
+        ),
+    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Convert Revolut Personal CSV exports into beancount transactions."""
+
+    _configure_logging(verbose)
+    txns = revolut_import_csvs(csv_paths)
+    body = revolut_render(txns)
+    rendered = (revolut_open_directives(txns) + "\n" if open_directives else "") + body
+    if output is None:
+        console.print(rendered)
+    else:
+        output.write_text(rendered, encoding="utf-8")
+        err_console.print(f"Wrote {output} ({len(txns)} txns)")
 
 
 @app.command()
