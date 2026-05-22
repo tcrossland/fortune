@@ -9,6 +9,10 @@ banking-pipeline.toml
 # Copy from data/commodities.example.toml and edit.
 data/commodities.toml
 
+# Personal pre-ledger opening positions (historical cost basis).
+# Copy from data/opening-positions.example.toml and edit.
+data/opening-positions.toml
+
 # Python-generated files
 __pycache__/
 *.py[oc]

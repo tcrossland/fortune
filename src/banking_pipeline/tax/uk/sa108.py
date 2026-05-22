@@ -22,6 +22,7 @@ from decimal import Decimal
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.models import Transaction
+from banking_pipeline.opening_positions import OpeningLot
 from banking_pipeline.tax.uk.currency import to_gbp
 from banking_pipeline.tax.uk.section_104 import (
     Acquisition,
@@ -61,6 +62,10 @@ class Sa108Report:
     # per-transaction rate and none from the rate source) — emitting a
     # half-converted pool would be worse than flagging the gap.
     missing_rate_isins: list[str] = field(default_factory=list)
+    # ISINs disposed of more than were acquired (ledger + opening lots) —
+    # the shortfall was matched at zero cost, so a pre-ledger acquisition
+    # is almost certainly missing from data/opening-positions.toml.
+    unmatched_isins: list[str] = field(default_factory=list)
 
 
 def _consideration_native(tx: Transaction) -> Decimal:
@@ -87,6 +92,7 @@ def compute_sa108(
     commodities: dict[str, CommodityMetadata],
     source: GbpRateSource | None = None,
     rate_change_date: date | None = None,
+    opening_positions: dict[str, list[OpeningLot]] | None = None,
 ) -> Sa108Report:
     """Compute SA108 disposal rows for ``tax_year_label``.
 
@@ -106,11 +112,20 @@ def compute_sa108(
         if tx.isin and tx.document_type in (SECURITY_BUY_TYPES | SECURITY_SELL_TYPES):
             by_isin[tx.isin].append(tx)
 
+    opening = opening_positions or {}
     rows: list[Sa108Row] = []
     missing: list[str] = []
+    unmatched: list[str] = []
 
-    for isin, txs in by_isin.items():
-        acqs: list[Acquisition] = []
+    # Include ISINs that only appear in opening positions (e.g. a holding
+    # bought pre-ledger and sold within it would still be in ``by_isin``
+    # via the sell; this also covers opening-only holdings harmlessly).
+    for isin in by_isin.keys() | opening.keys():
+        txs = by_isin.get(isin, [])
+        acqs: list[Acquisition] = [
+            Acquisition(lot.acquired, lot.quantity, lot.cost_gbp)
+            for lot in opening.get(isin, [])
+        ]
         disps: list[Disposal] = []
         unconverted = False
         for tx in txs:
@@ -136,6 +151,14 @@ def compute_sa108(
             missing.append(isin)
             continue
 
+        # Disposed more than ever acquired (ledger + opening) → the
+        # shortfall matches at zero cost; flag it as a missing opening
+        # position rather than letting the gain quietly inflate.
+        total_acq = sum((a.qty for a in acqs), Decimal(0))
+        total_disp = sum((d.qty for d in disps), Decimal(0))
+        if total_disp - total_acq > Decimal("0.0001"):
+            unmatched.append(isin)
+
         meta = commodities.get(isin)
         status = meta.reporting_status if meta is not None else "unknown"
         name = meta.name if meta is not None else ""
@@ -160,4 +183,7 @@ def compute_sa108(
 
     rows.sort(key=lambda r: (r.disposal_date, r.isin))
     missing.sort()
-    return Sa108Report(rows=rows, missing_rate_isins=missing)
+    unmatched.sort()
+    return Sa108Report(
+        rows=rows, missing_rate_isins=missing, unmatched_isins=unmatched
+    )

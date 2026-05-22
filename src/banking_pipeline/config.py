@@ -58,6 +58,18 @@ class Settings(BaseSettings):
     # ``<year>/`` subdirectory under it.
     tax_reports_dir: Path = Path("reports/uk-tax")
 
+    # Pre-ledger / transferred-in opening positions (ISIN → lots with a
+    # GBP cost) seeded into the section 104 pool. Defaults to
+    # ``data/opening-positions.toml`` when present. See
+    # :mod:`banking_pipeline.opening_positions`.
+    opening_positions_path: Path | None = Field(
+        default_factory=lambda: (
+            Path("data/opening-positions.toml")
+            if Path("data/opening-positions.toml").is_file()
+            else None
+        )
+    )
+
     # CGT main-rate change dates by tax-year label. From this date the
     # rate changed mid-year, so HMRC requires disposals split before /
     # on-or-after it. A year with no entry is reported without a split.

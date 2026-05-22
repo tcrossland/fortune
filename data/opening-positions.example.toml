@@ -1,0 +1,19 @@
+# Pre-ledger / transferred-in opening positions — copy to
+# data/opening-positions.toml and edit. The real file is gitignored
+# (personal cost data), mirroring data/commodities.toml.
+#
+# Each [[lot]] seeds the section 104 pool with a holding acquired before
+# the ledger's earliest data (or transferred in from another custodian),
+# so its allowable cost isn't treated as zero on a later disposal.
+# cost_gbp is the total allowable cost (consideration + acquisition
+# costs) for `quantity` units, already in sterling.
+#
+# Run `banking-pipeline tax-report ... ` and check summary.txt for the
+# "disposed more than acquired" warning to find ISINs that need a lot.
+# A security may have several lots (different acquisition dates).
+
+[[lot]]
+isin = "LU0128316170"
+acquired = 2019-05-01
+quantity = 5068.383
+cost_gbp = 120000.00

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.models import DocumentType, Transaction
+from banking_pipeline.opening_positions import OpeningLot
 from banking_pipeline.tax.uk.sa108 import compute_sa108
 
 
@@ -99,6 +100,45 @@ def test_no_rate_change_date_leaves_period_empty() -> None:
         txs, tax_year_label="2025-26", commodities={isin: _reporting(isin)}
     )
     assert report.rows[0].period == ""
+
+
+def test_opening_position_seeds_pool() -> None:
+    isin = "IE00B3VWN518"
+    # No ledger buy — only an opening lot (100 @ £800, unit 8) — then a sell.
+    txs = [
+        _tx(doc_type=DocumentType.SELL_ETF, isin=isin, qty=Decimal("-100"),
+            amount=Decimal("1500"), on=date(2025, 6, 1)),
+    ]
+    opening = {
+        isin: [
+            OpeningLot(
+                isin=isin, acquired=date(2019, 1, 1),
+                quantity=Decimal("100"), cost_gbp=Decimal("800"),
+            )
+        ]
+    }
+    report = compute_sa108(
+        txs, tax_year_label="2025-26", commodities={isin: _reporting(isin)},
+        opening_positions=opening,
+    )
+    assert report.unmatched_isins == []
+    assert report.rows[0].cost_gbp == Decimal("800.00")
+    assert report.rows[0].gain_gbp == Decimal("700.00")
+
+
+def test_disposal_without_acquisition_is_flagged() -> None:
+    isin = "IE00B3VWN518"
+    txs = [
+        _tx(doc_type=DocumentType.SELL_ETF, isin=isin, qty=Decimal("-100"),
+            amount=Decimal("1500"), on=date(2025, 6, 1)),
+    ]
+    report = compute_sa108(
+        txs, tax_year_label="2025-26", commodities={isin: _reporting(isin)}
+    )
+    # Disposed with nothing acquired → flagged, and matched at zero cost.
+    assert report.unmatched_isins == [isin]
+    assert report.rows[0].cost_gbp == Decimal("0.00")
+    assert report.rows[0].gain_gbp == Decimal("1500.00")
 
 
 def test_disposal_outside_year_excluded() -> None:

@@ -33,6 +33,7 @@ from banking_pipeline.extractors import extract_pages, load_pdf
 from banking_pipeline.fields import HybridExtractor, TemplateExtractionError
 from banking_pipeline.fx.gbp_rates import build_rate_source
 from banking_pipeline.models import Classification, DocumentType, Transaction
+from banking_pipeline.opening_positions import load_opening_positions
 from banking_pipeline.pipeline import Pipeline
 from banking_pipeline.revolut import import_csvs as revolut_import_csvs
 from banking_pipeline.revolut import render as revolut_render
@@ -1428,6 +1429,14 @@ def _write_tax_summary(
         for isin in isins:
             lines.append(f"  {isin}")
         lines.append("")
+    if sa108.unmatched_isins:
+        lines.append(
+            "WARN disposed more than acquired — add opening positions to "
+            "data/opening-positions.toml (shortfall matched at zero cost):"
+        )
+        for isin in sa108.unmatched_isins:
+            lines.append(f"  {isin}")
+        lines.append("")
     missing = sorted(set(sa108.missing_rate_isins) | set(sa106.missing_rate_isins))
     if missing:
         lines.append("WARN missing GBP rate — excluded from the report:")
@@ -1476,6 +1485,15 @@ def tax_report(
             "source.",
         ),
     ] = None,
+    opening_positions: Annotated[
+        Path | None,
+        typer.Option(
+            "--opening-positions",
+            help="Pre-ledger opening-positions TOML seeded into the "
+            "section 104 pool. Defaults to the configured "
+            "``opening_positions_path``.",
+        ),
+    ] = None,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
     """Produce UK SA106 / SA108 CSV inputs from the JSONL sidecars.
@@ -1505,6 +1523,13 @@ def tax_report(
     )
     rates = build_rate_source(eff_settings)
 
+    opening_path = opening_positions or settings.opening_positions_path
+    opening = (
+        load_opening_positions(opening_path)
+        if opening_path is not None and opening_path.is_file()
+        else {}
+    )
+
     txns = _load_sidecar_transactions(source)
     sa108 = compute_sa108(
         txns,
@@ -1512,6 +1537,7 @@ def tax_report(
         commodities=commodities_map,
         source=rates,
         rate_change_date=settings.cgt_rate_change_dates.get(year),
+        opening_positions=opening,
     )
     sa106 = compute_sa106_dividends(
         txns, tax_year_label=year, commodities=commodities_map, source=rates
