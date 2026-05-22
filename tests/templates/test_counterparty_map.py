@@ -15,8 +15,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from banking_pipeline import beancount_writer
 from banking_pipeline.config import settings
 from banking_pipeline.models import (

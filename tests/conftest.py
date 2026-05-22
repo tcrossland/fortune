@@ -92,7 +92,7 @@ def fixtures_dir() -> Path:
 
 
 @pytest.fixture
-def load_fixture_doc() -> "callable[[str], RawDocument]":  # type: ignore[valid-type]
+def load_fixture_doc() -> callable[[str], RawDocument]:  # type: ignore[valid-type]
     """Return a loader that wraps a fixture ``.txt`` file as a :class:`RawDocument`.
 
     The argument is a path relative to ``tests/fixtures/`` — e.g.

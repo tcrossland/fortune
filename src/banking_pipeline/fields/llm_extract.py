@@ -33,7 +33,11 @@ class LLMExtractor:
             },
         }
 
-        message = client.messages.create(
+        # The SDK's typed overloads want TypedDict params for ``tools`` /
+        # ``tool_choice`` / ``messages``; we pass plain dicts that are valid
+        # at runtime. Narrowing them to the SDK's param types buys nothing
+        # for this untested fallback path.
+        message = client.messages.create(  # type: ignore[call-overload]
             model=self.model,
             max_tokens=2048,
             system=(

@@ -69,14 +69,28 @@ build-backend = "uv_build"
 [tool.ruff]
 line-length = 100
 target-version = "py314"
+# ``.claude`` holds tooling state (agent worktrees etc.), not project
+# source — keep it out of lint runs.
+extend-exclude = [".claude"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# Inline Revolut CSV record fixtures are single-line strings that read
+# far better unbroken than wrapped or concatenated mid-record.
+"tests/test_revolut_csv.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.14"
 strict = true
 plugins = ["pydantic.mypy"]
+
+# Third-party libraries without bundled type information / py.typed.
+# Treat their imports as untyped rather than failing the strict run.
+[[tool.mypy.overrides]]
+module = ["dateparser.*", "pypdfium2.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

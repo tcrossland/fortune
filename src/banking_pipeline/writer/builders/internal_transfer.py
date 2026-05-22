@@ -52,8 +52,8 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     Layout::
 
         <booking_date> * "<title>" "<narration>"
-          Assets:<prefix>:<currency>             <amount> <ccy>
-          Assets:<prefix>:<counter_currency>     <counter_amount> <counter_ccy> @@ <abs_amount> <ccy>
+          Assets:<prefix>:<currency>          <amount> <ccy>
+          Assets:<prefix>:<counter_currency>  <counter_amount> <counter_ccy> @@ <abs_amount> <ccy>
           no: <transaction_number>
 
     Both legs are positive-or-negative as Pictet stored them: the source

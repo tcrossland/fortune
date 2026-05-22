@@ -76,11 +76,11 @@ def parse_csv(path: Path) -> list[RevolutRow]:
                 f"got {reader.fieldnames!r}"
             )
         for raw in reader:
-            mapped = {
-                normalised[i]: raw[name]
-                for i, name in enumerate(reader.fieldnames)
-                if normalised[i] is not None
-            }
+            mapped: dict[str, str] = {}
+            for i, name in enumerate(reader.fieldnames):
+                col = normalised[i]
+                if col is not None:
+                    mapped[col] = raw[name]
             try:
                 rows.append(_row_from_dict(mapped, source=path.name))
             except (ValueError, InvalidOperation) as exc:

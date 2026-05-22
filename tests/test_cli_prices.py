@@ -85,10 +85,10 @@ def test_priced_statement_doctypes_is_monthly_only() -> None:
     prices; the constant must encode that exactly so the directory
     walker doesn't waste time parsing annual / quarterly PDFs."""
 
-    assert prices_extract.PRICED_STATEMENT_DOCTYPES == frozenset({
+    assert frozenset({
         DocumentType.MONTHLY_STATEMENT,
         DocumentType.ESTADO_MENSUAL,
-    })
+    }) == prices_extract.PRICED_STATEMENT_DOCTYPES
 
 
 # --- prices --statements-dir -----------------------------------------------

@@ -48,7 +48,7 @@ def _populate_registry() -> None:
     from banking_pipeline.templates.pictet import PICTET_TEMPLATES
 
     for template in PICTET_TEMPLATES:
-        TEMPLATE_REGISTRY[template.template_id] = template  # type: ignore[attr-defined]
+        TEMPLATE_REGISTRY[template.template_id] = template
 
 
 _populate_registry()

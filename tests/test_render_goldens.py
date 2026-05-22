@@ -38,8 +38,6 @@ no output) are filtered out at discovery time, no skip needed.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from banking_pipeline import beancount_writer

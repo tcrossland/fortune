@@ -32,8 +32,13 @@ from banking_pipeline.revolut import render as revolut_render
 from banking_pipeline.revolut.render import render_open_directives as revolut_open_directives
 
 app = typer.Typer(help="Ingest banking PDFs and emit beancount entries.")
-console = Console()
-err_console = Console(stderr=True)
+# ``soft_wrap=True`` stops rich from hard-wrapping at the detected
+# terminal width (80 cols when output is piped/captured). That matters
+# on two fronts: diagnostic lines carry long absolute paths, and
+# ``console`` prints rendered beancount whose account paths exceed 80
+# cols — a hard wrap there would corrupt the emitted ledger.
+console = Console(soft_wrap=True)
+err_console = Console(stderr=True, soft_wrap=True)
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -54,7 +59,11 @@ def ingest(
     pdf_paths: Annotated[list[Path], typer.Argument(exists=True, readable=True)],
     output: Annotated[
         Path | None,
-        typer.Option("--output", "-o", help="Write beancount entries to this file instead of stdout."),
+        typer.Option(
+            "--output",
+            "-o",
+            help="Write beancount entries to this file instead of stdout.",
+        ),
     ] = None,
     check: Annotated[
         Path | None,
@@ -198,7 +207,7 @@ def prices(
             "(date, ISIN) collisions the statement value wins because "
             "it's the authoritative quote for that date.",
         ),
-    ] = [],
+    ] = [],  # noqa: B006 — Typer's documented list-option default; not mutated
     statements_dir: Annotated[
         Path | None,
         typer.Option(
@@ -392,7 +401,7 @@ def balances(
             "``As at`` anchor (beancount's beginning-of-day "
             "evaluation convention).",
         ),
-    ] = [],
+    ] = [],  # noqa: B006 — Typer's documented list-option default; not mutated
     output: Annotated[
         Path | None,
         typer.Option(
@@ -455,7 +464,7 @@ def portfolio(
             "at the top of the aggregate. Pass multiple times for a "
             "multi-currency view; defaults to ``GBP``.",
         ),
-    ] = ["GBP"],
+    ] = ["GBP"],  # noqa: B006 — Typer's documented list-option default; not mutated
     booking_method: Annotated[
         str,
         typer.Option(
@@ -534,14 +543,14 @@ def rebuild(
         ),
     ] = None,
     project_root: Annotated[
-        Path,
+        Path | None,
         typer.Option(
             "--project-root",
             help="Project root used to resolve relative paths and "
             "locate the default config. Defaults to the current "
             "working directory.",
         ),
-    ] = Path.cwd(),
+    ] = None,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -586,6 +595,9 @@ def rebuild(
     """
 
     _configure_logging(verbose)
+    # Resolve the default here rather than in the signature: ``Path.cwd()``
+    # as a parameter default is evaluated once at import, not per invocation.
+    project_root = project_root or Path.cwd()
     cfg = load_config(project_root, config_path=config)
     _do_rebuild(cfg, project_root=project_root, dry_run=dry_run, strict=strict)
 

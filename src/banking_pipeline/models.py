@@ -343,7 +343,7 @@ class Language(StrEnum):
 #     events have already been booked by the per-trade and
 #     per-cash-movement advices that fed them, so emitting any
 #     postings would double-count.
-NO_OUTPUT_DOCTYPES: frozenset["DocumentType"] = frozenset({
+NO_OUTPUT_DOCTYPES: frozenset[DocumentType] = frozenset({
     DocumentType.FX_FORWARD,
     DocumentType.CAMBIO_DE_DIVISAS_APERTURA,
     DocumentType.LIQUIDACION_AVISO_PREVIO_RECEPCION,

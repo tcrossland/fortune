@@ -27,6 +27,8 @@ Templates are organised by locale:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from banking_pipeline.templates.pictet.buy_bonds import PictetBuyBondsTemplate
 from banking_pipeline.templates.pictet.buy_etf import PictetBuyEtfTemplate
 from banking_pipeline.templates.pictet.buy_shares import PictetBuySharesTemplate
@@ -123,10 +125,13 @@ from banking_pipeline.templates.pictet.transferencia_interna import (
 )
 from banking_pipeline.templates.pictet.venta import PictetVentaTemplate
 
+if TYPE_CHECKING:
+    from banking_pipeline.templates import Template
+
 # Concrete template instances exposed to the global registry. Order is not
 # significant — the registry is keyed on ``template_id`` — but keeping it
 # alphabetical by template_id makes diffs easy to read.
-PICTET_TEMPLATES: tuple[object, ...] = (
+PICTET_TEMPLATES: tuple[Template, ...] = (
     PictetBuyBondsTemplate(),
     PictetBuyEtfTemplate(),
     PictetBuySharesTemplate(),

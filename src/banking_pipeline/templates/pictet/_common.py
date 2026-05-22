@@ -31,7 +31,7 @@ from datetime import date
 from decimal import Decimal
 
 from banking_pipeline.fields.validators import normalise_iban, normalise_isin
-from banking_pipeline.models import RawDocument, Transaction
+from banking_pipeline.models import FeeItem, RawDocument, Transaction
 
 # dd.mm.yyyy — Pictet always pads to two digits for day/month.
 _DATE_RE = re.compile(r"\b(\d{2})\.(\d{2})\.(\d{4})\b")
@@ -458,8 +458,6 @@ def find_fee_breakdown(
        two or three lines before the amount. Label parts are joined
        with single spaces.
     """
-
-    from banking_pipeline.models import FeeItem  # avoid import cycle
 
     items: list[FeeItem] = []
     in_block = False

@@ -16,7 +16,6 @@ import pytest
 from banking_pipeline.classifiers.hybrid import LayeredClassifier
 from tests.conftest import FixtureCase, discover_fixtures
 
-
 _CASES = discover_fixtures()
 
 

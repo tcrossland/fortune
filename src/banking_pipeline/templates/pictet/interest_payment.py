@@ -19,6 +19,7 @@ the counter-leg account family (``Expenses:...:Interest`` vs
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 from banking_pipeline.models import RawDocument, Transaction
 from banking_pipeline.templates.pictet._common import (
@@ -32,7 +33,7 @@ from banking_pipeline.templates.pictet._common import (
 )
 
 
-def _format_pictet_date(d) -> str:  # noqa: ANN001 — local helper, datetime.date
+def _format_pictet_date(d: date) -> str:
     return f"{d.day:02d}.{d.month:02d}.{d.year}"
 
 

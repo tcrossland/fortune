@@ -22,7 +22,6 @@ starts.
 
 from __future__ import annotations
 
-import sys
 import tomllib
 from collections.abc import Iterable
 from pathlib import Path
@@ -286,12 +285,5 @@ def load_config(
         )
 
     with target.open("rb") as fh:
-        # ``tomllib`` is in the stdlib from Python 3.11; project pins
-        # 3.14 in pyproject.toml so this is always available.
-        if sys.version_info < (3, 11):  # pragma: no cover - defensive
-            raise RuntimeError(
-                "TOML config loading requires Python 3.11+; "
-                "this project pins 3.14."
-            )
         raw = tomllib.load(fh)
     return BatchConfig.model_validate(raw)

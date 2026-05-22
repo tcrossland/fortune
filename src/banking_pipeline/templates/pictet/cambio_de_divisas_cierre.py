@@ -100,10 +100,10 @@ class PictetCambioDeDivisasCierreTemplate:
         # ``currency``/``amount`` (the writer emits the Expenses
         # posting next to it); the other leg becomes the @@-bearing
         # counter leg.
-        fee_leg = next((l for l in legs if l.currency == fees_currency), None)
+        fee_leg = next((leg for leg in legs if leg.currency == fees_currency), None)
         if fee_leg is None:
             return []
-        other_leg = next(l for l in legs if l is not fee_leg)
+        other_leg = next(leg for leg in legs if leg is not fee_leg)
 
         value_date_raw = find_field(text, ES_LABELS.value_date)
         booking_date_raw = find_field(text, ES_LABELS.booking_date)

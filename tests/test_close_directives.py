@@ -193,7 +193,10 @@ def test_render_all_appends_close_block() -> None:
                 currency="USD",
                 amount=Decimal("15000.00"),
                 isin="US0378331005",
-                quantity=Decimal("100"),
+                # Sells carry a negative quantity (templates extract the
+                # signed nominal — see the sell_etf golden's ``-1488``),
+                # so this disposal zeroes the +100 from the buy.
+                quantity=Decimal("-100"),
                 price=Decimal("150.00"),
                 account_number="P-12345",
                 source_path=Path("sell.pdf"),
@@ -203,9 +206,11 @@ def test_render_all_appends_close_block() -> None:
     )
 
     rendered = beancount_writer.render_all([buy, sell])
-    # Open at the top, close at the bottom for the AAPL account.
-    assert "open Assets:Pic:P-12345:US0378331005" in rendered
-    assert "close Assets:Pic:P-12345:US0378331005" in rendered
+    # Open at the top, close at the bottom for the AAPL account. The
+    # portfolio segment is sanitised (``P-12345`` → ``P12345``) because
+    # beancount account components disallow ``-`` / ``.``.
+    assert "open Assets:Pic:P12345:US0378331005" in rendered
+    assert "close Assets:Pic:P12345:US0378331005" in rendered
 
 
 def test_render_all_close_zeroed_false_skips_close_block() -> None:
@@ -261,7 +266,7 @@ def test_render_all_close_zeroed_false_skips_close_block() -> None:
                 currency="USD",
                 amount=Decimal("110.00"),
                 isin="US0378331005",
-                quantity=Decimal("1"),
+                quantity=Decimal("-1"),
                 price=Decimal("110"),
                 account_number="P-1",
                 source_path=Path("s.pdf"),

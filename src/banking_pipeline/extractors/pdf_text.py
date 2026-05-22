@@ -8,6 +8,7 @@ is unusable.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pypdfium2 as pdfium
 
@@ -38,6 +39,6 @@ def load_pdf(path: Path) -> RawDocument:
 def _extract_page_text(page: pdfium.PdfPage) -> str:
     text_page = page.get_textpage()
     try:
-        return text_page.get_text_range()
+        return cast(str, text_page.get_text_range())
     finally:
         text_page.close()

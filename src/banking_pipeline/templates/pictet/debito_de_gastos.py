@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 
 from banking_pipeline.models import RawDocument, Transaction
 from banking_pipeline.templates.pictet._common import (
@@ -35,7 +36,7 @@ from banking_pipeline.templates.pictet._common import (
 _DEBITO_TITLE_RE = re.compile(r"^D[eé]bito\s+de\s+gastos\s*$", re.M | re.I)
 
 
-def _format_pictet_date(d) -> str:  # noqa: ANN001 — local helper, datetime.date
+def _format_pictet_date(d: date) -> str:
     return f"{d.day:02d}.{d.month:02d}.{d.year}"
 
 

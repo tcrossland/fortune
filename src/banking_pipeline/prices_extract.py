@@ -286,7 +286,7 @@ def generate(
         if path.suffix.lower() == ".txt":
             text = path.read_text(encoding="utf-8")
         else:
-            from banking_pipeline.extractors import load_pdf  # type: ignore[attr-defined]
+            from banking_pipeline.extractors import load_pdf
             text = load_pdf(path).text
         doctype = (
             statement_doctypes.get(path) if statement_doctypes else None

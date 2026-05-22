@@ -20,6 +20,8 @@ from decimal import Decimal
 
 from banking_pipeline.models import (
     NO_OUTPUT_DOCTYPES as NO_EMIT_TYPES,
+)
+from banking_pipeline.models import (
     Classification,
     DocumentType,
     ExtractionResult,
@@ -242,8 +244,8 @@ def render_close_directives(rendered: str) -> str:
     # Lazy import: keeps ``beancount`` off the import path of every caller
     # of the writer package, even those that never call render_all.
     try:
-        from beancount import loader  # type: ignore[import-not-found]
-        from beancount.core.data import (  # type: ignore[import-not-found]
+        from beancount import loader
+        from beancount.core.data import (
             Transaction as BcTransaction,
         )
     except ImportError:  # pragma: no cover — beancount is a hard dep
@@ -266,7 +268,7 @@ def render_close_directives(rendered: str) -> str:
 
 
 def _close_directives_from_postings(
-    postings: Iterable[tuple[datetime.date, str, Decimal, str]],
+    postings: Iterable[tuple[datetime.date, str, Decimal | None, str]],
 ) -> str:
     """Pure-Python core of :func:`render_close_directives`.
 
@@ -281,7 +283,7 @@ def _close_directives_from_postings(
     balances: dict[str, Decimal] = {}
     last_dates: dict[str, datetime.date] = {}
     for entry_date, account, units, currency in postings:
-        if not _ISIN_RE.match(currency):
+        if units is None or not _ISIN_RE.match(currency):
             continue
         balances[account] = balances.get(account, Decimal(0)) + units
         prev = last_dates.get(account)

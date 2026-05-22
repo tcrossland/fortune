@@ -153,12 +153,12 @@ class PictetPagoTemplate:
                     f"{counter_account!r} but Pago-section "
                     f"'Importe bruto' line is missing in {doc.path}"
                 )
-            _, gross_amount = gross_match  # type: ignore[assignment]
+            _, gross_amount = gross_match
             # Wire fee — read from the ``EFECTO CASH`` block's
             # ``Costes <ccy> <amount>`` line.
             costs_match = find_amount_field(text, ES_LABELS.costs)
             if costs_match is not None:
-                fees_currency, fees = costs_match  # type: ignore[assignment]
+                fees_currency, fees = costs_match
 
         # Counterparty resolution — only when self-to-self routing
         # didn't fire (genuine third-party path). The destination's
@@ -185,11 +185,11 @@ class PictetPagoTemplate:
                 title="Pago",
                 currency=currency,
                 amount=amount,
-                gross_amount=gross_amount,  # type: ignore[arg-type]
+                gross_amount=gross_amount,
                 counter_account=counter_account,
                 counterparty_account=counterparty_account,
-                fees=fees,  # type: ignore[arg-type]
-                fees_currency=fees_currency,  # type: ignore[arg-type]
+                fees=fees,
+                fees_currency=fees_currency,
                 account_number=resolve_account_number(text, ES_LABELS),
                 transaction_number=find_transaction_number(text, ES_LABELS),
                 source_path=doc.path,
