@@ -227,6 +227,23 @@ def test_generate_stubs_missing_metadata(tmp_path: Path) -> None:
     assert '  reporting-status: "unknown"' in text
 
 
+def test_generate_excludes_nested_aggregate_files(tmp_path: Path) -> None:
+    # A stale / per-account aggregate (a *.beancount that itself includes
+    # other files) must not be swept in as a per-year source — otherwise
+    # the master aggregate re-includes everything it pulls in and
+    # bean-check reports "Duplicate filename parsed".
+    _write_year_file(tmp_path)
+    (tmp_path / "k123456001.beancount").write_text(
+        ';; Portfolio aggregate.\noption "operating_currency" "GBP"\n'
+        'include "2024.beancount"\n',
+        encoding="utf-8",
+    )
+    output, _ = portfolio_aggregate.generate(tmp_path)
+    text = output.read_text(encoding="utf-8")
+    assert 'include "2024.beancount"' in text
+    assert 'include "k123456001.beancount"' not in text
+
+
 def test_emitted_commodity_directive_parses_in_beancount() -> None:
     commodities = {
         "IE00B3VWN518": CommodityMetadata(

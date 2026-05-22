@@ -6,9 +6,12 @@ shape differences from the salida path:
   - **FX cash leg** — Pictet bills the underlying buy in the security
     currency (USD here) but posts the cost into the EUR Switch holding,
     so the cash leg carries an ``@@ <subtotal> <ccy>`` annotation.
-  - **Standard cost-basis braces** ``{<price> <ccy>}`` (entrada is a
-    buy, units enter inventory at purchase price), not the ``{} @``
-    reduce-from-inventory form salida uses.
+  - **Total-cost braces** ``{{<subtotal> <ccy>}}`` — units enter
+    inventory at the net consideration Pictet prints as ``Subtotal``
+    (which already nets the spread), not the ``{} @`` reduce-from-
+    inventory form salida uses. Booking the total rather than
+    ``quantity × <rounded per-unit price>`` keeps the entry balanced and
+    is why no separate spread leg is emitted on entrada.
   - **No Unrealized leg** — gains aren't realised on the buy side; the
     salida leg already booked the gain/loss for the rotated position.
   - **Cross-leg link** — the ``^<id>`` link references the *salida's*

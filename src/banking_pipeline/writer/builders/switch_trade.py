@@ -61,23 +61,27 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     user labels it ``Unrealized`` because economically a switch rotates
     the position into a different fund rather than truly liquidating it.
 
-    Entrada (buy) layout omits the Unrealized leg and uses the standard
-    ``{<price> <ccy>}`` cost-basis braces — new units enter the
-    inventory at the purchase price.
+    Entrada (buy) layout omits the Unrealized leg and uses **total-cost**
+    braces ``{{<subtotal> <ccy>}}`` — new units enter the inventory at the
+    net consideration Pictet prints as ``Subtotal`` (``Importe bruto +
+    Costes``). Booking the total rather than ``quantity × <per-unit
+    price>`` keeps the entry balanced: the per-unit price is rounded, so
+    re-deriving the cost from it drifts by up to a few cents, and Pictet's
+    spread nets *into* the subtotal rather than adding to it (so a separate
+    fee leg would double-count it). ``subtotal_security`` carries the
+    pre-conversion figure on FX switches; otherwise the cash ``amount`` is
+    already in the security currency.
 
     Fees leg
     --------
-    Emitted whenever the document carries a non-zero ``Costes`` line,
-    regardless of FX status. The shape mirrors
-    :mod:`banking_pipeline.writer.builders.security_trade`: a single
-    aggregate ``Expenses:<prefix>:<portfolio>:Fees:<ccy>`` posting at
-    ``abs(tx.fees)`` when ``len(fee_breakdown) <= 1``, or one posting
-    per breakdown item with the item description as an inline ``;
-    <description>`` comment when the document itemises multiple fee
-    components. ``Costes 0.00`` advices skip the leg entirely (the
-    ``tx.fees != 0`` guard), which keeps the older non-zero-spread
-    goldens (``switch_entrada.2021`` / ``switch_entrada.2023``)
-    byte-stable.
+    Salida only. On a sale the proceeds leg is gross, so the ``Costes``
+    spread surfaces as its own ``Expenses:<prefix>:<portfolio>:...``
+    posting: one per ``fee_breakdown`` item (with the description as an
+    inline ``; <comment>`` and a category segment via :func:`fee_segment`),
+    or a single aggregate ``Fees:<ccy>`` posting at ``abs(tx.fees)`` when
+    only the in-block total is set. ``Costes 0.00`` advices skip the leg
+    (the ``tx.fees != 0`` guard). Entrada emits no fee leg — the spread is
+    already folded into the total-cost basis above.
 
     Header link
     -----------
@@ -117,13 +121,30 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     # Salida uses ``{} @ <price>`` (reduce-from-inventory at market price);
     # entrada uses ``{<price> <ccy>}`` (new units enter at purchase cost).
     qty_str = format_amount(tx.quantity) if tx.quantity is not None else "0"
-    if tx.price is not None:
-        if doc_type == DocumentType.SWITCH_SALIDA:
-            cost_extras = f" {{}} @ {format_amount(tx.price)} {sec_ccy}"
-        else:
-            cost_extras = f" {{{format_amount(tx.price)} {sec_ccy}}}"
+    if doc_type == DocumentType.SWITCH_SALIDA:
+        # Reduce from inventory at the market price; the elastic
+        # Unrealized leg below absorbs the realised gain/loss (and any
+        # sub-cent rounding), so the entry always balances.
+        cost_extras = (
+            f" {{}} @ {format_amount(tx.price)} {sec_ccy}"
+            if tx.price is not None
+            else ""
+        )
     else:
-        cost_extras = ""
+        # Entrada: book the new units at their *net* consideration with
+        # total-cost braces. Pictet computes ``Subtotal = Importe bruto +
+        # Costes`` (the spread nets into the cash that actually moves), and
+        # ``subtotal_security`` carries that figure on FX switches. Using
+        # it as the total cost — rather than quantity × the rounded
+        # per-unit price plus a separate spread leg — makes the entry
+        # balance to the cent: it folds the spread into the acquisition
+        # cost and drops the per-unit rounding drift. The fee leg is
+        # therefore suppressed for entrada (see below).
+        if tx.is_fx and tx.subtotal_security is not None:
+            total_cost, cost_ccy = abs(tx.subtotal_security), sec_ccy
+        else:
+            total_cost, cost_ccy = abs(tx.amount), tx.currency
+        cost_extras = " {{" + format_amount(total_cost) + " " + cost_ccy + "}}"
     portfolio = portfolio_segment(tx.account_number)
     lines.append(
         align(
@@ -147,25 +168,30 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     # ``tx.fees != 0`` guard skips the leg entirely on zero-fee
     # advices, keeping ``switch_entrada.2021`` / ``switch_entrada.2023``
     # / ``switch_salida.2021`` byte-stable.
-    if tx.fee_breakdown:
-        for item in tx.fee_breakdown:
+    # Salida only: the proceeds leg is gross, so the spread surfaces as
+    # its own expense. Entrada folds the spread into the total-cost basis
+    # above (Pictet's Subtotal already nets it), so emitting a fee leg
+    # here would double-count it and unbalance the entry.
+    if doc_type == DocumentType.SWITCH_SALIDA:
+        if tx.fee_breakdown:
+            for item in tx.fee_breakdown:
+                lines.append(
+                    align(
+                        f"Expenses:{prefix}:{portfolio}:{fee_segment(item.description)}:{item.currency}",
+                        format_amount(abs(item.amount)),
+                        item.currency,
+                        extras=f" ; {item.description}",
+                    )
+                )
+        elif tx.fees is not None and tx.fees != 0:
+            fees_ccy = tx.fees_currency or sec_ccy
             lines.append(
                 align(
-                    f"Expenses:{prefix}:{portfolio}:{fee_segment(item.description)}:{item.currency}",
-                    format_amount(abs(item.amount)),
-                    item.currency,
-                    extras=f" ; {item.description}",
+                    f"Expenses:{prefix}:{portfolio}:Fees:{fees_ccy}",
+                    format_amount(abs(tx.fees)),
+                    fees_ccy,
                 )
             )
-    elif tx.fees is not None and tx.fees != 0:
-        fees_ccy = tx.fees_currency or sec_ccy
-        lines.append(
-            align(
-                f"Expenses:{prefix}:{portfolio}:Fees:{fees_ccy}",
-                format_amount(abs(tx.fees)),
-                fees_ccy,
-            )
-        )
 
     # --- Switch holding leg --------------------------------------------
     # Sign is as printed by Pictet's ``Importe neto``: positive on salida

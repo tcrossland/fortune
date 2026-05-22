@@ -157,19 +157,42 @@ def _extract_isin_currencies(files: Sequence[Path]) -> dict[str, str]:
 # from the per-year source-file list.
 _AUX_FILENAMES = ("prices.beancount", "balances.beancount")
 
+# A top-level ``include`` directive — its presence marks a file as an
+# aggregate (it pulls in other ledger files) rather than a per-year
+# ingest source. Indented matches don't occur in practice; anchor to the
+# line start to be safe.
+_INCLUDE_RE = re.compile(r'^\s*include\s+"', re.MULTILINE)
+
+
+def _is_aggregate(path: Path) -> bool:
+    """True if ``path`` is itself an aggregate (contains an ``include``).
+
+    Per-year ingest output is a flat list of opens / transactions and
+    never includes another file; a portfolio aggregate — this generator's
+    own output under any name — does. Re-scanning an aggregate as a source
+    would re-include the per-year and auxiliary files it already pulls in,
+    so beancount reports ``Duplicate filename parsed`` for each.
+    """
+
+    return _INCLUDE_RE.search(path.read_text(encoding="utf-8")) is not None
+
 
 def _source_files(data_dir: Path, output: Path) -> list[Path]:
     """Per-year ``*.beancount`` ingest files under ``data_dir``.
 
-    Excludes the aggregate ``output`` (so re-running is idempotent) and
-    the auxiliary price / balance files (which are ``include``d but not
-    scanned as transaction sources).
+    Excludes the aggregate ``output`` (so re-running is idempotent), the
+    auxiliary price / balance files (which are ``include``d but not
+    scanned as transaction sources), and any other aggregate file — a
+    stale or per-account roll-up this generator wrote under a different
+    name — which would otherwise be double-included via its own includes.
     """
 
     return [
         f
         for f in sorted(data_dir.glob("*.beancount"))
-        if f.resolve() != output.resolve() and f.name not in _AUX_FILENAMES
+        if f.resolve() != output.resolve()
+        and f.name not in _AUX_FILENAMES
+        and not _is_aggregate(f)
     ]
 
 
