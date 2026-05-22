@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Annotated
@@ -27,11 +28,16 @@ from banking_pipeline.commodities_metadata import CommodityMetadata, load_commod
 from banking_pipeline.config import settings
 from banking_pipeline.extractors import extract_pages, load_pdf
 from banking_pipeline.fields import HybridExtractor, TemplateExtractionError
-from banking_pipeline.models import Classification, DocumentType
+from banking_pipeline.models import Classification, DocumentType, Transaction
 from banking_pipeline.pipeline import Pipeline
 from banking_pipeline.revolut import import_csvs as revolut_import_csvs
 from banking_pipeline.revolut import render as revolut_render
 from banking_pipeline.revolut.render import render_open_directives as revolut_open_directives
+from banking_pipeline.transaction_sidecar import (
+    dump_transactions,
+    sidecar_path,
+    transactions_to_jsonl,
+)
 
 app = typer.Typer(help="Ingest banking PDFs and emit beancount entries.")
 # ``soft_wrap=True`` stops rich from hard-wrapping at the detected
@@ -43,16 +49,22 @@ console = Console(soft_wrap=True)
 err_console = Console(stderr=True, soft_wrap=True)
 
 
-def _configure_logging(verbose: bool) -> None:
+def _configure_logging(verbose: bool, *, quiet: bool = False) -> None:
+    # Logs go to stderr so stdout stays a clean data stream (rendered
+    # beancount, ``dump-transactions`` JSONL) that can be piped. ``quiet``
+    # raises the threshold above every level so commands whose stdout is
+    # machine-readable don't interleave INFO chatter when not --verbose.
+    # quiet (and not --verbose) → CRITICAL, above every level the
+    # pipeline emits; otherwise DEBUG with --verbose, else INFO.
+    level = 50 if (quiet and not verbose) else (10 if verbose else 20)
     structlog.configure(
         processors=[
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.add_log_level,
             structlog.dev.ConsoleRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            20 if not verbose else 10  # INFO vs DEBUG
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(level),
+        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
     )
 
 
@@ -107,6 +119,7 @@ def ingest(
     pipeline = Pipeline(extractor=HybridExtractor(strict=strict))
 
     chunks: list[str] = []
+    all_txns: list[Transaction] = []
     for path in pdf_paths:
         try:
             result = pipeline.process(path)
@@ -116,6 +129,7 @@ def ingest(
             )
             raise typer.Exit(code=1) from exc
         chunks.append(beancount_writer.render(result))
+        all_txns.extend(result.transactions)
 
     rendered = "\n\n".join(chunks)
 
@@ -132,10 +146,53 @@ def ingest(
     else:
         output.write_text(rendered, encoding="utf-8")
         err_console.print(f"Wrote {output}")
+        # Structured sidecar alongside the ledger — part of the output
+        # contract, no flag needed. Combined files carry no single
+        # source_document (each line keeps its own source_path).
+        sidecar = sidecar_path(output)
+        dump_transactions(all_txns, sidecar)
+        err_console.print(
+            f"Wrote {sidecar} ({len(all_txns)} transaction(s))"
+        )
 
     if check is not None:
         err_console.print(f"[bold]check[/bold] {check}")
         _run_check_or_exit(check, strict=strict)
+
+
+@app.command("dump-transactions")
+def dump_transactions_cmd(
+    pdf_paths: Annotated[
+        list[Path],
+        typer.Argument(
+            exists=True,
+            readable=True,
+            help="One or more PDFs to extract and print as JSONL.",
+        ),
+    ],
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Extract transactions from PDFs and print the JSONL sidecar to stdout.
+
+    The same structured form ``ingest`` / ``rebuild`` write next to each
+    ``.beancount``, but emitted to stdout for ad-hoc inspection or for
+    piping into the tax-report tooling without touching the on-disk
+    ledger. ``source_document`` is set when a single PDF is passed.
+    """
+
+    _configure_logging(verbose, quiet=True)
+    pipeline = Pipeline()
+    txns: list[Transaction] = []
+    for path in pdf_paths:
+        txns.extend(pipeline.process(path).transactions)
+    source = str(pdf_paths[0]) if len(pdf_paths) == 1 else None
+    # markup=False/highlight=False keep the JSON byte-exact for piping.
+    console.print(
+        transactions_to_jsonl(txns, source_document=source),
+        markup=False,
+        highlight=False,
+        end="",
+    )
 
 
 @app.command()
@@ -687,6 +744,7 @@ def _do_rebuild(
         if pipeline is None:
             pipeline = Pipeline(extractor=HybridExtractor(strict=strict))
         chunks: list[str] = []
+        src_txns: list[Transaction] = []
         for pdf in pdfs:
             try:
                 result = pipeline.process(pdf)
@@ -697,7 +755,11 @@ def _do_rebuild(
                 )
                 raise typer.Exit(code=1) from exc
             chunks.append(beancount_writer.render(result))
+            src_txns.extend(result.transactions)
         out_path.write_text("\n\n".join(chunks), encoding="utf-8")
+        # Structured sidecar next to the per-label ledger (header-only
+        # when the source produced no transactions).
+        dump_transactions(src_txns, sidecar_path(out_path))
 
     # --- Step 3: post-processing -----------------------------------------
     if cfg.post.prices:

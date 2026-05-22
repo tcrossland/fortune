@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import tomllib
 from collections.abc import Iterable
+from itertools import chain
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -222,17 +223,22 @@ class BatchConfig(BaseModel):
         return (project_root / self.data_dir).resolve()
 
     def stale_files(self, project_root: Path) -> Iterable[Path]:
-        """Iterate over the existing output files matching ``clean_glob``.
+        """Iterate over the existing output files to delete before rebuild.
 
-        Returns an empty iterator when ``clean_glob`` is empty (cleanup
-        skipped). The caller deletes the returned files before running
-        the new ingests.
+        Yields the files matching ``clean_glob`` plus every
+        ``*.transactions.jsonl`` sidecar (regenerated alongside each
+        ``.beancount``), so a clean rebuild doesn't leave stale sidecars
+        behind. Returns an empty iterator when ``clean_glob`` is empty
+        (cleanup skipped entirely).
         """
 
         if not self.clean_glob:
             return iter(())
         data_dir = self.resolve_data_dir(project_root)
-        return data_dir.glob(self.clean_glob)
+        return chain(
+            data_dir.glob(self.clean_glob),
+            data_dir.glob("*.transactions.jsonl"),
+        )
 
 
 def _split_anchor(path: Path) -> tuple[Path, str]:

@@ -157,6 +157,19 @@ iCloud paths that shouldn't land in the repo. The schema lives in
 and a `[post]` block toggling the `prices` / `portfolio` / `balances` /
 `check` post-processing steps.
 
+## Output: beancount + structured sidecar
+
+Every generated `.beancount` file is accompanied by a
+`<stem>.transactions.jsonl` sidecar holding the raw extracted
+`Transaction` objects (one JSON object per line, after a `_schema`
+header line). The rendered beancount encodes much of the
+UK-tax-relevant data — GBP rate, withholding tax, accrued interest —
+into free-text postings and metadata; the sidecar preserves the
+structured form so downstream tooling (the UK tax-report stage) can
+consume it without re-parsing beancount text. `ingest` and `rebuild`
+write sidecars automatically; `banking-pipeline dump-transactions
+<pdf>` prints the same JSONL to stdout for ad-hoc inspection.
+
 ## Validation
 
 The pipeline ships with a `bean-check` integration so writer
