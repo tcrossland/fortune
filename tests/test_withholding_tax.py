@@ -136,6 +136,56 @@ def test_open_directives_include_withholding_account() -> None:
     assert "open Expenses:Tax:Withholding:US" in opens
 
 
+# --- WHT line parsing (rate-suffixed label) --------------------------------
+
+
+def test_find_withholding_tax_handles_rate_suffixed_label() -> None:
+    # Pictet prints the rate in the label: "Withholding tax 27% DKK -895.86".
+    from banking_pipeline.templates.pictet._common import (
+        EN_LABELS,
+        find_withholding_tax,
+    )
+
+    text = (
+        "Gross amount DKK 3'318.00\n"
+        "Withholding tax 27% DKK -895.86\n"
+        "Net amount DKK 2'422.14\n"
+    )
+    assert find_withholding_tax(text, EN_LABELS, "DK0062498333") == (
+        Decimal("3318.00"),
+        Decimal("895.86"),
+        "DK",
+    )
+
+
+def test_find_withholding_tax_plain_label() -> None:
+    from banking_pipeline.templates.pictet._common import (
+        EN_LABELS,
+        find_withholding_tax,
+    )
+
+    text = (
+        "Gross amount USD 100.00\n"
+        "Withholding tax USD -15.00\n"
+        "Net amount USD 85.00\n"
+    )
+    assert find_withholding_tax(text, EN_LABELS, "US0378331005") == (
+        Decimal("100.00"),
+        Decimal("15.00"),
+        "US",
+    )
+
+
+def test_no_withholding_line_returns_none() -> None:
+    from banking_pipeline.templates.pictet._common import (
+        EN_LABELS,
+        find_withholding_tax,
+    )
+
+    text = "Gross amount GBP 1'242.50\nCosts GBP 0.00\nNet amount GBP 1'242.50\n"
+    assert find_withholding_tax(text, EN_LABELS, "LU2096759431") is None
+
+
 # --- withholding_country domicile fallback ---------------------------------
 
 _WHT_DIVIDEND_FIXTURE = (

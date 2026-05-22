@@ -262,15 +262,25 @@ def find_withholding_tax(
     leaves the WHT fields unset and the income leg renders gross-only.
     Pictet prints the WHT line signed-negative (cash withheld); we return
     its absolute value since the model and writer treat it as positive.
+
+    The label is matched tolerantly because Pictet appends the rate to it
+    — ``Withholding tax 27% DKK -895.86`` — so anything between the label
+    and the ``<CCY> <amount>`` pair (here ``27%``) is skipped.
     """
 
-    wht_match = find_amount_field(text, labels.withholding_tax)
-    if wht_match is None:
+    # ``.+?`` skips an optional rate (``27%``) between the label and the
+    # amount; ``.`` doesn't cross newlines, so the match stays on one line.
+    wht_re = re.compile(
+        rf"^{re.escape(labels.withholding_tax)}\b.*?([A-Z]{{3}})\s+(-?{_NUMBER})\s*$",
+        re.M,
+    )
+    m = wht_re.search(text)
+    if m is None:
         return None
     gross_match = find_amount_field(text, labels.gross_amount)
     if gross_match is None or isin is None or len(isin) < 2:
         return None
-    return gross_match[1], abs(wht_match[1]), isin[:2].upper()
+    return gross_match[1], abs(parse_pictet_amount(m.group(2))), isin[:2].upper()
 
 
 def find_isin(text: str) -> str | None:

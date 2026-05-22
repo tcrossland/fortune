@@ -1,0 +1,46 @@
+--- page 1/1 ---
+SECURITY EVENT
+Distribution
+Ordinary dividend
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1
+Client: FIRST MIDDLE LASTNAMES
+Account no.: P-999999.999
+Transaction no.: 1199001234 | Publication date: 01.04.2025
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 28.03.2025
+Value date 01.04.2025
+Booking date 01.04.2025
+Security event
+Frequency Annual
+Period 01.01.2024 - 31.12.2024
+Ex date 28.03.2025
+Payment date 01.04.2025
+Dividend - NOVO NORDISK 'B'
+Type Ordinary dividend
+Quantity held 420
+Income per unit DKK 7.90
+Gross amount DKK 3'318.00
+Costs
+Withholding tax 27% DKK -895.86
+Total DKK -895.86
+Other
+Last distribution date 15.08.2024
+Deposit SKANDINAVISKA ENSKILDA
+BANKEN
+REFERENCE HOLDINGin portfolio P-999999.999
+NOVO NORDISK 'B' 420
+ISIN: DK0062498333 Telekurs ID: 129508879
+CASH EFFECTin portfolio P-999999.999
+Gross amount DKK 3'318.00
+Costs DKK -895.86
+Net amount DKK 2'422.14
+Current account P-999999.999.00.DKK/Ordinary IBAN?LU091980012345600200
