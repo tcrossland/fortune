@@ -6,6 +6,7 @@ import csv
 import json
 import sys
 from collections.abc import Iterable
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Annotated
@@ -1318,13 +1319,13 @@ def _write_sa108_csv(path: Path, report: Sa108Report) -> int:
         writer.writerow([
             "disposal_date", "isin", "commodity_name", "reporting_status",
             "quantity", "proceeds_gbp", "cost_gbp", "gain_gbp", "match_type",
-            "acquisition_dates",
+            "period", "acquisition_dates",
         ])
         for r in rows:
             writer.writerow([
                 r.disposal_date.isoformat(), r.isin, r.commodity_name,
                 r.reporting_status, _qty(r.quantity), _money(r.proceeds_gbp),
-                _money(r.cost_gbp), _money(r.gain_gbp), r.match_type,
+                _money(r.cost_gbp), _money(r.gain_gbp), r.match_type, r.period,
                 ";".join(d.isoformat() for d in r.acquisition_dates),
             ])
     return len(rows)
@@ -1369,7 +1370,11 @@ def _write_offshore_income_gains_csv(path: Path, report: Sa108Report) -> int:
 
 
 def _write_tax_summary(
-    path: Path, year: str, sa108: Sa108Report, sa106: Sa106Report
+    path: Path,
+    year: str,
+    sa108: Sa108Report,
+    sa106: Sa106Report,
+    rate_change_date: date | None = None,
 ) -> None:
     cgt = [r for r in sa108.rows if r.reporting_status in _CGT_STATUSES]
     offshore = [r for r in sa108.rows if r.reporting_status == "non-reporting"]
@@ -1378,12 +1383,28 @@ def _write_tax_summary(
     def _total(rows: list, attr: str) -> str:  # type: ignore[type-arg]
         return _money(sum((getattr(r, attr) for r in rows), Decimal(0)))
 
+    def _gains(rows: list) -> str:  # type: ignore[type-arg]
+        return _money(sum((r.gain_gbp for r in rows if r.gain_gbp > 0), Decimal(0)))
+
+    losses = _money(sum((r.gain_gbp for r in cgt if r.gain_gbp < 0), Decimal(0)))
+
     lines = [
         f"UK tax report — {year}",
         "",
         "SA108 capital gains (reporting / uk-domestic):",
         f"  disposals: {len(cgt)}",
-        f"  total gain/loss: {_total(cgt, 'gain_gbp')} GBP",
+    ]
+    if rate_change_date is not None:
+        label = f"{rate_change_date.day} {rate_change_date:%B %Y}"
+        lines += [
+            f"  gains before {label}: {_gains([r for r in cgt if r.period == 'pre'])} GBP",
+            f"  gains on/after {label}: {_gains([r for r in cgt if r.period == 'post'])} GBP",
+        ]
+    else:
+        lines.append(f"  total gains: {_gains(cgt)} GBP")
+    lines += [
+        f"  allowable losses: {losses} GBP",
+        f"  net gain/loss: {_total(cgt, 'gain_gbp')} GBP",
         "",
         "SA106 foreign dividends:",
         f"  groups: {len(sa106.dividends)}",
@@ -1486,7 +1507,11 @@ def tax_report(
 
     txns = _load_sidecar_transactions(source)
     sa108 = compute_sa108(
-        txns, tax_year_label=year, commodities=commodities_map, source=rates
+        txns,
+        tax_year_label=year,
+        commodities=commodities_map,
+        source=rates,
+        rate_change_date=settings.cgt_rate_change_dates.get(year),
     )
     sa106 = compute_sa106_dividends(
         txns, tax_year_label=year, commodities=commodities_map, source=rates
@@ -1498,7 +1523,10 @@ def tax_report(
     n_oig = _write_offshore_income_gains_csv(
         out_dir / "sa106-offshore-income-gains.csv", sa108
     )
-    _write_tax_summary(out_dir / "summary.txt", year, sa108, sa106)
+    _write_tax_summary(
+        out_dir / "summary.txt", year, sa108, sa106,
+        rate_change_date=settings.cgt_rate_change_dates.get(year),
+    )
 
     err_console.print(
         f"Wrote tax report for {year} to {out_dir} "

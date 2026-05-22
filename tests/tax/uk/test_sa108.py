@@ -66,6 +66,41 @@ def test_basic_pool_disposal_gain_in_year() -> None:
     assert row.commodity_name == "Fund"
 
 
+def test_rate_change_date_buckets_disposals() -> None:
+    isin = "IE00B3VWN518"
+    txs = [
+        _tx(doc_type=DocumentType.BUY_ETF, isin=isin, qty=Decimal("200"),
+            amount=Decimal("-2000"), on=date(2023, 5, 1)),  # pool unit 10
+        _tx(doc_type=DocumentType.SELL_ETF, isin=isin, qty=Decimal("-50"),
+            amount=Decimal("800"), on=date(2024, 10, 1)),   # before 30 Oct
+        _tx(doc_type=DocumentType.SELL_ETF, isin=isin, qty=Decimal("-50"),
+            amount=Decimal("900"), on=date(2024, 11, 1)),   # on/after
+    ]
+    report = compute_sa108(
+        txs,
+        tax_year_label="2024-25",
+        commodities={isin: _reporting(isin)},
+        rate_change_date=date(2024, 10, 30),
+    )
+    period = {r.disposal_date: r.period for r in report.rows}
+    assert period[date(2024, 10, 1)] == "pre"
+    assert period[date(2024, 11, 1)] == "post"
+
+
+def test_no_rate_change_date_leaves_period_empty() -> None:
+    isin = "IE00B3VWN518"
+    txs = [
+        _tx(doc_type=DocumentType.BUY_ETF, isin=isin, qty=Decimal("100"),
+            amount=Decimal("-1000"), on=date(2023, 5, 1)),
+        _tx(doc_type=DocumentType.SELL_ETF, isin=isin, qty=Decimal("-100"),
+            amount=Decimal("1500"), on=date(2025, 6, 1)),
+    ]
+    report = compute_sa108(
+        txs, tax_year_label="2025-26", commodities={isin: _reporting(isin)}
+    )
+    assert report.rows[0].period == ""
+
+
 def test_disposal_outside_year_excluded() -> None:
     isin = "IE00B3VWN518"
     txs = [

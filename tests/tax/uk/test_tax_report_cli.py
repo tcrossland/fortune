@@ -114,6 +114,8 @@ def test_tax_report_end_to_end(tmp_path: Path) -> None:
     assert row["reporting_status"] == "reporting"
     assert row["gain_gbp"] == "500.00"
     assert row["match_type"] == "s104"
+    # 2025-26 has no rate-change date → period column present but empty.
+    assert row["period"] == ""
 
     # --- SA106: foreign WHT dividend converted to GBP --------------------
     sa106 = _read_csv(out_dir / "sa106-dividends.csv")

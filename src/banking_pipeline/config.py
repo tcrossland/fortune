@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
@@ -56,6 +57,13 @@ class Settings(BaseSettings):
     # Root for ``tax-report`` CSV output; the command writes a
     # ``<year>/`` subdirectory under it.
     tax_reports_dir: Path = Path("reports/uk-tax")
+
+    # CGT main-rate change dates by tax-year label. From this date the
+    # rate changed mid-year, so HMRC requires disposals split before /
+    # on-or-after it. A year with no entry is reported without a split.
+    cgt_rate_change_dates: dict[str, date] = Field(
+        default_factory=lambda: {"2024-25": date(2024, 10, 30)}
+    )
 
     # Maps Pictet's printed beneficiary-bank name (the ``Bank`` field on
     # an outgoing ``PAYMENT TRANSACTIONS / Payment`` advice) to the short

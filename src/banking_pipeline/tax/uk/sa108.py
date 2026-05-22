@@ -49,6 +49,9 @@ class Sa108Row:
     gain_gbp: Decimal
     match_type: str
     acquisition_dates: list[date]
+    # CGT rate-change bucket: ``"pre"`` / ``"post"`` relative to the tax
+    # year's rate-change date, or ``""`` when the year has no split.
+    period: str = ""
 
 
 @dataclass
@@ -68,19 +71,32 @@ def _consideration_native(tx: Transaction) -> Decimal:
     return abs(tx.amount) - accrued
 
 
+def _period(disposal_date: date, rate_change_date: date | None) -> str:
+    """CGT rate bucket for a disposal date: ``"pre"`` / ``"post"``, or
+    ``""`` when the tax year has no mid-year rate change."""
+
+    if rate_change_date is None:
+        return ""
+    return "pre" if disposal_date < rate_change_date else "post"
+
+
 def compute_sa108(
     transactions: list[Transaction],
     *,
     tax_year_label: str,
     commodities: dict[str, CommodityMetadata],
     source: GbpRateSource | None = None,
+    rate_change_date: date | None = None,
 ) -> Sa108Report:
     """Compute SA108 disposal rows for ``tax_year_label``.
 
     ``transactions`` should span the full available history (the section
     104 pool is cumulative); only disposals settling within the tax year
     are returned. ``source`` supplies GBP rates for any transaction the
-    extractor didn't already stamp with ``gbp_rate``.
+    extractor didn't already stamp with ``gbp_rate``. ``rate_change_date``
+    (the year's mid-year CGT rate change, e.g. 2024-10-30 for 2024-25)
+    tags each row's ``period`` so disposals can be split before / on-or-
+    after it; ``None`` leaves ``period`` empty.
     """
 
     start, end = tax_year_bounds(tax_year_label)
@@ -138,6 +154,7 @@ def compute_sa108(
                     gain_gbp=m.gain_gbp,
                     match_type=m.matched_against,
                     acquisition_dates=m.acquisition_dates,
+                    period=_period(m.disposal_date, rate_change_date),
                 )
             )
 
