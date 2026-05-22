@@ -82,6 +82,11 @@ class PictetLabels:
     # ``Costes USD -23,45``). Only meaningful on advices that carry one;
     # ``find_amount_field`` returns ``None`` when the line is absent.
     costs: str
+    # Foreign withholding-tax line inside the CASH EFFECT block on income
+    # advices (``Withholding tax USD -15.00`` / ``Retención fiscal EUR
+    # -30,00``). Absent on advices with no WHT; ``find_amount_field``
+    # returns ``None`` then.
+    withholding_tax: str
     # FX-only intermediate line: gross + costs in the security currency
     # (``Subtotal USD -73'665.87``). Absent on non-FX advices, where the
     # CASH EFFECT block jumps straight from costs to net amount.
@@ -118,6 +123,7 @@ EN_LABELS = PictetLabels(
     gross_amount="Gross amount",
     net_amount="Net amount",
     costs="Costs",
+    withholding_tax="Withholding tax",
     # Pictet's English locale prints ``Sub-total`` (with hyphen) on FX
     # advices that bridge the security currency to the cash-account
     # currency; the Spanish locale uses ``Subtotal`` (no hyphen). Each
@@ -167,6 +173,7 @@ ES_LABELS = PictetLabels(
     gross_amount="Importe bruto",
     net_amount="Importe neto",
     costs="Costes",
+    withholding_tax="Retención fiscal",
     subtotal="Subtotal",
     cash_effect_marker="EFECTO CASH",
     portfolio_in_re=re.compile(
@@ -237,6 +244,33 @@ def find_amount_field(text: str, label: str) -> tuple[str, Decimal] | None:
     if not m:
         return None
     return m.group(1), parse_pictet_amount(m.group(2))
+
+
+def find_withholding_tax(
+    text: str, labels: PictetLabels, isin: str | None
+) -> tuple[Decimal, Decimal, str] | None:
+    """Foreign withholding tax on an income advice, or ``None``.
+
+    Returns ``(gross_income, withholding_tax, country)`` — both amounts
+    positive — when the CASH EFFECT block carries a withholding-tax line.
+    ``country`` is the security's ISO 3166-1 alpha-2 ISIN prefix (the
+    levying jurisdiction for the common foreign-equity case, e.g.
+    ``US0378331005`` → ``US``).
+
+    Returns ``None`` when there's no WHT line, no gross amount to pair it
+    with, or no ISIN to attribute a country to — in which case the caller
+    leaves the WHT fields unset and the income leg renders gross-only.
+    Pictet prints the WHT line signed-negative (cash withheld); we return
+    its absolute value since the model and writer treat it as positive.
+    """
+
+    wht_match = find_amount_field(text, labels.withholding_tax)
+    if wht_match is None:
+        return None
+    gross_match = find_amount_field(text, labels.gross_amount)
+    if gross_match is None or isin is None or len(isin) < 2:
+        return None
+    return gross_match[1], abs(wht_match[1]), isin[:2].upper()
 
 
 def find_isin(text: str) -> str | None:

@@ -58,7 +58,11 @@ from banking_pipeline.writer.builders.security_trade import (
 )
 from banking_pipeline.writer.builders.switch_trade import SWITCH_TYPES
 from banking_pipeline.writer.builders.transfer_in import TRANSFER_IN_TYPES
-from banking_pipeline.writer.format import bank_prefix, portfolio_segment
+from banking_pipeline.writer.format import (
+    bank_prefix,
+    portfolio_segment,
+    withholding_account,
+)
 
 # NO_EMIT_TYPES is the writer's local alias for
 # :data:`banking_pipeline.models.NO_OUTPUT_DOCTYPES`. The same set
@@ -163,6 +167,10 @@ def render_open_directives(
 
     asset_accounts: dict[tuple[str, str, str], str] = {}
     income_accounts: dict[tuple[str, str, str], str] = {}
+    # Foreign withholding-tax accounts are keyed only by their resolved
+    # account string (``Expenses:Tax:Withholding:<country>``): they carry
+    # no commodity constraint and aren't per-ISIN, so a set suffices.
+    wht_accounts: set[str] = set()
 
     for result in results:
         prefix = bank_prefix(result.classification)
@@ -173,6 +181,12 @@ def render_open_directives(
         if doc_type in NO_EMIT_TYPES:
             continue
         for tx in result.transactions:
+            # WHT accounts attach to the income event, not to an ISIN
+            # asset account, so collect them before the ISIN guard.
+            if tx.withholding_tax is not None and tx.withholding_country:
+                wht_accounts.add(
+                    withholding_account(prefix, tx.withholding_country)
+                )
             if not tx.isin:
                 continue
             isin = tx.isin
@@ -199,6 +213,8 @@ def render_open_directives(
         lines.append(
             f"{date_str} open Income:{prefix}:{portfolio}:{isin}:Dividend"
         )
+    for account in sorted(wht_accounts):
+        lines.append(f"{date_str} open {account}")
 
     return "\n".join(lines)
 

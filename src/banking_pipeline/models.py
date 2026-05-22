@@ -7,7 +7,7 @@ from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DocumentType(StrEnum):
@@ -418,6 +418,13 @@ class FeeItem(BaseModel):
     currency: str  # ISO-4217
 
 
+# Rounding slack for the withholding-tax arithmetic invariant
+# (gross - tax == net). Pictet prints these to two decimals and they're
+# internally consistent, so a cent covers any stray rounding without
+# masking a genuine mismatch.
+_WHT_TOLERANCE: Decimal = Decimal("0.01")
+
+
 class Transaction(BaseModel):
     """A single economic event extracted from a document.
 
@@ -561,6 +568,23 @@ class Transaction(BaseModel):
     # available; downstream builders fall back to current behaviour.
     gbp_rate: Decimal | None = None
 
+    # --- Foreign income / withholding tax (SA106) -----------------------
+    # Set on income advices (dividends today) that withhold foreign tax
+    # at source. ``amount`` stays the *net* cash that hit the account;
+    # these record the gross and the tax so the writer can split the
+    # income leg from a dedicated ``Expenses:Tax:Withholding:<country>``
+    # leg and the tax-report can claim foreign tax credit relief.
+    #
+    # ``gross_income`` is the pre-tax amount Pictet printed (positive).
+    # ``withholding_tax`` is the foreign tax withheld (positive, same
+    # currency as the income leg). ``withholding_country`` is the ISO
+    # 3166-1 alpha-2 code of the levying jurisdiction (sourced from the
+    # security's ISIN country prefix). All three are ``None`` on advices
+    # with no WHT — the income leg then renders gross-only as before.
+    gross_income: Decimal | None = None
+    withholding_tax: Decimal | None = None
+    withholding_country: str | None = None
+
     # --- Account identifiers --------------------------------------------
     account_number: str | None = None  # IBAN, broker account, etc.
     # Pictet's per-document reference (``N° de transacción``). Emitted by
@@ -595,6 +619,36 @@ class Transaction(BaseModel):
             self.security_currency is not None
             and self.security_currency != self.currency
         )
+
+    @model_validator(mode="after")
+    def _check_withholding(self) -> Transaction:
+        """Enforce the foreign-WHT invariant.
+
+        When ``withholding_tax`` is set: ``gross_income`` and
+        ``withholding_country`` must be set too; the tax can't exceed the
+        gross; and ``gross_income - withholding_tax`` must equal the net
+        ``amount`` (within a cent of rounding slack). The cash leg stays
+        the net amount that actually hit the account.
+        """
+
+        if self.withholding_tax is None:
+            return self
+        if self.gross_income is None:
+            raise ValueError("withholding_tax set but gross_income is None")
+        if self.withholding_country is None:
+            raise ValueError("withholding_tax set but withholding_country is None")
+        if self.withholding_tax > self.gross_income:
+            raise ValueError(
+                f"withholding_tax ({self.withholding_tax}) exceeds "
+                f"gross_income ({self.gross_income})"
+            )
+        expected_net = self.gross_income - self.withholding_tax
+        if abs(expected_net - self.amount) > _WHT_TOLERANCE:
+            raise ValueError(
+                f"gross_income - withholding_tax ({expected_net}) does not "
+                f"equal net amount ({self.amount})"
+            )
+        return self
 
 
 class ExtractionResult(BaseModel):

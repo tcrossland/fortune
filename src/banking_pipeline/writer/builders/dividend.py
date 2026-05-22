@@ -16,6 +16,7 @@ from banking_pipeline.writer.format import (
     header_line,
     portfolio_segment,
     transaction_number_comment,
+    withholding_account,
 )
 
 DIVIDEND_TYPES: frozenset[DocumentType] = frozenset({
@@ -60,23 +61,46 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     portfolio = portfolio_segment(tx.account_number)
     lines: list[str] = [header_line(tx)]
 
-    # Income leg — signed-negative (beancount income-account convention).
-    lines.append(
-        align(
-            f"Income:{prefix}:{portfolio}:{isin}:Dividend",
-            format_amount(-tx.amount),
-            tx.currency,
-        )
-    )
+    income_account = f"Income:{prefix}:{portfolio}:{isin}:Dividend"
 
-    # Cash leg — signed as Pictet printed it (positive, cash in).
-    lines.append(
-        align(
-            cash_account(prefix, tx.account_number, tx.currency),
-            format_amount(tx.amount),
-            tx.currency,
+    if tx.withholding_tax is not None:
+        # Foreign WHT split (SA106). ``gross_income`` and
+        # ``withholding_country`` are guaranteed present by the
+        # Transaction model validator when ``withholding_tax`` is set.
+        # Income leg carries the gross (negative, income credit); the
+        # WHT leg the tax (positive expense); the cash leg the net.
+        assert tx.gross_income is not None
+        assert tx.withholding_country is not None
+        lines.append(
+            align(income_account, format_amount(-tx.gross_income), tx.currency)
         )
-    )
+        lines.append(
+            align(
+                withholding_account(prefix, tx.withholding_country),
+                format_amount(tx.withholding_tax),
+                tx.currency,
+            )
+        )
+        lines.append(
+            align(
+                cash_account(prefix, tx.account_number, tx.currency),
+                format_amount(tx.amount),
+                tx.currency,
+            )
+        )
+    else:
+        # Income leg — signed-negative (beancount income-account convention).
+        lines.append(
+            align(income_account, format_amount(-tx.amount), tx.currency)
+        )
+        # Cash leg — signed as Pictet printed it (positive, cash in).
+        lines.append(
+            align(
+                cash_account(prefix, tx.account_number, tx.currency),
+                format_amount(tx.amount),
+                tx.currency,
+            )
+        )
 
     trailer = transaction_number_comment(tx)
     if trailer:

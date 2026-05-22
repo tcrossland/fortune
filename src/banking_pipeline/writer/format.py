@@ -11,7 +11,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from banking_pipeline.models import Classification, DocumentType, Transaction
-from banking_pipeline.writer.profile import resolve_profile
+from banking_pipeline.writer.profile import profile_for_prefix, resolve_profile
 
 # Right-edge column for amount values in postings. Beancount tolerates any
 # alignment; this constant is what the project's golden ``.beancount`` files
@@ -120,6 +120,20 @@ def inline_open_directive(
     entry_date = tx.booking_date or tx.trade_date
     portfolio = portfolio_segment(tx.account_number)
     return f"{entry_date} open Assets:{prefix}:{portfolio}:{tx.isin} {tx.isin}\n"
+
+
+def withholding_account(prefix: str, country: str) -> str:
+    """Account for foreign withholding tax levied by ``country``.
+
+    Resolves the ``withholding_tax_account_template`` from the profile
+    that owns ``prefix`` and formats it with the upper-cased ISO 3166-1
+    code — e.g. ``Expenses:Tax:Withholding:US``. The default template is
+    bank-agnostic; the ``prefix`` lookup exists only so a bank can
+    override the root.
+    """
+
+    template = profile_for_prefix(prefix).withholding_tax_account_template
+    return template.format(country=country.upper())
 
 
 def format_amount(value: Decimal) -> str:

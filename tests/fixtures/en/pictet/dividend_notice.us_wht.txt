@@ -1,0 +1,43 @@
+--- page 1/1 ---
+SECURITY EVENT
+Distribution
+Ordinary dividend
+ARCHIVE
+0A08 Bank Pictet & Cie (Europe) AG, Succursale de Luxembourg / 15A, avenue J.F. Kennedy / L-1855 Luxembourg / B.P. 687 / L-2016 Luxembourg
+Tel. +352 46 71 71-1 / Fax +352 22 48 68 / pictet.com
+1/1
+Client: FIRST MIDDLE LASTNAMES
+Account no.: P-999999.999
+Transaction no.: 1190001234 | Publication date: 15.05.2026
+E. & O. E.
+Yours faithfully
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Advice without signature
+ADDITIONAL INFORMATION
+General
+Trade date 01.05.2026
+Value date 12.05.2026
+Booking date 15.05.2026
+Security event
+Frequency Quarterly
+Ex date 01.05.2026
+Payment date 12.05.2026
+Dividend - APPLE INC
+Type Ordinary dividend
+Quantity held 100.000
+Income per unit USD 1.00
+Gross amount USD 100.00
+Other
+Last distribution date 03.02.2026
+Deposit ALLFUNDS BANK S.A.U.,
+LUXEMBOURG BRANCH
+REFERENCE HOLDINGin portfolio P-999999.999
+APPLE INC 100.000
+ISIN: US0378331005 Telekurs ID: 908440
+CASH EFFECTin portfolio P-999999.999
+Gross amount USD 100.00
+Withholding tax USD -15.00
+Costs USD 0.00
+Net amount USD 85.00
+Current account P-999999.999.00.USD/Ordinary IBAN?LU901980012345600100

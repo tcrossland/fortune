@@ -31,9 +31,17 @@ class BankWriterProfile:
         bank-namespaced beancount account: ``Assets:<account_prefix>:…``,
         ``Expenses:<account_prefix>:…``, ``Income:<account_prefix>:…``.
         Pictet uses ``"Pic"``; the unknown-bank fallback uses ``"Unknown"``.
+    withholding_tax_account_template:
+        Account for foreign withholding tax split off an income advice,
+        formatted with ``country=<ISO 3166-1 alpha-2, upper-cased>``.
+        Bank-agnostic by default (``Expenses:Tax:Withholding:{country}``)
+        because UK foreign-tax-credit relief is tracked per source
+        country, not per custodian; a bank can override the root if it
+        ever needs a different hierarchy.
     """
 
     account_prefix: str
+    withholding_tax_account_template: str = "Expenses:Tax:Withholding:{country}"
 
 
 PICTET_PROFILE = BankWriterProfile(account_prefix="Pic")
@@ -43,6 +51,15 @@ UNKNOWN_PROFILE = BankWriterProfile(account_prefix="Unknown")
 
 PROFILES: dict[BankId, BankWriterProfile] = {
     BankId.PICTET: PICTET_PROFILE,
+}
+
+# Reverse index from the rendered ``account_prefix`` back to the profile.
+# Builders only carry the prefix string (not the originating
+# :class:`BankId`), so this lets them recover profile-level knobs like
+# ``withholding_tax_account_template`` without threading the whole
+# classification through the dispatch signature.
+_PROFILE_BY_PREFIX: dict[str, BankWriterProfile] = {
+    p.account_prefix: p for p in (*PROFILES.values(), UNKNOWN_PROFILE)
 }
 
 
@@ -57,3 +74,12 @@ def resolve_profile(bank_id: BankId | None) -> BankWriterProfile:
     if bank_id is None:
         return UNKNOWN_PROFILE
     return PROFILES.get(bank_id, UNKNOWN_PROFILE)
+
+
+def profile_for_prefix(prefix: str) -> BankWriterProfile:
+    """Return the profile whose ``account_prefix`` is ``prefix``.
+
+    Falls back to :data:`UNKNOWN_PROFILE` for an unrecognised prefix.
+    """
+
+    return _PROFILE_BY_PREFIX.get(prefix, UNKNOWN_PROFILE)

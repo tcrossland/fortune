@@ -26,6 +26,7 @@ from banking_pipeline.templates.pictet._common import (
     find_field,
     find_subject_line,
     find_transaction_number,
+    find_withholding_tax,
     parse_pictet_amount,
     parse_pictet_date,
     resolve_account_number,
@@ -59,6 +60,12 @@ class PictetDividendNoticeTemplate:
             f"Dividend - {subject}" if subject else "Pictet dividend"
         )[:140]
 
+        isin = resolve_isin(text)
+        # Foreign withholding tax, when the advice carries it. ``amount``
+        # (net) is unchanged; the writer splits the gross income leg from
+        # the WHT leg.
+        wht = find_withholding_tax(text, EN_LABELS, isin)
+
         return [
             Transaction(
                 trade_date=parse_pictet_date(trade_date_raw),
@@ -74,9 +81,12 @@ class PictetDividendNoticeTemplate:
                 title="Dividend",
                 currency=currency,
                 amount=amount,
-                isin=resolve_isin(text),
+                isin=isin,
                 quantity=parse_pictet_amount(quantity_raw) if quantity_raw else None,
                 price=income_match[1] if income_match else None,
+                gross_income=wht[0] if wht else None,
+                withholding_tax=wht[1] if wht else None,
+                withholding_country=wht[2] if wht else None,
                 account_number=resolve_account_number(text, EN_LABELS),
                 transaction_number=find_transaction_number(text, EN_LABELS),
                 source_path=doc.path,

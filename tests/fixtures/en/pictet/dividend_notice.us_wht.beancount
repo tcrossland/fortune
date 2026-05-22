@@ -1,0 +1,5 @@
+2026-05-15 * "Dividend" "Dividend - APPLE INC"
+  Income:Pic:P999999999:US0378331005:Dividend       -100.00 USD
+  Expenses:Tax:Withholding:US                         15.00 USD
+  Assets:Pic:P999999999:USD                           85.00 USD
+  no: 1190001234

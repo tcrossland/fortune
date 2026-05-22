@@ -1,0 +1,43 @@
+--- page 1/1 ---
+HECHOS RELEVANTES
+Distribución
+Dividendo ordinario
+ARCHIVE
+0A08 Banco Pictet & Cie (Europe) AG, Sucursal en España / Calle de Hermosilla 11 / 28001 Madrid
+Tel. +34 91 538 06 06 / pictet.com
+1/1
+Cliente: FIRST MIDDLE LASTNAMES
+N° de cuenta: K-123456.001
+N° de transacción: 1190005678 | Fecha de publicación: 15.05.2026
+E. & O. E.
+Atentamente
+Banco Pictet & Cie (Europe) AG
+Sucursal en España
+Aviso sin firma
+INFORMACIÓN ADICIONAL
+General
+Fecha de transacción 01.05.2026
+Fecha valor 12.05.2026
+Fecha contable 15.05.2026
+Hecho relevante
+Frecuencia Trimestral
+Fecha Ex 01.05.2026
+Fecha de pago 12.05.2026
+Dividendo - MICROSOFT CORP
+Tipo Dividendo ordinario
+Cantidad detenida 200.000
+Renta unitaria USD 1.00
+Importe bruto USD 200.00
+Otro
+Fecha de última distribución 03.02.2026
+Depósito ALLFUNDS BANK S.A.U.,
+SUCURSAL MADRID
+CANTIDAD DETENIDAen la cartera K-123456.001
+MICROSOFT CORP 200.000
+ISIN: US5949181045 N° Telekurs: 2588173
+EFECTO CASHen la cartera K-123456.001
+Importe bruto USD 200.00
+Retención fiscal USD -30.00
+Costes USD 0.00
+Importe neto USD 170.00
+Cuenta corriente K-123456.001.00.USD/Ordinario IBAN?LU901980012345600100
