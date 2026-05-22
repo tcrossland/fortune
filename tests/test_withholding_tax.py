@@ -11,12 +11,14 @@ from beancount import loader
 from pydantic import ValidationError
 
 from banking_pipeline import beancount_writer
+from banking_pipeline.fields import HybridExtractor
 from banking_pipeline.models import (
     BankClassification,
     BankId,
     Classification,
     DocumentType,
     ExtractionResult,
+    RawDocument,
     Transaction,
 )
 
@@ -132,6 +134,58 @@ def test_open_directives_include_withholding_account() -> None:
     )
     opens = beancount_writer.render_open_directives([result])
     assert "open Expenses:Tax:Withholding:US" in opens
+
+
+# --- withholding_country domicile fallback ---------------------------------
+
+_WHT_DIVIDEND_FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "en"
+    / "pictet"
+    / "dividend_notice.us_wht.txt"
+)
+
+
+def _extract_wht_dividend(extractor: HybridExtractor) -> Transaction:
+    doc = RawDocument(
+        path=_WHT_DIVIDEND_FIXTURE,
+        text=_WHT_DIVIDEND_FIXTURE.read_text(encoding="utf-8"),
+        page_count=1,
+    )
+    txns, _ = extractor.extract(doc, _classification_for(DocumentType.DIVIDEND_NOTICE))
+    return txns[0]
+
+
+def _classification_for(doc_type: DocumentType) -> Classification:
+    return Classification(
+        document_type=doc_type,
+        confidence=0.95,
+        source="rules",
+        template_id="pictet.dividend_notice.v1",
+        bank=BankClassification(bank=BankId.PICTET, confidence=0.99, source="rules"),
+    )
+
+
+def test_country_defaults_to_isin_prefix_without_metadata() -> None:
+    tx = _extract_wht_dividend(HybridExtractor(commodity_domiciles={}))
+    assert tx.withholding_country == "US"  # ISIN US0378331005 prefix
+
+
+def test_commodity_domicile_overrides_isin_prefix() -> None:
+    # The fixture's ISIN is US-prefixed, but the curated domicile says
+    # Jersey — the authoritative metadata must win.
+    tx = _extract_wht_dividend(
+        HybridExtractor(commodity_domiciles={"US0378331005": "JE"})
+    )
+    assert tx.withholding_country == "JE"
+
+
+def test_domicile_override_only_for_matching_isin() -> None:
+    tx = _extract_wht_dividend(
+        HybridExtractor(commodity_domiciles={"IE00B3VWN518": "IE"})
+    )
+    assert tx.withholding_country == "US"  # different ISIN → no override
 
 
 def test_wht_entry_balances_with_opens() -> None:

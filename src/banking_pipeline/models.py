@@ -588,9 +588,11 @@ class Transaction(BaseModel):
     # ``gross_income`` is the pre-tax amount Pictet printed (positive).
     # ``withholding_tax`` is the foreign tax withheld (positive, same
     # currency as the income leg). ``withholding_country`` is the ISO
-    # 3166-1 alpha-2 code of the levying jurisdiction (sourced from the
-    # security's ISIN country prefix). All three are ``None`` on advices
-    # with no WHT — the income leg then renders gross-only as before.
+    # 3166-1 alpha-2 code of the levying jurisdiction — the security's
+    # curated ``domicile`` from ``data/commodities.toml`` when available
+    # (an extractor enrichment overrides it), else the ISIN country
+    # prefix the template fills as a default. All three are ``None`` on
+    # advices with no WHT — the income leg then renders gross-only.
     gross_income: Decimal | None = None
     withholding_tax: Decimal | None = None
     withholding_country: str | None = None

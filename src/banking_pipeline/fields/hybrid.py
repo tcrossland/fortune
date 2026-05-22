@@ -32,6 +32,7 @@ The current dispatch handles all three correctly:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -50,6 +51,27 @@ from banking_pipeline.models import (
 from banking_pipeline.templates import TEMPLATE_REGISTRY
 
 _log = structlog.get_logger(__name__)
+
+
+def _load_commodity_domiciles() -> dict[str, str]:
+    """Return ``{isin: domicile}`` from the configured commodity metadata.
+
+    Empty when no metadata file is configured / present. Used to override
+    the ISIN-prefix withholding-country guess with the user's
+    hand-curated domicile (see
+    :meth:`HybridExtractor._enrich_withholding_country`).
+    """
+
+    # Local import: ``commodities_metadata`` imports ``fields.validators``,
+    # and importing it at module scope here would close a cycle through
+    # ``fields/__init__``. By call time (extractor construction) the
+    # package is fully initialised.
+    from banking_pipeline.commodities_metadata import load_commodities
+
+    path = settings.commodities_metadata_path
+    if path is None or not path.is_file():
+        return {}
+    return {isin: meta.domicile for isin, meta in load_commodities(path).items()}
 
 
 class TemplateExtractionError(Exception):
@@ -107,6 +129,16 @@ class HybridExtractor:
     rate_source: GbpRateSource = field(
         default_factory=lambda: build_rate_source(settings)
     )
+    # ISIN → domicile, the authoritative withholding-country source.
+    commodity_domiciles: Mapping[str, str] = field(
+        default_factory=_load_commodity_domiciles
+    )
+
+    def _enrich(self, txs: list[Transaction]) -> None:
+        """Post-extraction enrichment from configured external sources."""
+
+        self._enrich_gbp_rates(txs)
+        self._enrich_withholding_country(txs)
 
     def _enrich_gbp_rates(self, txs: list[Transaction]) -> None:
         """Stamp each transaction with its trade-date GBP rate.
@@ -125,6 +157,29 @@ class HybridExtractor:
             if rate is not None:
                 tx.gbp_rate = rate
 
+    def _enrich_withholding_country(self, txs: list[Transaction]) -> None:
+        """Override the ISIN-prefix withholding country with the security's
+        curated domicile when the commodity metadata has one.
+
+        Templates set ``withholding_country`` to the ISIN's 2-letter
+        prefix — a reasonable default for a direct foreign equity, but
+        wrong for Eurobonds (``XS`` isn't a country), ADRs (a ``US`` ISIN
+        over a foreign issuer), and funds whose registration country
+        isn't the withholding jurisdiction. ``data/commodities.toml``'s
+        ``domicile`` is user-maintained and authoritative, so it wins
+        when present. Only WHT-bearing transactions are touched; a
+        missing entry leaves the ISIN-prefix default in place.
+        """
+
+        if not self.commodity_domiciles:
+            return
+        for tx in txs:
+            if tx.withholding_tax is None or tx.isin is None:
+                continue
+            domicile = self.commodity_domiciles.get(tx.isin)
+            if domicile:
+                tx.withholding_country = domicile.upper()
+
     def extract(
         self, doc: RawDocument, classification: Classification
     ) -> tuple[list[Transaction], list[str]]:
@@ -137,7 +192,7 @@ class HybridExtractor:
             if template is not None:
                 txs = template.extract(doc)
                 if txs:
-                    self._enrich_gbp_rates(txs)
+                    self._enrich(txs)
                     return txs, warnings
 
                 # Template ran but produced nothing. Distinguish
@@ -183,7 +238,7 @@ class HybridExtractor:
         #    unrecognised doctypes.
         txs, confidence = self.regex.extract(doc)
         if confidence >= self.threshold:
-            self._enrich_gbp_rates(txs)
+            self._enrich(txs)
             return txs, warnings
 
         # 3. Final fallback: ask the LLM, but only if we have credentials.
@@ -192,9 +247,9 @@ class HybridExtractor:
                 "Low-confidence regex extraction; set "
                 "BANKPIPE_ANTHROPIC_API_KEY to enable LLM fallback."
             )
-            self._enrich_gbp_rates(txs)
+            self._enrich(txs)
             return txs, warnings
 
         llm_txs = self.llm.extract(doc, classification.document_type)
-        self._enrich_gbp_rates(llm_txs)
+        self._enrich(llm_txs)
         return llm_txs, warnings
