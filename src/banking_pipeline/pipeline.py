@@ -53,6 +53,11 @@ class Pipeline:
         transactions, warnings = self.extractor.extract(doc, classification)
         log.info("extracted", count=len(transactions), warnings=len(warnings))
 
+        # Stamp the doctype onto each transaction so the JSONL sidecar
+        # carries it (templates don't — they're per-doctype already).
+        for tx in transactions:
+            tx.document_type = classification.document_type
+
         return ExtractionResult(
             classification=classification,
             transactions=transactions,

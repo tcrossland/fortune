@@ -53,6 +53,10 @@ class Settings(BaseSettings):
         )
     )
 
+    # Root for ``tax-report`` CSV output; the command writes a
+    # ``<year>/`` subdirectory under it.
+    tax_reports_dir: Path = Path("reports/uk-tax")
+
     # Maps Pictet's printed beneficiary-bank name (the ``Bank`` field on
     # an outgoing ``PAYMENT TRANSACTIONS / Payment`` advice) to the short
     # account-name segment used in beancount cash-leg paths

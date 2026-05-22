@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import sys
 from collections.abc import Iterable
@@ -28,13 +29,18 @@ from banking_pipeline.commodities_metadata import CommodityMetadata, load_commod
 from banking_pipeline.config import settings
 from banking_pipeline.extractors import extract_pages, load_pdf
 from banking_pipeline.fields import HybridExtractor, TemplateExtractionError
+from banking_pipeline.fx.gbp_rates import build_rate_source
 from banking_pipeline.models import Classification, DocumentType, Transaction
 from banking_pipeline.pipeline import Pipeline
 from banking_pipeline.revolut import import_csvs as revolut_import_csvs
 from banking_pipeline.revolut import render as revolut_render
 from banking_pipeline.revolut.render import render_open_directives as revolut_open_directives
+from banking_pipeline.tax.uk.sa106 import Sa106Report, compute_sa106_dividends
+from banking_pipeline.tax.uk.sa108 import Sa108Report, compute_sa108
+from banking_pipeline.tax.uk.tax_year import tax_year_bounds
 from banking_pipeline.transaction_sidecar import (
     dump_transactions,
+    load_transactions,
     sidecar_path,
     transactions_to_jsonl,
 )
@@ -1266,6 +1272,194 @@ def _print_rule_matches(pdf_path: Path, classifier: RuleClassifier) -> None:
             )
     # Reference default ruleset so it's a linker-error if we ever rename it.
     _ = DEFAULT_RULES
+
+
+# --- tax-report -------------------------------------------------------------
+
+# Reporting statuses whose disposals are CGT (SA108); everything else is
+# either offshore income gains (non-reporting) or unclassified.
+_CGT_STATUSES = frozenset({"reporting", "uk-domestic"})
+
+
+def _load_sidecar_transactions(source: Path) -> list[Transaction]:
+    """Load every ``*.transactions.jsonl`` under ``source`` (recursive)."""
+
+    txns: list[Transaction] = []
+    for path in sorted(source.rglob("*.transactions.jsonl")):
+        txns.extend(load_transactions(path))
+    return txns
+
+
+def _write_sa108_csv(path: Path, report: Sa108Report) -> int:
+    """Write the CGT disposals (reporting / uk-domestic). Returns row count."""
+
+    rows = [r for r in report.rows if r.reporting_status in _CGT_STATUSES]
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow([
+            "disposal_date", "isin", "commodity_name", "reporting_status",
+            "quantity", "proceeds_gbp", "cost_gbp", "gain_gbp", "match_type",
+            "acquisition_dates",
+        ])
+        for r in rows:
+            writer.writerow([
+                r.disposal_date.isoformat(), r.isin, r.commodity_name,
+                r.reporting_status, r.quantity, r.proceeds_gbp, r.cost_gbp,
+                r.gain_gbp, r.match_type,
+                ";".join(d.isoformat() for d in r.acquisition_dates),
+            ])
+    return len(rows)
+
+
+def _write_sa106_dividends_csv(path: Path, report: Sa106Report) -> int:
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow([
+            "country", "isin", "commodity_name", "gross_gbp", "wht_gbp",
+            "net_gbp", "document_count",
+        ])
+        for r in report.dividends:
+            writer.writerow([
+                r.country, r.isin, r.commodity_name, r.gross_gbp, r.wht_gbp,
+                r.net_gbp, r.document_count,
+            ])
+    return len(report.dividends)
+
+
+def _write_tax_summary(
+    path: Path, year: str, sa108: Sa108Report, sa106: Sa106Report
+) -> None:
+    from decimal import Decimal
+
+    cgt = [r for r in sa108.rows if r.reporting_status in _CGT_STATUSES]
+    offshore = [r for r in sa108.rows if r.reporting_status == "non-reporting"]
+    unclassified = [r for r in sa108.rows if r.reporting_status == "unknown"]
+
+    def _total(rows: list, attr: str) -> Decimal:  # type: ignore[type-arg]
+        return sum((getattr(r, attr) for r in rows), Decimal(0))
+
+    lines = [
+        f"UK tax report — {year}",
+        "",
+        "SA108 capital gains (reporting / uk-domestic):",
+        f"  disposals: {len(cgt)}",
+        f"  total gain/loss: {_total(cgt, 'gain_gbp')} GBP",
+        "",
+        "SA106 foreign dividends:",
+        f"  groups: {len(sa106.dividends)}",
+        f"  total gross: {_total(sa106.dividends, 'gross_gbp')} GBP",
+        f"  total withholding tax: {_total(sa106.dividends, 'wht_gbp')} GBP",
+        "",
+    ]
+    if offshore:
+        lines.append(
+            "WARN offshore income gains (non-reporting funds) — deferred, "
+            "not yet emitted as a CSV:"
+        )
+        lines.append(f"  disposals: {len(offshore)}")
+        lines.append(f"  total gain: {_total(offshore, 'gain_gbp')} GBP")
+        lines.append("")
+    if unclassified:
+        isins = sorted({r.isin for r in unclassified})
+        lines.append(
+            "WARN_UNCLASSIFIED disposals with no commodity metadata "
+            "(add entries to data/commodities.toml):"
+        )
+        for isin in isins:
+            lines.append(f"  {isin}")
+        lines.append("")
+    missing = sorted(set(sa108.missing_rate_isins) | set(sa106.missing_rate_isins))
+    if missing:
+        lines.append("WARN missing GBP rate — excluded from the report:")
+        for isin in missing:
+            lines.append(f"  {isin}")
+        lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+@app.command("tax-report")
+def tax_report(
+    year: Annotated[
+        str,
+        typer.Option("--year", help="UK tax year to report, e.g. 2025-26."),
+    ],
+    source: Annotated[
+        Path,
+        typer.Option(
+            "--source",
+            help="Directory walked (recursively) for *.transactions.jsonl "
+            "sidecars. Defaults to ``data``.",
+        ),
+    ] = Path("data"),
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory for the CSVs. Defaults to "
+            "``<tax_reports_dir>/<year>``.",
+        ),
+    ] = None,
+    commodities: Annotated[
+        Path | None,
+        typer.Option(
+            "--commodities",
+            help="Commodity-metadata TOML. Defaults to the configured "
+            "``commodities_metadata_path``.",
+        ),
+    ] = None,
+    rate_source: Annotated[
+        str | None,
+        typer.Option(
+            "--rate-source",
+            help="GBP rate source for transactions not enriched at ingest "
+            "(``null`` | ``hmrc-monthly``). Defaults to the configured "
+            "source.",
+        ),
+    ] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Produce UK SA106 / SA108 CSV inputs from the JSONL sidecars.
+
+    Reads the structured transaction sidecars (no beancount parsing),
+    applies UK tax-year boundaries and section 104 / same-day / 30-day
+    matching, and writes ``sa108-disposals.csv``, ``sa106-dividends.csv``
+    and ``summary.txt``. Non-reporting (offshore income gains) and
+    interest CSVs are a deferred follow-up; they're flagged in the
+    summary so nothing is silently dropped.
+    """
+
+    _configure_logging(verbose)
+    tax_year_bounds(year)  # validate the label early
+
+    out_dir = out if out is not None else settings.tax_reports_dir / year
+    cpath = commodities or settings.commodities_metadata_path
+    commodities_map = (
+        load_commodities(cpath) if cpath is not None and cpath.is_file() else {}
+    )
+    eff_settings = (
+        settings.model_copy(update={"gbp_rate_source": rate_source})
+        if rate_source is not None
+        else settings
+    )
+    rates = build_rate_source(eff_settings)
+
+    txns = _load_sidecar_transactions(source)
+    sa108 = compute_sa108(
+        txns, tax_year_label=year, commodities=commodities_map, source=rates
+    )
+    sa106 = compute_sa106_dividends(
+        txns, tax_year_label=year, commodities=commodities_map, source=rates
+    )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    n_cgt = _write_sa108_csv(out_dir / "sa108-disposals.csv", sa108)
+    n_div = _write_sa106_dividends_csv(out_dir / "sa106-dividends.csv", sa106)
+    _write_tax_summary(out_dir / "summary.txt", year, sa108, sa106)
+
+    err_console.print(
+        f"Wrote tax report for {year} to {out_dir} "
+        f"({n_cgt} SA108 disposal(s), {n_div} SA106 dividend group(s))"
+    )
 
 
 if __name__ == "__main__":

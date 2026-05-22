@@ -170,6 +170,41 @@ consume it without re-parsing beancount text. `ingest` and `rebuild`
 write sidecars automatically; `banking-pipeline dump-transactions
 <pdf>` prints the same JSONL to stdout for ad-hoc inspection.
 
+## UK tax reporting
+
+`banking-pipeline tax-report --year 2025-26` reads the JSONL sidecars
+(never the beancount text — so it stays clear of the GPL constraint),
+applies UK tax-year boundaries and the section 104 / same-day / 30-day
+share-matching rules, and writes CSV inputs for the self-assessment
+forms:
+
+```bash
+uv run banking-pipeline tax-report --year 2025-26 \
+    --source data --out reports/uk-tax/2025-26
+```
+
+Outputs (all GBP):
+
+- `sa108-disposals.csv` — capital-gains disposals for reporting-status
+  and UK-domestic securities: `disposal_date`, `isin`,
+  `commodity_name`, `reporting_status`, `quantity`, `proceeds_gbp`,
+  `cost_gbp`, `gain_gbp`, `match_type`
+  (`same-day` / `bed-and-breakfast` / `s104`), `acquisition_dates`.
+- `sa106-dividends.csv` — foreign dividends grouped by source country
+  and ISIN: `country`, `isin`, `commodity_name`, `gross_gbp`,
+  `wht_gbp`, `net_gbp`, `document_count`.
+- `summary.txt` — totals plus warnings for anything not on a CSV.
+
+GBP figures use each transaction's trade-date `gbp_rate` (from ingest),
+with `--rate-source hmrc-monthly` as a fallback for older transactions.
+Reporting status comes from `data/commodities.toml` (see above).
+
+**Known limitations (current cut):** the SA106 *interest* and
+*offshore-income-gains* CSVs aren't emitted yet — non-reporting-fund
+disposals and unclassified holdings are flagged in `summary.txt` rather
+than written to a CSV. No excess-reportable-income handling; that's a
+follow-up.
+
 ## Validation
 
 The pipeline ships with a `bean-check` integration so writer

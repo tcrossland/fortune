@@ -614,6 +614,12 @@ class Transaction(BaseModel):
     # --- Provenance -----------------------------------------------------
     source_path: Path
     source_page: int | None = None
+    # The classified document type this transaction came from. Templates
+    # don't fill it (a template only ever produces one doctype); the
+    # ``Pipeline`` stamps it from the classification after extraction so
+    # the JSONL sidecar — and the downstream tax-report that reads it —
+    # can tell a buy from a sell from a dividend without re-classifying.
+    document_type: DocumentType | None = None
 
     @property
     def is_fx(self) -> bool:
