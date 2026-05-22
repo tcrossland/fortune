@@ -517,13 +517,23 @@ class Transaction(BaseModel):
     counter_amount: Decimal | None = None
 
     # --- Bond accrued interest ------------------------------------------
-    # Set on ``SELL_BONDS`` advices: the amount of accrued interest the
-    # buyer pays to the seller alongside the bond's principal proceeds.
-    # Pictet prints this on a dedicated ``Interest`` line inside the
-    # ``CASH EFFECT`` block, on top of the percentage-priced principal.
-    # Recognised by the writer as a separate ``Income:<prefix>:<isin>:Interest``
-    # leg so the bond's running yield stays distinct from realised
-    # capital gain/loss on the principal.
+    # Set on both ``BUY_BONDS`` and ``SELL_BONDS`` advices: the accrued
+    # interest exchanged alongside the bond's principal for the period
+    # since the last coupon. Pictet prints it on a dedicated ``Interest``
+    # line inside the ``CASH EFFECT`` block.
+    #
+    # Stored signed-as-Pictet-printed (the cash sign): **negative on a
+    # purchase** (the buyer pays the seller, cash out) and **positive on
+    # a sale** (the seller receives from the buyer, cash in). The bond
+    # builder negates it uniformly (``-accrued_interest``) to get the
+    # income-account sign, which yields the UK accrued-income-scheme
+    # treatment: a debit (positive on the income side = a reduction of
+    # interest income) on purchases, and a credit (income recognised) on
+    # sales. It posts to a separate
+    # ``Income:<prefix>:<portfolio>:<isin>:Interest`` leg
+    # (see ``BankWriterProfile.accrued_interest_account_template``) so
+    # the bond's running yield stays distinct from realised capital
+    # gain/loss on the principal.
     accrued_interest: Decimal | None = None
 
     # --- Self-to-self payment cross-leg ---------------------------------

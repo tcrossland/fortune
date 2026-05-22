@@ -38,10 +38,21 @@ class BankWriterProfile:
         because UK foreign-tax-credit relief is tracked per source
         country, not per custodian; a bank can override the root if it
         ever needs a different hierarchy.
+    accrued_interest_account_template:
+        Income account for the accrued-interest leg on a bond trade,
+        formatted with ``prefix`` / ``portfolio`` / ``isin``. Kept under
+        the per-ISIN ``:Interest`` segment by default so the bond's
+        running yield stays distinct from realised capital gain on the
+        principal; a bank (or a UK-accrued-income-scheme-specific
+        configuration) can point it at a dedicated ``:AccruedInterest``
+        sub-account instead.
     """
 
     account_prefix: str
     withholding_tax_account_template: str = "Expenses:Tax:Withholding:{country}"
+    accrued_interest_account_template: str = (
+        "Income:{prefix}:{portfolio}:{isin}:Interest"
+    )
 
 
 PICTET_PROFILE = BankWriterProfile(account_prefix="Pic")

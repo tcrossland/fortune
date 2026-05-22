@@ -13,6 +13,7 @@ from __future__ import annotations
 from banking_pipeline.models import DocumentType, Transaction
 from banking_pipeline.writer.builders.security_trade import SECURITY_BUY_TYPES
 from banking_pipeline.writer.format import (
+    accrued_interest_account,
     align,
     cash_account,
     escape,
@@ -155,7 +156,7 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     interest_line: str | None = None
     if tx.accrued_interest is not None and tx.accrued_interest != 0:
         interest_line = align(
-            f"Income:{prefix}:{portfolio}:{isin}:Interest",
+            accrued_interest_account(prefix, portfolio, isin),
             format_amount(-tx.accrued_interest),
             tx.currency,
             extras=" ; Accrued interest",

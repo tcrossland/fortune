@@ -136,6 +136,18 @@ def withholding_account(prefix: str, country: str) -> str:
     return template.format(country=country.upper())
 
 
+def accrued_interest_account(prefix: str, portfolio: str, isin: str) -> str:
+    """Income account for a bond trade's accrued-interest leg.
+
+    Resolves ``accrued_interest_account_template`` from the profile that
+    owns ``prefix`` and formats it with ``prefix`` / ``portfolio`` /
+    ``isin`` — e.g. ``Income:Pic:K123456001:DE000BU3Z005:Interest``.
+    """
+
+    template = profile_for_prefix(prefix).accrued_interest_account_template
+    return template.format(prefix=prefix, portfolio=portfolio, isin=isin)
+
+
 def format_amount(value: Decimal) -> str:
     """Format a ``Decimal`` for emission inside a beancount posting.
 
