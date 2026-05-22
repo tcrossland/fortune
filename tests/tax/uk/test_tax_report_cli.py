@@ -123,8 +123,16 @@ def test_tax_report_end_to_end(tmp_path: Path) -> None:
     assert div["gross_gbp"] == "80.0000"
     assert div["wht_gbp"] == "12.0000"
 
-    # --- summary flags non-reporting + unclassified ----------------------
+    # --- offshore income gains: non-reporting fund disposal --------------
+    oig = _read_csv(out_dir / "sa106-offshore-income-gains.csv")
+    assert len(oig) == 1
+    assert oig[0]["isin"] == "LU1287023185"
+    assert oig[0]["gain_gbp"] == "150.00"
+    # The non-reporting disposal must NOT appear on the CGT (SA108) file.
+    assert all(r["isin"] != "LU1287023185" for r in sa108)
+
+    # --- summary reports offshore + flags unclassified -------------------
     summary = (out_dir / "summary.txt").read_text(encoding="utf-8")
-    assert "offshore income gains" in summary  # non-reporting LU disposal
+    assert "SA106 offshore income gains" in summary
     assert "WARN_UNCLASSIFIED" in summary  # unknown US0378331005 disposal
     assert "US0378331005" in summary

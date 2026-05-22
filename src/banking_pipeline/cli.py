@@ -1326,6 +1326,29 @@ def _write_sa106_dividends_csv(path: Path, report: Sa106Report) -> int:
     return len(report.dividends)
 
 
+def _write_offshore_income_gains_csv(path: Path, report: Sa108Report) -> int:
+    """Write disposals of non-reporting funds — taxed as offshore income
+    gains (SA106), not CGT. Same per-disposal shape as the SA108 file
+    minus the (uniformly ``non-reporting``) status column. Returns rows."""
+
+    rows = [r for r in report.rows if r.reporting_status == "non-reporting"]
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow([
+            "disposal_date", "isin", "commodity_name", "quantity",
+            "proceeds_gbp", "cost_gbp", "gain_gbp", "match_type",
+            "acquisition_dates",
+        ])
+        for r in rows:
+            writer.writerow([
+                r.disposal_date.isoformat(), r.isin, r.commodity_name,
+                r.quantity, r.proceeds_gbp, r.cost_gbp, r.gain_gbp,
+                r.match_type,
+                ";".join(d.isoformat() for d in r.acquisition_dates),
+            ])
+    return len(rows)
+
+
 def _write_tax_summary(
     path: Path, year: str, sa108: Sa108Report, sa106: Sa106Report
 ) -> None:
@@ -1353,8 +1376,7 @@ def _write_tax_summary(
     ]
     if offshore:
         lines.append(
-            "WARN offshore income gains (non-reporting funds) — deferred, "
-            "not yet emitted as a CSV:"
+            "SA106 offshore income gains (non-reporting funds):"
         )
         lines.append(f"  disposals: {len(offshore)}")
         lines.append(f"  total gain: {_total(offshore, 'gain_gbp')} GBP")
@@ -1454,11 +1476,15 @@ def tax_report(
     out_dir.mkdir(parents=True, exist_ok=True)
     n_cgt = _write_sa108_csv(out_dir / "sa108-disposals.csv", sa108)
     n_div = _write_sa106_dividends_csv(out_dir / "sa106-dividends.csv", sa106)
+    n_oig = _write_offshore_income_gains_csv(
+        out_dir / "sa106-offshore-income-gains.csv", sa108
+    )
     _write_tax_summary(out_dir / "summary.txt", year, sa108, sa106)
 
     err_console.print(
         f"Wrote tax report for {year} to {out_dir} "
-        f"({n_cgt} SA108 disposal(s), {n_div} SA106 dividend group(s))"
+        f"({n_cgt} SA108 disposal(s), {n_div} SA106 dividend group(s), "
+        f"{n_oig} offshore income gain(s))"
     )
 
 

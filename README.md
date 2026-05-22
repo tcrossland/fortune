@@ -193,17 +193,22 @@ Outputs (all GBP):
 - `sa106-dividends.csv` — foreign dividends grouped by source country
   and ISIN: `country`, `isin`, `commodity_name`, `gross_gbp`,
   `wht_gbp`, `net_gbp`, `document_count`.
+- `sa106-offshore-income-gains.csv` — disposals of non-reporting funds
+  (taxed as income, not CGT): `disposal_date`, `isin`,
+  `commodity_name`, `quantity`, `proceeds_gbp`, `cost_gbp`, `gain_gbp`,
+  `match_type`, `acquisition_dates`.
 - `summary.txt` — totals plus warnings for anything not on a CSV.
 
 GBP figures use each transaction's trade-date `gbp_rate` (from ingest),
 with `--rate-source hmrc-monthly` as a fallback for older transactions.
 Reporting status comes from `data/commodities.toml` (see above).
 
-**Known limitations (current cut):** the SA106 *interest* and
-*offshore-income-gains* CSVs aren't emitted yet — non-reporting-fund
-disposals and unclassified holdings are flagged in `summary.txt` rather
-than written to a CSV. No excess-reportable-income handling; that's a
-follow-up.
+**Known limitations (current cut):** the SA106 *interest* CSV isn't
+emitted — the only ISIN-bearing interest is bond accrued interest, and
+current-account interest carries no country/ISIN, so a faithful mapping
+is deferred until there's a clearer source. Unclassified holdings (no
+commodity metadata) are flagged in `summary.txt` rather than guessed.
+No excess-reportable-income handling; that's a follow-up.
 
 ## Validation
 
