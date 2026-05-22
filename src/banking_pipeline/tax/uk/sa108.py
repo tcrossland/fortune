@@ -27,6 +27,7 @@ from banking_pipeline.tax.uk.currency import to_gbp
 from banking_pipeline.tax.uk.section_104 import (
     Acquisition,
     Disposal,
+    PoolCostAdjustment,
     match_disposals,
 )
 from banking_pipeline.tax.uk.tax_year import tax_year_bounds
@@ -96,6 +97,7 @@ def compute_sa108(
     source: GbpRateSource | None = None,
     rate_change_date: date | None = None,
     opening_positions: dict[str, list[OpeningLot]] | None = None,
+    cost_adjustments: dict[str, list[PoolCostAdjustment]] | None = None,
 ) -> Sa108Report:
     """Compute SA108 disposal rows for ``tax_year_label``.
 
@@ -169,7 +171,8 @@ def compute_sa108(
         # Deeply discounted securities are taxed as income, not CGT, so
         # their disposals leave the CGT rows entirely.
         target = dds if (meta is not None and meta.deeply_discounted) else rows
-        for m in match_disposals(acqs, disps):
+        adjustments = (cost_adjustments or {}).get(isin)
+        for m in match_disposals(acqs, disps, adjustments):
             if not (start <= m.disposal_date <= end):
                 continue
             target.append(

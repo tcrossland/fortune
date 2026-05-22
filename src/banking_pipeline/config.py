@@ -70,6 +70,16 @@ class Settings(BaseSettings):
         )
     )
 
+    # Excess reportable income (ERI) table for accumulating reporting
+    # funds (per-unit deemed income + equalisation, by fund period).
+    # Defaults to ``data/eri.toml`` when present. See
+    # :mod:`banking_pipeline.tax.uk.eri`.
+    eri_path: Path | None = Field(
+        default_factory=lambda: (
+            Path("data/eri.toml") if Path("data/eri.toml").is_file() else None
+        )
+    )
+
     # CGT main-rate change dates by tax-year label. From this date the
     # rate changed mid-year, so HMRC requires disposals split before /
     # on-or-after it. A year with no entry is reported without a split.

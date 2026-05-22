@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Literal
+from typing import Literal, cast
 
 MatchType = Literal["same-day", "bed-and-breakfast", "s104"]
 
@@ -51,6 +51,17 @@ class Disposal:
     date: date
     qty: Decimal
     proceeds_gbp: Decimal
+
+
+@dataclass(frozen=True)
+class PoolCostAdjustment:
+    """A dated change to the section 104 pool's cost without changing its
+    quantity — used to fold excess reportable income (net of
+    equalisation) into the base cost of the units held on ``date``.
+    Positive raises the pool's allowable cost; negative lowers it."""
+
+    date: date
+    cost_gbp: Decimal
 
 
 @dataclass(frozen=True)
@@ -113,13 +124,20 @@ def _match(
 
 
 def match_disposals(
-    acquisitions: list[Acquisition], disposals: list[Disposal]
+    acquisitions: list[Acquisition],
+    disposals: list[Disposal],
+    cost_adjustments: list[PoolCostAdjustment] | None = None,
 ) -> list[MatchedDisposal]:
     """Match every disposal of one ISIN and return the per-bucket records.
 
     Disposals are reported in chronological order; a disposal split
     across buckets yields several records in same-day → 30-day → s104
     order.
+
+    ``cost_adjustments`` are dated pool-cost changes (ERI net of
+    equalisation) applied to the section 104 pool on their date, before
+    any same-date disposal draws from it. They never affect same-day or
+    30-day matching and are ignored when the pool is empty.
     """
 
     acqs = sorted(
@@ -149,24 +167,31 @@ def match_disposals(
                 if disp.remaining <= 0:
                     break
 
-    # 3. Section 104 pool — interleave the remaining acquisitions and
-    #    disposals chronologically so a disposal only draws from the pool
-    #    as it stood on its date. Acquisitions sort before disposals on a
-    #    shared date (same-day already consumed any overlap).
-    events: list[tuple[date, int, _Lot]] = [
-        (a.date, 0, a) for a in acqs if a.remaining > 0
-    ] + [(d.date, 1, d) for d in disps if d.remaining > 0]
+    # 3. Section 104 pool — interleave the remaining acquisitions,
+    #    cost adjustments and disposals chronologically so a disposal only
+    #    draws from the pool as it stood on its date. On a shared date the
+    #    order is acquisition → adjustment → disposal.
+    events: list[tuple[date, int, str, object]] = []
+    events += [(a.date, 0, "acq", a) for a in acqs if a.remaining > 0]
+    events += [(adj.date, 1, "adj", adj) for adj in (cost_adjustments or [])]
+    events += [(d.date, 2, "disp", d) for d in disps if d.remaining > 0]
     events.sort(key=lambda e: (e[0], e[1]))
 
     pool_qty = Decimal(0)
     pool_cost = Decimal(0)
-    for _, kind, lot in events:
-        if kind == 0:  # acquisition → into the pool
-            pool_qty += lot.remaining
-            pool_cost += lot.unit * lot.remaining
-            lot.remaining = Decimal(0)
+    for _, _order, kind, obj in events:
+        if kind == "acq":  # acquisition → into the pool
+            acq_lot = cast(_Lot, obj)
+            pool_qty += acq_lot.remaining
+            pool_cost += acq_lot.unit * acq_lot.remaining
+            acq_lot.remaining = Decimal(0)
+            continue
+        if kind == "adj":  # ERI base-cost uplift on units still pooled
+            if pool_qty > 0:
+                pool_cost += cast(PoolCostAdjustment, obj).cost_gbp
             continue
         # disposal → draw from the pool at its average cost
+        lot = cast(_Lot, obj)
         if pool_qty <= 0:
             # No pool to match against (incomplete history); record the
             # proceeds with zero cost so the gain isn't understated.

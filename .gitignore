@@ -13,6 +13,10 @@ data/commodities.toml
 # Copy from data/opening-positions.example.toml and edit.
 data/opening-positions.toml
 
+# Personal excess reportable income table (fund ERI + equalisation).
+# Copy from data/eri.example.toml and edit.
+data/eri.toml
+
 # Python-generated files
 __pycache__/
 *.py[oc]

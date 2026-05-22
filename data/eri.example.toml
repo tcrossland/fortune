@@ -1,0 +1,20 @@
+# Excess reportable income (ERI) for accumulating UK reporting funds —
+# copy to data/eri.toml and edit. The real file is gitignored (personal
+# holdings data); the funds publish these figures (not on Pictet's
+# advices).
+#
+# One [[eri]] per fund reporting period. Per-unit figures are in the
+# fund's `currency`; tax-report multiplies by the units you held at
+# `period_end`, converts to GBP at `fund_distribution_date`, taxes
+# (gross - equalisation) as income, and adds that net to the section 104
+# base cost. `income_type` is `dividend` (equity funds) or `interest`
+# (bond/credit funds, >60% interest-bearing).
+
+[[eri]]
+isin = "LU0767911984"
+period_end = 2024-06-30              # fund reporting-period end
+fund_distribution_date = 2024-12-30  # deemed-income date (≈ period end + 6 months)
+income_type = "interest"             # interest | dividend
+eri_per_unit = 0.4521                # excess reportable income per unit
+equalisation_per_unit = 0.0          # per unit, for units bought in-period
+currency = "EUR"

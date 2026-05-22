@@ -10,6 +10,7 @@ from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.models import DocumentType, Transaction
 from banking_pipeline.opening_positions import OpeningLot
 from banking_pipeline.tax.uk.sa108 import compute_sa108
+from banking_pipeline.tax.uk.section_104 import PoolCostAdjustment
 
 
 def _tx(
@@ -183,6 +184,27 @@ def test_undiscounted_bond_stays_in_cgt() -> None:
     )
     assert len(report.rows) == 1
     assert report.dds_disposals == []
+
+
+def test_eri_base_cost_uplift_reduces_gain() -> None:
+    isin = "IE00B3VWN518"
+    # Buy 1000 @ £1000; an ERI uplift of £400 before the sell raises the
+    # pool cost to £1400, so the £1600 disposal gains £200 (not £600).
+    txs = [
+        _tx(doc_type=DocumentType.BUY_ETF, isin=isin, qty=Decimal("1000"),
+            amount=Decimal("-1000"), on=date(2024, 1, 1)),
+        _tx(doc_type=DocumentType.SELL_ETF, isin=isin, qty=Decimal("-1000"),
+            amount=Decimal("1600"), on=date(2025, 2, 1)),
+    ]
+    adjustments = {
+        isin: [PoolCostAdjustment(date(2024, 12, 30), Decimal("400"))]
+    }
+    report = compute_sa108(
+        txs, tax_year_label="2024-25", commodities={isin: _reporting(isin)},
+        cost_adjustments=adjustments,
+    )
+    assert report.rows[0].cost_gbp == Decimal("1400.00")
+    assert report.rows[0].gain_gbp == Decimal("200.00")
 
 
 def test_disposal_outside_year_excluded() -> None:

@@ -38,6 +38,7 @@ from banking_pipeline.pipeline import Pipeline
 from banking_pipeline.revolut import import_csvs as revolut_import_csvs
 from banking_pipeline.revolut import render as revolut_render
 from banking_pipeline.revolut.render import render_open_directives as revolut_open_directives
+from banking_pipeline.tax.uk.eri import EriResult, compute_eri, load_eri
 from banking_pipeline.tax.uk.sa106 import Sa106Report, compute_sa106_dividends
 from banking_pipeline.tax.uk.sa108 import Sa108Report, compute_sa108
 from banking_pipeline.tax.uk.tax_year import tax_year_bounds
@@ -1391,11 +1392,31 @@ def _write_deep_discounted_csv(path: Path, report: Sa108Report) -> int:
     return len(report.dds_disposals)
 
 
+def _write_eri_csv(path: Path, eri: EriResult) -> int:
+    """Write excess reportable income (gross / equalisation / net taxable),
+    split by income type. Returns the row count."""
+
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow([
+            "country", "isin", "commodity_name", "income_type",
+            "gross_gbp", "equalisation_gbp", "net_taxable_gbp", "event_count",
+        ])
+        for r in eri.rows:
+            writer.writerow([
+                r.country, r.isin, r.commodity_name, r.income_type,
+                _money(r.gross_gbp), _money(r.equalisation_gbp),
+                _money(r.net_gbp), r.event_count,
+            ])
+    return len(eri.rows)
+
+
 def _write_tax_summary(
     path: Path,
     year: str,
     sa108: Sa108Report,
     sa106: Sa106Report,
+    eri: EriResult,
     rate_change_date: date | None = None,
 ) -> None:
     cgt = [r for r in sa108.rows if r.reporting_status in _CGT_STATUSES]
@@ -1434,6 +1455,21 @@ def _write_tax_summary(
         f"  total withholding tax: {_total(sa106.dividends, 'wht_gbp')} GBP",
         "",
     ]
+    if eri.rows:
+        eri_div = [r for r in eri.rows if r.income_type == "dividend"]
+        eri_int = [r for r in eri.rows if r.income_type == "interest"]
+        lines.append("SA106 excess reportable income (reporting funds):")
+        lines.append(
+            f"  dividend — net taxable: {_total(eri_div, 'net_gbp')} GBP "
+            f"(gross {_total(eri_div, 'gross_gbp')}, "
+            f"equalisation {_total(eri_div, 'equalisation_gbp')})"
+        )
+        lines.append(
+            f"  interest — net taxable: {_total(eri_int, 'net_gbp')} GBP "
+            f"(gross {_total(eri_int, 'gross_gbp')}, "
+            f"equalisation {_total(eri_int, 'equalisation_gbp')})"
+        )
+        lines.append("")
     if offshore:
         lines.append(
             "SA106 offshore income gains (non-reporting funds):"
@@ -1469,7 +1505,11 @@ def _write_tax_summary(
         for isin in sa108.unmatched_isins:
             lines.append(f"  {isin}")
         lines.append("")
-    missing = sorted(set(sa108.missing_rate_isins) | set(sa106.missing_rate_isins))
+    missing = sorted(
+        set(sa108.missing_rate_isins)
+        | set(sa106.missing_rate_isins)
+        | set(eri.missing_rate_isins)
+    )
     if missing:
         lines.append("WARN missing GBP rate — excluded from the report:")
         for isin in missing:
@@ -1526,6 +1566,14 @@ def tax_report(
             "``opening_positions_path``.",
         ),
     ] = None,
+    eri: Annotated[
+        Path | None,
+        typer.Option(
+            "--eri",
+            help="Excess reportable income TOML for accumulating "
+            "reporting funds. Defaults to the configured ``eri_path``.",
+        ),
+    ] = None,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
     """Produce UK SA106 / SA108 CSV inputs from the JSONL sidecars.
@@ -1534,11 +1582,10 @@ def tax_report(
     applies UK tax-year boundaries and section 104 / same-day / 30-day
     matching, and writes ``sa108-disposals.csv``,
     ``sa106-dividends.csv``, ``sa106-offshore-income-gains.csv``,
-    ``sa106-deep-discounted.csv`` and ``summary.txt``. The interest CSV
-    is the only piece still deferred (current-account interest carries no
-    country/ISIN, and bond accrued interest is the only ISIN-bearing
-    source); affected rows are flagged in the summary so nothing is
-    silently dropped.
+    ``sa106-deep-discounted.csv``, ``sa106-eri.csv`` (excess reportable
+    income, which also uplifts the CGT base cost) and ``summary.txt``.
+    Cash interest distributions remain unmodelled (the ledger carries no
+    such advice); reporting-fund interest arrives via ERI.
     """
 
     _configure_logging(verbose)
@@ -1563,7 +1610,22 @@ def tax_report(
         else {}
     )
 
+    eri_path = eri or settings.eri_path
+    eri_entries = (
+        load_eri(eri_path)
+        if eri_path is not None and eri_path.is_file()
+        else {}
+    )
+
     txns = _load_sidecar_transactions(source)
+    eri_result = compute_eri(
+        txns,
+        tax_year_label=year,
+        eri_entries=eri_entries,
+        commodities=commodities_map,
+        opening_positions=opening,
+        source=rates,
+    )
     sa108 = compute_sa108(
         txns,
         tax_year_label=year,
@@ -1571,6 +1633,7 @@ def tax_report(
         source=rates,
         rate_change_date=settings.cgt_rate_change_dates.get(year),
         opening_positions=opening,
+        cost_adjustments=eri_result.base_cost_adjustments,
     )
     sa106 = compute_sa106_dividends(
         txns, tax_year_label=year, commodities=commodities_map, source=rates
@@ -1585,15 +1648,17 @@ def tax_report(
     n_dds = _write_deep_discounted_csv(
         out_dir / "sa106-deep-discounted.csv", sa108
     )
+    n_eri = _write_eri_csv(out_dir / "sa106-eri.csv", eri_result)
     _write_tax_summary(
-        out_dir / "summary.txt", year, sa108, sa106,
+        out_dir / "summary.txt", year, sa108, sa106, eri_result,
         rate_change_date=settings.cgt_rate_change_dates.get(year),
     )
 
     err_console.print(
         f"Wrote tax report for {year} to {out_dir} "
         f"({n_cgt} SA108 disposal(s), {n_div} SA106 dividend group(s), "
-        f"{n_oig} offshore income gain(s), {n_dds} deep-discounted disposal(s))"
+        f"{n_oig} offshore income gain(s), {n_dds} deep-discounted disposal(s), "
+        f"{n_eri} ERI group(s))"
     )
 
 
