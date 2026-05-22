@@ -13,6 +13,7 @@ from banking_pipeline import portfolio_aggregate
 from banking_pipeline.commodities_metadata import (
     CommodityMetadata,
     load_commodities,
+    normalise_commodity_code,
 )
 from banking_pipeline.portfolio_aggregate import _commodity_directives
 
@@ -62,7 +63,7 @@ reporting_status = "reporting"
 asset_class = "equity-etf"
 first_acquired = 2018-03-15
 """
-    with pytest.raises(ValidationError, match="invalid ISIN"):
+    with pytest.raises(ValidationError, match="not a valid ISIN"):
         load_commodities(_write(tmp_path, toml))
 
 
@@ -92,6 +93,33 @@ first_acquired = 2019-01-01
 """
     with pytest.raises(ValueError, match="duplicate commodity entry"):
         load_commodities(_write(tmp_path, toml))
+
+
+def test_accepts_structured_product_internal_ref(tmp_path: Path) -> None:
+    # Pictet structured products carry an 11-char internal ref, not an
+    # ISIN — they still need metadata for tax classification.
+    toml = """
+[[commodity]]
+isin = "ZZ00AB7IRH0"
+name = "Pictet structured note"
+domicile = "CH"
+reporting_status = "uk-domestic"
+asset_class = "other"
+first_acquired = 2024-04-19
+"""
+    commodities = load_commodities(_write(tmp_path, toml))
+    assert "ZZ00AB7IRH0" in commodities
+    assert commodities["ZZ00AB7IRH0"].asset_class == "other"
+
+
+def test_normalise_commodity_code() -> None:
+    # Valid ISIN → normalised; 11-char internal ref → accepted; a 12-char
+    # checksum-failing code (likely typo) and short garbage → rejected.
+    assert normalise_commodity_code("ie00b3vwn518") == "IE00B3VWN518"
+    assert normalise_commodity_code("ZZ00AB7IRH0") == "ZZ00AB7IRH0"
+    assert normalise_commodity_code("ZZ00ABB5K5 0") == "ZZ00ABB5K50"  # space artifact
+    assert normalise_commodity_code("XX00INVALID0") is None  # 12-char, bad checksum
+    assert normalise_commodity_code("FOO") is None
 
 
 def test_commodity_directives_known_and_missing() -> None:

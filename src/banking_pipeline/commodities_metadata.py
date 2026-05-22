@@ -16,6 +16,7 @@ The file is gitignored (it's personal holdings data); a committed
 
 from __future__ import annotations
 
+import re
 import tomllib
 from datetime import date
 from pathlib import Path
@@ -30,6 +31,30 @@ AssetClass = Literal[
     "equity-etf", "bond", "equity-fund", "money-market", "other"
 ]
 
+# Pictet structured products carry an 11-char internal reference instead
+# of an ISIN (real ISINs are always 12 chars). They flow through the
+# ledger as commodities, so commodity metadata must accept them too.
+# Keying on the 11-char length keeps 12-char ISIN typos rejected.
+_INTERNAL_REF_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}$")
+
+
+def normalise_commodity_code(value: str) -> str | None:
+    """Return the canonical commodity code, or ``None`` if unrecognised.
+
+    A valid ISIN is checksum-validated and normalised; an 11-char
+    ISIN-shaped code (a Pictet structured-product internal reference) is
+    accepted as-is. Anything else — including a 12-char code that fails
+    the ISIN checksum, i.e. a likely typo — returns ``None``.
+    """
+
+    cleaned = value.replace(" ", "").upper()
+    real = normalise_isin(cleaned)
+    if real is not None:
+        return real
+    if _INTERNAL_REF_RE.match(cleaned):
+        return cleaned
+    return None
+
 
 class CommodityMetadata(BaseModel):
     """One ``[[commodity]]`` entry from ``data/commodities.toml``.
@@ -39,6 +64,10 @@ class CommodityMetadata(BaseModel):
     fallback source of withholding-tax country when an income advice
     doesn't print one). ``first_acquired`` dates the emitted beancount
     ``commodity`` directive.
+
+    ``isin`` is the ledger commodity code: usually a real ISIN, but also
+    accepts an 11-char Pictet structured-product internal reference
+    (those aren't ISINs but still need tax classification).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -53,10 +82,12 @@ class CommodityMetadata(BaseModel):
     @field_validator("isin")
     @classmethod
     def _validate_isin(cls, value: str) -> str:
-        normalised = normalise_isin(value)
-        if normalised is None:
-            raise ValueError(f"invalid ISIN: {value!r}")
-        return normalised
+        code = normalise_commodity_code(value)
+        if code is None:
+            raise ValueError(
+                f"not a valid ISIN or 11-char commodity ref: {value!r}"
+            )
+        return code
 
 
 def load_commodities(path: Path) -> dict[str, CommodityMetadata]:

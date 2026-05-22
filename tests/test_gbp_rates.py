@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from banking_pipeline.config import settings
+from banking_pipeline.config import Settings
 from banking_pipeline.fields.hybrid import HybridExtractor
 from banking_pipeline.fx.gbp_rates import (
     HmrcMonthlyAverageSource,
@@ -120,4 +120,6 @@ def test_gbp_transaction_always_unit_rate() -> None:
 
 
 def test_settings_default_disables_gbp_sourcing() -> None:
-    assert settings.gbp_rate_source == "null"
+    # Assert the declared default, not the live singleton — the latter
+    # picks up BANKPIPE_GBP_RATE_SOURCE from the environment / .env.
+    assert Settings.model_fields["gbp_rate_source"].default == "null"

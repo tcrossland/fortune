@@ -37,7 +37,7 @@ from datetime import date
 from pathlib import Path
 
 from banking_pipeline import portfolio_aggregate
-from banking_pipeline.fields.validators import normalise_isin
+from banking_pipeline.commodities_metadata import normalise_commodity_code
 from banking_pipeline.models import DocumentType, Transaction
 from banking_pipeline.transaction_sidecar import load_transactions
 from banking_pipeline.writer.builders.security_trade import (
@@ -145,19 +145,18 @@ def main() -> int:
     in_use = portfolio_aggregate.discover_isins(DATA_DIR)
     candidates = sorted(in_use - known)
 
-    # Drop anything that isn't a valid ISIN — Pictet's internal
-    # structured-product refs (``ZZ…``) flow through the ledger as
-    # commodities but fail the CommodityMetadata ISIN validator, so a
-    # scaffold including them wouldn't load. Surface them separately.
-    missing = [c for c in candidates if normalise_isin(c) is not None]
-    non_isin = [c for c in candidates if normalise_isin(c) is None]
+    # Keep valid commodity codes — real ISINs and 11-char Pictet
+    # structured-product refs (CommodityMetadata accepts both). Anything
+    # else (a malformed code) is dropped so the output stays load-clean.
+    missing = [c for c in candidates if normalise_commodity_code(c) is not None]
+    unrecognised = [c for c in candidates if normalise_commodity_code(c) is None]
 
     if not missing:
         print("Nothing to scaffold — every in-use ISIN has metadata.", file=sys.stderr)
-        if non_isin:
+        if unrecognised:
             print(
-                f"({len(non_isin)} non-ISIN commodity code(s) skipped: "
-                f"{', '.join(non_isin)})",
+                f"({len(unrecognised)} unrecognised commodity code(s) skipped: "
+                f"{', '.join(unrecognised)})",
                 file=sys.stderr,
             )
         return 0
@@ -173,11 +172,11 @@ def main() -> int:
         "# list (offshore funds only; direct shares/bonds = CGT).\n"
     )
     print("\n\n".join(_emit(isin, by_isin.get(isin, [])) for isin in missing))
-    print(f"\nScaffolded {len(missing)} ISIN(s).", file=sys.stderr)
-    if non_isin:
+    print(f"\nScaffolded {len(missing)} commodity code(s).", file=sys.stderr)
+    if unrecognised:
         print(
-            f"Skipped {len(non_isin)} non-ISIN commodity code(s) "
-            f"(e.g. Pictet structured-product refs): {', '.join(non_isin)}",
+            f"Skipped {len(unrecognised)} unrecognised code(s): "
+            f"{', '.join(unrecognised)}",
             file=sys.stderr,
         )
     return 0
