@@ -5,6 +5,10 @@
 # in the repo. Copy from banking-pipeline.example.toml and edit.
 banking-pipeline.toml
 
+# Personal UK-tax commodity metadata (held ISINs, reporting status).
+# Copy from data/commodities.example.toml and edit.
+data/commodities.toml
+
 # Python-generated files
 __pycache__/
 *.py[oc]

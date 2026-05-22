@@ -28,8 +28,11 @@ Fava / ``bean-check`` directly.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from datetime import date
 from pathlib import Path
+
+from banking_pipeline.commodities_metadata import CommodityMetadata
 
 # A posting line's account is the indented token at the start of the line.
 # Account segments are letters, digits, and hyphens — beancount's grammar.
@@ -149,6 +152,93 @@ def _extract_isin_currencies(files: Sequence[Path]) -> dict[str, str]:
     return isin_to_ccy
 
 
+# Auxiliary files the aggregate ``include``s but doesn't scan as
+# transaction sources, plus the aggregate output itself — all excluded
+# from the per-year source-file list.
+_AUX_FILENAMES = ("prices.beancount", "balances.beancount")
+
+
+def _source_files(data_dir: Path, output: Path) -> list[Path]:
+    """Per-year ``*.beancount`` ingest files under ``data_dir``.
+
+    Excludes the aggregate ``output`` (so re-running is idempotent) and
+    the auxiliary price / balance files (which are ``include``d but not
+    scanned as transaction sources).
+    """
+
+    return [
+        f
+        for f in sorted(data_dir.glob("*.beancount"))
+        if f.resolve() != output.resolve() and f.name not in _AUX_FILENAMES
+    ]
+
+
+def discover_isins(data_dir: Path, output: Path | None = None) -> set[str]:
+    """ISINs referenced by priced security postings under ``data_dir``.
+
+    Reuses the same priced-asset scan as the constraint resolver
+    (:func:`_extract_isin_currencies`) — every buy/sell carries the ISIN
+    on a cost-basis or market-price annotation, so this is the set of
+    securities the user has actually traded and therefore needs
+    commodity metadata for.
+    """
+
+    if output is None:
+        output = data_dir / "portfolio.beancount"
+    files = _source_files(data_dir, output)
+    return set(_extract_isin_currencies(files))
+
+
+def _commodity_directives(
+    in_use_isins: Iterable[str],
+    commodities: Mapping[str, CommodityMetadata],
+) -> list[str]:
+    """Beancount ``commodity`` directives for the in-use ISINs.
+
+    Known ISINs render full UK-tax metadata dated to ``first_acquired``;
+    ISINs absent from ``commodities`` get a ``reporting-status:
+    "unknown"`` stub dated ``1970-01-01``, preceded by a comment
+    nudging the user to complete ``data/commodities.toml``. Beancount
+    metadata keys are kebab-case in output (``reporting-status``) even
+    though the pydantic fields are snake_case. Directives are ordered by
+    (date, ISIN) for deterministic output.
+    """
+
+    entries: list[tuple[date, str, list[str]]] = []
+    for isin in in_use_isins:
+        meta = commodities.get(isin)
+        if meta is not None:
+            entries.append((
+                meta.first_acquired,
+                isin,
+                [
+                    f"{meta.first_acquired.isoformat()} commodity {isin}",
+                    f'  name: "{meta.name}"',
+                    f'  isin: "{meta.isin}"',
+                    f'  domicile: "{meta.domicile}"',
+                    f'  reporting-status: "{meta.reporting_status}"',
+                    f'  asset-class: "{meta.asset_class}"',
+                ],
+            ))
+        else:
+            entries.append((
+                date(1970, 1, 1),
+                isin,
+                [
+                    "; missing metadata — add an entry to data/commodities.toml",
+                    f"1970-01-01 commodity {isin}",
+                    '  reporting-status: "unknown"',
+                ],
+            ))
+
+    entries.sort(key=lambda e: (e[0], e[1]))
+    lines: list[str] = []
+    for _, _, directive in entries:
+        lines.extend(directive)
+        lines.append("")
+    return lines
+
+
 def _scan_files(
     files: Sequence[Path],
 ) -> tuple[dict[str, str], dict[str, str]]:
@@ -189,6 +279,7 @@ def _render(
     header: str,
     extra_includes: Sequence[str] = (),
     booking_method: str | None = "FIFO",
+    commodities: Mapping[str, CommodityMetadata] | None = None,
 ) -> tuple[str, int]:
     """Build the aggregate file body. Returns ``(content, account_count)``.
 
@@ -227,9 +318,21 @@ def _render(
     if op_currencies or booking_method is not None:
         lines.append("")
 
-    for account, date in rows:
+    # UK-tax commodity metadata, above the account opens. Emitted only
+    # when a metadata source is supplied (``commodities is not None``);
+    # without one the aggregate is byte-identical to before. In-use
+    # ISINs without an entry get a stub so the user notices the gap.
+    if commodities is not None:
+        commodity_lines = _commodity_directives(
+            sorted(isin_currencies), commodities
+        )
+        if commodity_lines:
+            lines.append(";; UK-tax commodity metadata.")
+            lines.extend(commodity_lines)
+
+    for account, entry_date in rows:
         c = _constraint(account, isin_currencies)
-        lines.append(f"{date} open {account}" + (f" {c}" if c else ""))
+        lines.append(f"{entry_date} open {account}" + (f" {c}" if c else ""))
 
     lines.append("")
     lines.append(";; Per-year ingest output.")
@@ -256,6 +359,7 @@ def generate(
     header: str = _DEFAULT_HEADER,
     booking_method: str | None = "FIFO",
     statement_files: Iterable[Path] = (),
+    commodities: Mapping[str, CommodityMetadata] | None = None,
 ) -> tuple[Path, int]:
     """Write a portfolio aggregate file. Returns ``(output_path, accounts)``.
 
@@ -285,16 +389,11 @@ def generate(
     # ``balances.beancount`` is the per-holding /
     # per-cash-sub-account assertion set extracted from monthly
     # statements. Both are optional — included only when present.
-    aux_filenames = ("prices.beancount", "balances.beancount")
     aux_present = [
-        name for name in aux_filenames if (data_dir / name).is_file()
+        name for name in _AUX_FILENAMES if (data_dir / name).is_file()
     ]
 
-    files = [
-        f
-        for f in sorted(data_dir.glob("*.beancount"))
-        if f.resolve() != output.resolve() and f.name not in aux_filenames
-    ]
+    files = _source_files(data_dir, output)
 
     content, total = _render(
         files,
@@ -302,6 +401,7 @@ def generate(
         header,
         extra_includes=aux_present,
         booking_method=booking_method,
+        commodities=commodities,
     )
     output.write_text(content, encoding="utf-8")
     return output, total

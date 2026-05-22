@@ -23,6 +23,8 @@ from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.classifiers.bank import BANK_RULES, BankRuleClassifier
 from banking_pipeline.classifiers.language import LANGUAGE_RULES, LanguageRuleClassifier
 from banking_pipeline.classifiers.rules import DEFAULT_RULES, RuleClassifier
+from banking_pipeline.commodities_metadata import CommodityMetadata, load_commodities
+from banking_pipeline.config import settings
 from banking_pipeline.extractors import extract_pages, load_pdf
 from banking_pipeline.fields import HybridExtractor, TemplateExtractionError
 from banking_pipeline.models import Classification, DocumentType
@@ -435,6 +437,22 @@ def balances(
     )
 
 
+def _resolve_commodities() -> dict[str, CommodityMetadata] | None:
+    """Load the configured commodity-metadata file, or ``None`` if unset.
+
+    Returns ``None`` when no metadata path is configured / present, which
+    tells :func:`portfolio_aggregate.generate` to skip the commodity
+    block entirely (keeping the aggregate byte-identical to before the
+    UK-tax work). An empty-but-present file loads as ``{}`` — every
+    in-use ISIN then renders a stub.
+    """
+
+    path = settings.commodities_metadata_path
+    if path is None or not path.is_file():
+        return None
+    return load_commodities(path)
+
+
 @app.command()
 def portfolio(
     data_dir: Annotated[
@@ -447,6 +465,16 @@ def portfolio(
             help="Directory containing per-year *.beancount ingest output.",
         ),
     ],
+    list_missing_metadata: Annotated[
+        bool,
+        typer.Option(
+            "--list-missing-metadata",
+            help="Print one ISIN per line for in-use commodities that "
+            "lack an entry in the commodity-metadata file, then exit "
+            "without regenerating. Use it to keep "
+            "``data/commodities.toml`` in sync with what's traded.",
+        ),
+    ] = False,
     output: Annotated[
         Path | None,
         typer.Option(
@@ -482,11 +510,21 @@ def portfolio(
     + per-year includes) under ``data_dir``."""
 
     _configure_logging(verbose)
+    commodities = _resolve_commodities()
+
+    if list_missing_metadata:
+        known = set(commodities or {})
+        missing = sorted(portfolio_aggregate.discover_isins(data_dir) - known)
+        for isin in missing:
+            console.print(isin)
+        raise typer.Exit()
+
     output_path, total = portfolio_aggregate.generate(
         data_dir=data_dir,
         output=output,
         operating_currencies=operating_currency,
         booking_method=booking_method or None,
+        commodities=commodities,
     )
     err_console.print(
         f"Wrote {output_path} ({total} accounts; "
@@ -714,6 +752,7 @@ def _do_rebuild(
                 output=None,
                 operating_currencies=operating,
                 booking_method=cfg.post.booking_method or None,
+                commodities=_resolve_commodities(),
             )
             err_console.print(
                 f"  wrote {output_path} ({total} accounts)"

@@ -39,6 +39,20 @@ class Settings(BaseSettings):
     gbp_rate_source: Literal["null", "hmrc-monthly"] = "null"
     hmrc_rate_path: Path | None = None
 
+    # Hand-curated UK-tax commodity metadata (ISIN → domicile,
+    # reporting status, asset class). Consumed by ``portfolio`` /
+    # ``rebuild`` to emit beancount ``commodity`` directives. Defaults
+    # to ``data/commodities.toml`` when that file exists, else unset
+    # (no commodity directives emitted). See
+    # :mod:`banking_pipeline.commodities_metadata`.
+    commodities_metadata_path: Path | None = Field(
+        default_factory=lambda: (
+            Path("data/commodities.toml")
+            if Path("data/commodities.toml").is_file()
+            else None
+        )
+    )
+
     # Maps Pictet's printed beneficiary-bank name (the ``Bank`` field on
     # an outgoing ``PAYMENT TRANSACTIONS / Payment`` advice) to the short
     # account-name segment used in beancount cash-leg paths

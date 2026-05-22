@@ -1,0 +1,20 @@
+# UK-tax commodity metadata — copy to data/commodities.toml and edit.
+#
+# data/commodities.toml is gitignored (it's personal holdings data),
+# mirroring the banking-pipeline.toml / banking-pipeline.example.toml
+# split. The `portfolio` and `rebuild` commands read it and emit a
+# beancount `commodity` directive per held ISIN so disposals can be
+# partitioned for SA108 (CGT) vs SA106 (offshore income gains) at
+# tax-report time.
+#
+# One [[commodity]] table per security. Run
+#   banking-pipeline portfolio <data_dir> --list-missing-metadata
+# to list in-use ISINs that still need an entry here.
+
+[[commodity]]
+isin = "IE00B3VWN518"
+name = "iShares Core MSCI World UCITS ETF"
+domicile = "IE"
+reporting_status = "reporting"   # reporting | non-reporting | uk-domestic | unknown
+asset_class = "equity-etf"       # equity-etf | bond | equity-fund | money-market | other
+first_acquired = 2018-03-15
