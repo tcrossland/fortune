@@ -15,14 +15,24 @@ module turns that table plus the ledger holdings into per-fund income
 
 Model (documented because it's tax-critical):
 
-  - reportable units = the position held at the fund's ``period_end``;
+  - reportable units = the position held at the fund's reporting period
+    end. UK offshore-funds rules deem the income to arise six months
+    later (the ``fund_distribution_date``, the tax point that fund/
+    custodian reports display); the units are still measured at the
+    period end six months before. So ``period_end`` defaults to
+    ``fund_distribution_date`` minus six months (month end) and need
+    only be given explicitly to override that for an unusual fund;
   - gross ERI = units × ``eri_per_unit``; equalisation = units ×
     ``equalisation_per_unit``; both converted to GBP at the
     ``fund_distribution_date``;
-  - taxable income (net) = gross − equalisation;
-  - base-cost uplift = the net taxable amount, applied to the pool at
-    the distribution date (so it lifts the cost of units still held
-    then; units sold earlier already left the pool).
+  - taxable income = the gross ERI. Equalisation is *not* deducted from
+    the income — this matches how fund and custodian tax reports (e.g.
+    Pictet's "amount received") present the figure to declare;
+  - base-cost adjustment = gross − equalisation, applied to the pool at
+    the distribution date: the taxed gross is added to base cost (so a
+    later disposal isn't taxed again on it) and the equalisation, a
+    return of capital, is taken back off. It lifts the cost of units
+    still held then; units sold earlier already left the pool.
 """
 
 from __future__ import annotations
@@ -46,7 +56,7 @@ from banking_pipeline.models import Transaction
 from banking_pipeline.opening_positions import OpeningLot
 from banking_pipeline.tax.uk.currency import to_gbp
 from banking_pipeline.tax.uk.section_104 import PoolCostAdjustment
-from banking_pipeline.tax.uk.tax_year import tax_year_bounds
+from banking_pipeline.tax.uk.tax_year import reporting_period_end, tax_year_bounds
 from banking_pipeline.writer.builders.security_trade import (
     SECURITY_BUY_TYPES,
     SECURITY_SELL_TYPES,
@@ -58,20 +68,25 @@ IncomeType = Literal["dividend", "interest"]
 class EriEntry(BaseModel):
     """One fund reporting period's excess reportable income.
 
-    ``period_end`` dates the holding used; ``fund_distribution_date``
-    (the deemed-income date, typically period end + 6 months) is the
-    tax-year and conversion date. Per-unit figures are in ``currency``.
+    ``fund_distribution_date`` is the deemed-income date (the tax point
+    fund/custodian reports display) and the tax-year and FX-conversion
+    date. The reportable holding is measured at the fund's reporting
+    period end — six months earlier — exposed as :attr:`measurement_date`.
+    Leave ``period_end`` unset to derive it as ``fund_distribution_date``
+    minus six months (month end); set it only to override that for a
+    fund whose period-to-distribution gap isn't the regulatory six
+    months. Per-unit figures are in ``currency``.
     """
 
     model_config = ConfigDict(frozen=True)
 
     isin: str
-    period_end: date
     fund_distribution_date: date
     income_type: IncomeType
     eri_per_unit: Decimal
     equalisation_per_unit: Decimal = Decimal(0)
     currency: str
+    period_end: date | None = None
 
     @field_validator("isin")
     @classmethod
@@ -82,6 +97,14 @@ class EriEntry(BaseModel):
                 f"not a valid ISIN or 11-char commodity ref: {value!r}"
             )
         return code
+
+    @property
+    def measurement_date(self) -> date:
+        """The date the reportable holding is measured (period end)."""
+
+        if self.period_end is not None:
+            return self.period_end
+        return reporting_period_end(self.fund_distribution_date)
 
 
 def load_eri(path: Path) -> dict[str, list[EriEntry]]:
@@ -97,7 +120,12 @@ def load_eri(path: Path) -> dict[str, list[EriEntry]]:
 
 @dataclass(frozen=True)
 class EriIncomeRow:
-    """Aggregated ERI for one (country, ISIN, income type) in a tax year."""
+    """Aggregated ERI for one (country, ISIN, income type) in a tax year.
+
+    ``gross_gbp`` is the taxable income (equalisation is not netted off);
+    ``base_cost_adjustment_gbp`` (gross − equalisation) is the section
+    104 pool uplift.
+    """
 
     country: str
     isin: str
@@ -105,14 +133,14 @@ class EriIncomeRow:
     income_type: str
     gross_gbp: Decimal
     equalisation_gbp: Decimal
-    net_gbp: Decimal
+    base_cost_adjustment_gbp: Decimal
     event_count: int
 
 
 @dataclass
 class EriResult:
     rows: list[EriIncomeRow]
-    # Base-cost uplift (net taxable ERI) to feed the section 104 pool.
+    # Base-cost uplift (gross ERI less equalisation) for the section 104 pool.
     base_cost_adjustments: dict[str, list[PoolCostAdjustment]] = field(
         default_factory=dict
     )
@@ -166,7 +194,7 @@ def compute_eri(
             if not (start <= entry.fund_distribution_date <= end):
                 continue
             units = _position_as_of(
-                entry.period_end, by_isin.get(isin, []), opening.get(isin, [])
+                entry.measurement_date, by_isin.get(isin, []), opening.get(isin, [])
             )
             if units <= 0:
                 continue
@@ -182,7 +210,9 @@ def compute_eri(
             if gross is None or equalisation is None:
                 missing.add(isin)
                 continue
-            net = gross - equalisation
+            # Taxable income is the gross; the pool uplift is net of
+            # equalisation (return of capital).
+            base_cost_adj = gross - equalisation
 
             meta = commodities.get(isin)
             country = (meta.domicile if meta is not None else isin[:2]).upper()
@@ -194,9 +224,9 @@ def compute_eri(
             bucket = acc[(country, isin, entry.income_type)]
             bucket[0] += gross
             bucket[1] += equalisation
-            bucket[2] += net
+            bucket[2] += base_cost_adj
             bucket[3] += 1
-            adjustments[isin].append(PoolCostAdjustment(on, net))
+            adjustments[isin].append(PoolCostAdjustment(on, base_cost_adj))
 
     rows = [
         EriIncomeRow(
@@ -206,7 +236,7 @@ def compute_eri(
             income_type=income_type,
             gross_gbp=bucket[0],
             equalisation_gbp=bucket[1],
-            net_gbp=bucket[2],
+            base_cost_adjustment_gbp=bucket[2],
             event_count=bucket[3],
         )
         for (country, isin, income_type), bucket in sorted(acc.items())

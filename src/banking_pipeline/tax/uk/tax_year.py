@@ -7,6 +7,7 @@ two digits — ``"2025-26"`` is 6 Apr 2025 → 5 Apr 2026.
 
 from __future__ import annotations
 
+import calendar
 import re
 from datetime import date
 
@@ -50,3 +51,24 @@ def date_to_tax_year(on_date: date) -> str:
     # year; before that it started the previous calendar year.
     start_year = on_date.year if on_date >= date(on_date.year, 4, 6) else on_date.year - 1
     return f"{start_year}-{(start_year + 1) % 100:02d}"
+
+
+def reporting_period_end(distribution_date: date) -> date:
+    """The fund reporting period end implied by an ERI distribution date.
+
+    UK offshore-funds rules deem excess reportable income to arise to
+    holders six months after the end of the fund's reporting period —
+    that later date is the *fund distribution date* (the UK tax point,
+    and what fund/custodian tax reports display). The reportable units,
+    however, are those held at the period end, so this reverses the
+    six-month deferral. Fund period ends — and therefore the distribution
+    dates six months on — fall on month ends, so the result is the last
+    day of the month six months earlier (e.g. a 31 Mar 2025 distribution
+    implies a 30 Sep 2024 period end).
+    """
+
+    month_index = distribution_date.year * 12 + (distribution_date.month - 1) - 6
+    year, month0 = divmod(month_index, 12)
+    month = month0 + 1
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, last_day)

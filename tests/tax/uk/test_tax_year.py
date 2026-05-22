@@ -6,7 +6,11 @@ from datetime import date
 
 import pytest
 
-from banking_pipeline.tax.uk.tax_year import date_to_tax_year, tax_year_bounds
+from banking_pipeline.tax.uk.tax_year import (
+    date_to_tax_year,
+    reporting_period_end,
+    tax_year_bounds,
+)
 
 
 def test_bounds_basic() -> None:
@@ -43,3 +47,19 @@ def test_round_trip_bounds_within_year() -> None:
     start, end = tax_year_bounds("2025-26")
     assert date_to_tax_year(start) == "2025-26"
     assert date_to_tax_year(end) == "2025-26"
+
+
+@pytest.mark.parametrize(
+    ("distribution", "expected"),
+    [
+        (date(2025, 3, 31), date(2024, 9, 30)),  # 31-day -> 30-day month
+        (date(2024, 6, 30), date(2023, 12, 31)),  # crosses the year, -> 31
+        (date(2024, 11, 30), date(2024, 5, 31)),
+        (date(2024, 5, 31), date(2023, 11, 30)),
+        (date(2024, 8, 31), date(2024, 2, 29)),  # leap-year February
+    ],
+)
+def test_reporting_period_end_six_months_back(
+    distribution: date, expected: date
+) -> None:
+    assert reporting_period_end(distribution) == expected

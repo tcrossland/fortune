@@ -41,6 +41,55 @@ def _entry(isin: str, **kw: object) -> EriEntry:
     return EriEntry(**base)  # type: ignore[arg-type]
 
 
+def test_measurement_date_derived_from_distribution() -> None:
+    # period_end unset → six months (month end) before the distribution.
+    entry = EriEntry(
+        isin="IE00B3VWN518",
+        fund_distribution_date=date(2025, 3, 31),
+        income_type="interest",
+        eri_per_unit=Decimal("0.5"),
+        currency="GBP",
+    )
+    assert entry.period_end is None
+    assert entry.measurement_date == date(2024, 9, 30)
+
+
+def test_measurement_date_explicit_period_end_overrides() -> None:
+    entry = _entry("IE00B3VWN518", period_end=date(2024, 6, 30))
+    assert entry.measurement_date == date(2024, 6, 30)
+
+
+def test_units_measured_six_months_before_distribution() -> None:
+    # Held at the derived period end (30 Sep 2024) but sold before the
+    # distribution date — Pictet's convention still reports the income.
+    isin = "IE00B3VWN518"
+    txs = [
+        _buy(isin, "1000", date(2024, 1, 1)),
+        Transaction(
+            trade_date=date(2024, 11, 1),
+            narration="sell",
+            currency="GBP",
+            amount=Decimal("1500"),
+            isin=isin,
+            quantity=Decimal("-1000"),
+            document_type=DocumentType.SELL_ETF,
+            source_path=Path("t.pdf"),
+        ),
+    ]
+    entry = EriEntry(
+        isin=isin,
+        fund_distribution_date=date(2025, 3, 31),
+        income_type="interest",
+        eri_per_unit=Decimal("0.50"),
+        currency="GBP",
+    )
+    result = compute_eri(
+        txs, tax_year_label="2024-25", eri_entries={isin: [entry]}, commodities={}
+    )
+    assert len(result.rows) == 1
+    assert result.rows[0].gross_gbp == Decimal("500.00")  # 1000 units * 0.50
+
+
 def test_load_eri_groups_by_isin(tmp_path: Path) -> None:
     toml = """
 [[eri]]
@@ -84,10 +133,11 @@ def test_income_split_and_equalisation() -> None:
     assert len(result.rows) == 1
     row = result.rows[0]
     assert row.income_type == "interest"
-    assert row.gross_gbp == Decimal("500.00")  # 1000 * 0.50
+    assert row.gross_gbp == Decimal("500.00")  # 1000 * 0.50, taxable income
     assert row.equalisation_gbp == Decimal("100.00")  # 1000 * 0.10
-    assert row.net_gbp == Decimal("400.00")  # taxable
-    # Base-cost uplift = net taxable, at the distribution date.
+    # Equalisation is not netted off income, only off the base cost.
+    assert row.base_cost_adjustment_gbp == Decimal("400.00")
+    # Base-cost uplift = gross - equalisation, at the distribution date.
     adj = result.base_cost_adjustments[isin]
     assert len(adj) == 1
     assert adj[0].date == date(2024, 12, 30)
@@ -139,4 +189,5 @@ def test_foreign_currency_uses_rate_source() -> None:
         commodities={}, source=source,
     )
     assert result.rows[0].gross_gbp == Decimal("400.00")  # 500 EUR * 0.80
-    assert result.rows[0].net_gbp == Decimal("320.00")  # 400 EUR * 0.80
+    # base cost uplift = gross - equalisation = (500 - 100) EUR * 0.80
+    assert result.rows[0].base_cost_adjustment_gbp == Decimal("320.00")

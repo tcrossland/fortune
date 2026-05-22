@@ -1393,20 +1393,22 @@ def _write_deep_discounted_csv(path: Path, report: Sa108Report) -> int:
 
 
 def _write_eri_csv(path: Path, eri: EriResult) -> int:
-    """Write excess reportable income (gross / equalisation / net taxable),
-    split by income type. Returns the row count."""
+    """Write excess reportable income split by income type. ``gross_gbp``
+    is the taxable income; ``base_cost_adjustment_gbp`` (gross less
+    equalisation) is the section 104 pool uplift. Returns the row count."""
 
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow([
             "country", "isin", "commodity_name", "income_type",
-            "gross_gbp", "equalisation_gbp", "net_taxable_gbp", "event_count",
+            "taxable_income_gbp", "equalisation_gbp",
+            "base_cost_adjustment_gbp", "event_count",
         ])
         for r in eri.rows:
             writer.writerow([
                 r.country, r.isin, r.commodity_name, r.income_type,
                 _money(r.gross_gbp), _money(r.equalisation_gbp),
-                _money(r.net_gbp), r.event_count,
+                _money(r.base_cost_adjustment_gbp), r.event_count,
             ])
     return len(eri.rows)
 
@@ -1460,14 +1462,14 @@ def _write_tax_summary(
         eri_int = [r for r in eri.rows if r.income_type == "interest"]
         lines.append("SA106 excess reportable income (reporting funds):")
         lines.append(
-            f"  dividend — net taxable: {_total(eri_div, 'net_gbp')} GBP "
-            f"(gross {_total(eri_div, 'gross_gbp')}, "
-            f"equalisation {_total(eri_div, 'equalisation_gbp')})"
+            f"  dividend — taxable income: {_total(eri_div, 'gross_gbp')} GBP "
+            f"(equalisation {_total(eri_div, 'equalisation_gbp')}, "
+            f"base-cost uplift {_total(eri_div, 'base_cost_adjustment_gbp')})"
         )
         lines.append(
-            f"  interest — net taxable: {_total(eri_int, 'net_gbp')} GBP "
-            f"(gross {_total(eri_int, 'gross_gbp')}, "
-            f"equalisation {_total(eri_int, 'equalisation_gbp')})"
+            f"  interest — taxable income: {_total(eri_int, 'gross_gbp')} GBP "
+            f"(equalisation {_total(eri_int, 'equalisation_gbp')}, "
+            f"base-cost uplift {_total(eri_int, 'base_cost_adjustment_gbp')})"
         )
         lines.append("")
     if offshore:
