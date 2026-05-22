@@ -120,8 +120,8 @@ def test_tax_report_end_to_end(tmp_path: Path) -> None:
     assert len(sa106) == 1
     div = sa106[0]
     assert div["country"] == "US"
-    assert div["gross_gbp"] == "80.0000"
-    assert div["wht_gbp"] == "12.0000"
+    assert div["gross_gbp"] == "80.00"
+    assert div["wht_gbp"] == "12.00"
 
     # --- offshore income gains: non-reporting fund disposal --------------
     oig = _read_csv(out_dir / "sa106-offshore-income-gains.csv")

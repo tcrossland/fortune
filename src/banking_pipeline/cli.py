@@ -6,6 +6,7 @@ import csv
 import json
 import sys
 from collections.abc import Iterable
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Annotated
 
@@ -1290,6 +1291,24 @@ def _load_sidecar_transactions(source: Path) -> list[Transaction]:
     return txns
 
 
+def _money(value: Decimal) -> str:
+    """Format a GBP amount as a plain 2-dp string (no scientific notation).
+
+    ``Decimal`` arithmetic can yield exponent forms like ``0E-10`` (e.g.
+    ``Decimal(0) * rate``); quantizing to pennies renders ``0.00`` and
+    keeps every figure fixed-point for the CSVs.
+    """
+
+    return str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _qty(value: Decimal) -> str:
+    """Format a unit quantity fixed-point (no scientific notation), keeping
+    its own precision rather than forcing pennies."""
+
+    return format(value, "f")
+
+
 def _write_sa108_csv(path: Path, report: Sa108Report) -> int:
     """Write the CGT disposals (reporting / uk-domestic). Returns row count."""
 
@@ -1304,8 +1323,8 @@ def _write_sa108_csv(path: Path, report: Sa108Report) -> int:
         for r in rows:
             writer.writerow([
                 r.disposal_date.isoformat(), r.isin, r.commodity_name,
-                r.reporting_status, r.quantity, r.proceeds_gbp, r.cost_gbp,
-                r.gain_gbp, r.match_type,
+                r.reporting_status, _qty(r.quantity), _money(r.proceeds_gbp),
+                _money(r.cost_gbp), _money(r.gain_gbp), r.match_type,
                 ";".join(d.isoformat() for d in r.acquisition_dates),
             ])
     return len(rows)
@@ -1320,8 +1339,8 @@ def _write_sa106_dividends_csv(path: Path, report: Sa106Report) -> int:
         ])
         for r in report.dividends:
             writer.writerow([
-                r.country, r.isin, r.commodity_name, r.gross_gbp, r.wht_gbp,
-                r.net_gbp, r.document_count,
+                r.country, r.isin, r.commodity_name, _money(r.gross_gbp),
+                _money(r.wht_gbp), _money(r.net_gbp), r.document_count,
             ])
     return len(report.dividends)
 
@@ -1342,8 +1361,8 @@ def _write_offshore_income_gains_csv(path: Path, report: Sa108Report) -> int:
         for r in rows:
             writer.writerow([
                 r.disposal_date.isoformat(), r.isin, r.commodity_name,
-                r.quantity, r.proceeds_gbp, r.cost_gbp, r.gain_gbp,
-                r.match_type,
+                _qty(r.quantity), _money(r.proceeds_gbp), _money(r.cost_gbp),
+                _money(r.gain_gbp), r.match_type,
                 ";".join(d.isoformat() for d in r.acquisition_dates),
             ])
     return len(rows)
@@ -1352,14 +1371,12 @@ def _write_offshore_income_gains_csv(path: Path, report: Sa108Report) -> int:
 def _write_tax_summary(
     path: Path, year: str, sa108: Sa108Report, sa106: Sa106Report
 ) -> None:
-    from decimal import Decimal
-
     cgt = [r for r in sa108.rows if r.reporting_status in _CGT_STATUSES]
     offshore = [r for r in sa108.rows if r.reporting_status == "non-reporting"]
     unclassified = [r for r in sa108.rows if r.reporting_status == "unknown"]
 
-    def _total(rows: list, attr: str) -> Decimal:  # type: ignore[type-arg]
-        return sum((getattr(r, attr) for r in rows), Decimal(0))
+    def _total(rows: list, attr: str) -> str:  # type: ignore[type-arg]
+        return _money(sum((getattr(r, attr) for r in rows), Decimal(0)))
 
     lines = [
         f"UK tax report — {year}",
