@@ -227,6 +227,27 @@ def test_generate_stubs_missing_metadata(tmp_path: Path) -> None:
     assert '  reporting-status: "unknown"' in text
 
 
+def test_three_letter_name_segment_not_constrained_as_currency(
+    tmp_path: Path,
+) -> None:
+    # A 3-letter account-name segment that is *not* a currency (a
+    # counterparty label) must open without a commodity constraint —
+    # otherwise EUR postings to it are rejected as an invalid currency.
+    (tmp_path / "2023.beancount").write_text(
+        '2023-01-19 * "Pago entrante" "IBM earnout"\n'
+        "  Assets:Pic:K123456001:EUR     1150000.00 EUR\n"
+        "  Income:External:Earnout:IBM  -1150000.00 EUR\n",
+        encoding="utf-8",
+    )
+    output, _ = portfolio_aggregate.generate(tmp_path, operating_currencies=("GBP",))
+    text = output.read_text(encoding="utf-8")
+    # The cash account keeps its real currency constraint…
+    assert "open Assets:Pic:K123456001:EUR EUR" in text
+    # …but the IBM income account opens unconstrained (no "… IBM").
+    assert "open Income:External:Earnout:IBM\n" in text
+    assert "open Income:External:Earnout:IBM IBM" not in text
+
+
 def test_generate_excludes_nested_aggregate_files(tmp_path: Path) -> None:
     # A stale / per-account aggregate (a *.beancount that itself includes
     # other files) must not be swept in as a per-year source — otherwise

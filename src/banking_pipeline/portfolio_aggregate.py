@@ -48,6 +48,16 @@ _OPEN_RE = re.compile(
 _TXN_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+\*")
 
 _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
+# A posting whose amount is denominated in a bare 3-letter currency (the
+# commodity token right after the number, terminated by whitespace or
+# end-of-line so ISIN commodities — always longer — never match). Used
+# to learn which 3-letter tokens are *actually* currencies in this
+# ledger, so a 3-letter account-name segment (e.g. ``…:Earnout:IBM``)
+# isn't mistaken for one.
+_POSTING_COMMODITY_RE = re.compile(
+    r"^\s+(?:Assets|Liabilities|Income|Expenses|Equity)(?::[A-Za-z0-9-]+)+"
+    r"\s+-?[\d.,']+\s+([A-Z]{3})(?:\s|$)"
+)
 # ISIN-shaped: 2 letters then 9–10 alphanumerics. The 11-char form covers
 # Pictet's structured-product internal refs; 12-char covers real ISINs.
 _ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{8}[A-Z0-9]{0,2}$")
@@ -86,6 +96,7 @@ _DEFAULT_HEADER = (
 def _constraint(
     account: str,
     isin_currencies: dict[str, str] | None = None,
+    currencies: set[str] | None = None,
 ) -> str | None:
     """Beancount commodity constraint for ``open <account> <ccy>``, or
     ``None`` when the account's last segment doesn't unambiguously imply
@@ -95,7 +106,11 @@ def _constraint(
 
       - **Last segment is an ISO 4217 currency** (``…:EUR``) — return
         the currency. Used for cash sub-accounts and per-currency
-        Fees / Interest accounts.
+        Fees / Interest accounts. When ``currencies`` is supplied the
+        segment must also appear in it — i.e. it's a 3-letter token the
+        ledger actually denominates a posting in — so a counterparty
+        name that happens to be three letters (``…:Earnout:IBM``) isn't
+        misread as a currency and over-constrained.
       - **Last segment is an ISIN** (``…:LU2096759431``) — return the
         ISIN as the commodity constraint. Used for security-asset
         accounts (the security's commodity is itself).
@@ -113,7 +128,7 @@ def _constraint(
 
     parts = account.split(":")
     last = parts[-1]
-    if _CURRENCY_RE.fullmatch(last):
+    if _CURRENCY_RE.fullmatch(last) and (currencies is None or last in currencies):
         return last
     if _ISIN_RE.fullmatch(last) and 11 <= len(last) <= 12:
         return last
@@ -126,6 +141,26 @@ def _constraint(
                 if ccy is not None:
                     return ccy
     return None
+
+
+def _observed_currencies(files: Sequence[Path]) -> set[str]:
+    """The set of 3-letter currency codes the ledger denominates a
+    posting amount in, across ``files``.
+
+    A currency is "real" here if it appears as the bare commodity right
+    after a posting's amount (``… 1150000.00 EUR``). This is what lets
+    :func:`_constraint` tell a genuine currency segment (``…:EUR``) from
+    a three-letter counterparty / label segment (``…:Earnout:IBM``):
+    only the former shows up as an actual posting currency.
+    """
+
+    currencies: set[str] = set()
+    for path in files:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            m = _POSTING_COMMODITY_RE.match(line)
+            if m is not None:
+                currencies.add(m.group(1))
+    return currencies
 
 
 def _extract_isin_currencies(files: Sequence[Path]) -> dict[str, str]:
@@ -329,11 +364,24 @@ def _render(
     # / Interest / bare-ISIN forms).
     isin_currencies = _extract_isin_currencies(files)
 
+    # Materialised once: ``operating_currencies`` may be a one-shot
+    # iterator, and it's consumed both here and for the option directives.
+    op_currencies = list(operating_currencies)
+
+    # 3-letter tokens the ledger actually denominates postings in, so a
+    # currency-shaped account-name segment that isn't a currency (e.g.
+    # ``Income:External:Earnout:IBM``) doesn't get a bogus constraint.
+    # Operating and ISIN-quotation currencies count too.
+    currencies = (
+        _observed_currencies(files)
+        | set(op_currencies)
+        | set(isin_currencies.values())
+    )
+
     lines: list[str] = [header.rstrip("\n"), ""]
 
     # Beancount ``option`` directives go above the dated entries. Multiple
     # operating currencies are allowed and reported in the order declared.
-    op_currencies = list(operating_currencies)
     for ccy in op_currencies:
         lines.append(f'option "operating_currency" "{ccy}"')
     if booking_method is not None:
@@ -354,7 +402,7 @@ def _render(
             lines.extend(commodity_lines)
 
     for account, entry_date in rows:
-        c = _constraint(account, isin_currencies)
+        c = _constraint(account, isin_currencies, currencies)
         lines.append(f"{entry_date} open {account}" + (f" {c}" if c else ""))
 
     lines.append("")
