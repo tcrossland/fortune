@@ -7,9 +7,14 @@ Public surface:
 * :func:`render_entry` — render a single
   :class:`~banking_pipeline.models.Transaction` without the ``;`` audit header.
 * :func:`render_all` — render a batch of results, prepending a single
-  ``open`` directive block via :func:`render_open_directives`.
+  ``open`` directive block via :func:`render_open_directives` and (by default)
+  appending ``close`` directives for ISIN positions that net to zero in the
+  batch via :func:`render_close_directives`.
 * :func:`render_open_directives` — collect ISINs across a batch and emit one
   ``open`` directive per (bank, portfolio, ISIN).
+* :func:`render_close_directives` — re-parse rendered output and emit one
+  ``close`` directive per ISIN-keyed asset account whose final units balance
+  is exactly zero, dated the day after the last posting.
 
 Internals are split by render shape under :mod:`banking_pipeline.writer.builders`,
 with bank-specific configuration under :mod:`banking_pipeline.writer.profile`,
@@ -29,6 +34,7 @@ from decimal import Decimal
 from banking_pipeline.writer.dispatch import (
     render,
     render_all,
+    render_close_directives,
     render_entry,
     render_open_directives,
 )
@@ -39,6 +45,7 @@ ZERO = Decimal("0")
 __all__ = [
     "render",
     "render_all",
+    "render_close_directives",
     "render_entry",
     "render_open_directives",
     "ZERO",

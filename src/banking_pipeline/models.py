@@ -556,6 +556,11 @@ class Transaction(BaseModel):
     # ``Income:<segment>`` / ``Expenses:<segment>``.
     counterparty_account: str | None = None
 
+    # --- UK CGT cost basis ----------------------------------------------
+    # GBP per 1 unit of ``currency`` at trade date. ``None`` means no rate
+    # available; downstream builders fall back to current behaviour.
+    gbp_rate: Decimal | None = None
+
     # --- Account identifiers --------------------------------------------
     account_number: str | None = None  # IBAN, broker account, etc.
     # Pictet's per-document reference (``N° de transacción``). Emitted by

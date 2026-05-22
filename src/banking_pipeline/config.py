@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,6 +29,15 @@ class Settings(BaseSettings):
 
     # Default currency assumed when a statement omits a currency code.
     default_currency: str = "EUR"
+
+    # UK CGT GBP cost-basis sourcing. ``"null"`` (the default) leaves
+    # ``Transaction.gbp_rate`` unset so downstream builders behave
+    # exactly as before. ``"hmrc-monthly"`` enriches each transaction
+    # from HMRC's monthly average rates, read from ``hmrc_rate_path``
+    # (or ``data/fx/hmrc-monthly-average.csv`` when unset). See
+    # :mod:`banking_pipeline.fx.gbp_rates`.
+    gbp_rate_source: Literal["null", "hmrc-monthly"] = "null"
+    hmrc_rate_path: Path | None = None
 
     # Maps Pictet's printed beneficiary-bank name (the ``Bank`` field on
     # an outgoing ``PAYMENT TRANSACTIONS / Payment`` advice) to the short
@@ -81,7 +91,12 @@ class Settings(BaseSettings):
     # paying ``JOHN SMITH LAW FIRM`` produces ``Expenses:External:Legal:Smith``.
     # Override via ``BANKPIPE_COUNTERPARTY_ACCOUNT_MAP`` env var as a
     # JSON-encoded dict, or by editing this default.
-    counterparty_account_map: dict[str, str] = Field(default_factory=dict)
+    counterparty_account_map: dict[str, str] = Field(
+        default_factory=lambda: {
+            "AEAT": "External:Tax:AEAT",
+            "IBM": "External:Earnout:IBM",
+        }
+    )
 
 
 settings = Settings()

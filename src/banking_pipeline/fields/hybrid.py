@@ -33,12 +33,14 @@ The current dispatch handles all three correctly:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 import structlog
 
 from banking_pipeline.config import settings
 from banking_pipeline.fields.llm_extract import LLMExtractor
 from banking_pipeline.fields.regex_extract import RegexExtractor
+from banking_pipeline.fx.gbp_rates import GbpRateSource, build_rate_source
 from banking_pipeline.models import (
     NO_OUTPUT_DOCTYPES,
     Classification,
@@ -102,6 +104,26 @@ class HybridExtractor:
     llm: LLMExtractor = field(default_factory=LLMExtractor)
     threshold: float = settings.rule_confidence_threshold
     strict: bool = False
+    rate_source: GbpRateSource = field(
+        default_factory=lambda: build_rate_source(settings)
+    )
+
+    def _enrich_gbp_rates(self, txs: list[Transaction]) -> None:
+        """Stamp each transaction with its trade-date GBP rate.
+
+        GBP-denominated cash legs are 1:1 by definition; everything else
+        is looked up against :attr:`rate_source` at the trade date. A
+        missing rate leaves ``gbp_rate`` as ``None`` — extraction never
+        fails on it.
+        """
+
+        for tx in txs:
+            if tx.currency.upper() == "GBP":
+                tx.gbp_rate = Decimal("1")
+                continue
+            rate = self.rate_source.get_rate(tx.trade_date, tx.currency)
+            if rate is not None:
+                tx.gbp_rate = rate
 
     def extract(
         self, doc: RawDocument, classification: Classification
@@ -115,6 +137,7 @@ class HybridExtractor:
             if template is not None:
                 txs = template.extract(doc)
                 if txs:
+                    self._enrich_gbp_rates(txs)
                     return txs, warnings
 
                 # Template ran but produced nothing. Distinguish
@@ -160,6 +183,7 @@ class HybridExtractor:
         #    unrecognised doctypes.
         txs, confidence = self.regex.extract(doc)
         if confidence >= self.threshold:
+            self._enrich_gbp_rates(txs)
             return txs, warnings
 
         # 3. Final fallback: ask the LLM, but only if we have credentials.
@@ -168,6 +192,9 @@ class HybridExtractor:
                 "Low-confidence regex extraction; set "
                 "BANKPIPE_ANTHROPIC_API_KEY to enable LLM fallback."
             )
+            self._enrich_gbp_rates(txs)
             return txs, warnings
 
-        return self.llm.extract(doc, classification.document_type), warnings
+        llm_txs = self.llm.extract(doc, classification.document_type)
+        self._enrich_gbp_rates(llm_txs)
+        return llm_txs, warnings

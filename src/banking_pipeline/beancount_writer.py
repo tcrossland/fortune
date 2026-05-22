@@ -18,6 +18,7 @@ from banking_pipeline.writer import (
     ZERO,
     render,
     render_all,
+    render_close_directives,
     render_entry,
     render_open_directives,
 )
@@ -25,6 +26,7 @@ from banking_pipeline.writer import (
 __all__ = [
     "render",
     "render_all",
+    "render_close_directives",
     "render_entry",
     "render_open_directives",
     "ZERO",

@@ -14,7 +14,9 @@ review`` audit comment.
 from __future__ import annotations
 
 import datetime
+import re
 from collections.abc import Callable, Iterable
+from decimal import Decimal
 
 from banking_pipeline.models import (
     NO_OUTPUT_DOCTYPES as NO_EMIT_TYPES,
@@ -109,8 +111,22 @@ def render_entry(tx: Transaction, classification: Classification) -> str:
     )
 
 
-def render_all(results: Iterable[ExtractionResult]) -> str:
-    """Render a batch of results, prepending a single ``open`` directive block."""
+def render_all(results: Iterable[ExtractionResult], *, close_zeroed: bool = True) -> str:
+    """Render a batch of results, prepending a single ``open`` directive block.
+
+    When ``close_zeroed`` is true (the default), append a ``close`` directive
+    for every ISIN-keyed asset account whose final units balance across the
+    batch is exactly zero. The close date is the day after the last posting
+    that touched the account so beancount's exclusive-end-date semantics
+    align with "no postings starting tomorrow." Positions that go to zero
+    and later re-open within the same batch are deliberately *not* closed —
+    that would invalidate the later buy. See :func:`render_close_directives`.
+
+    Set ``close_zeroed=False`` to keep the legacy output (open + entries
+    only) — useful when consuming downstream tools that don't tolerate
+    extra ``close`` directives, or when the batch is a partial slice of
+    history and a position that's zero now might re-open in a later run.
+    """
 
     results = list(results)
     chunks = [render_open_directives(results)]
@@ -118,7 +134,12 @@ def render_all(results: Iterable[ExtractionResult]) -> str:
     # so the joined output doesn't carry stray blank-line gaps where a
     # paper-trail document was suppressed.
     chunks.extend(c for c in (render(r) for r in results) if c)
-    return "\n".join(chunks)
+    rendered = "\n".join(chunks)
+    if close_zeroed:
+        closes = render_close_directives(rendered)
+        if closes:
+            rendered = f"{rendered}\n\n{closes}"
+    return rendered
 
 
 def render_open_directives(
@@ -178,6 +199,106 @@ def render_open_directives(
         )
 
     return "\n".join(lines)
+
+
+# ISO 6166: 2 letters + 9 alphanumerics + 1 digit. We don't run the full
+# checksum here because the writer already validated ISINs upstream — this
+# regex's only job is to distinguish ISIN-keyed asset accounts (whose
+# commodity == ISIN) from cash/fee/income accounts (commodity == ISO-4217
+# fiat code). Any 12-char [A-Z0-9] commodity is treated as an ISIN; the
+# narrower fiat codes (3 letters) won't match.
+_ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+
+
+def render_close_directives(rendered: str) -> str:
+    """Return ``close`` directives for ISIN asset accounts that net to zero.
+
+    Loads ``rendered`` through beancount itself so the close decision
+    rests on the same engine that will validate the ledger downstream:
+    if beancount says the account has zero units of its ISIN commodity
+    after every transaction is applied, we close it. Any other answer
+    (parse errors, leftover units, etc.) means we silently skip — better
+    to under-close than to emit a directive that would break ``bean-check``.
+
+    The close date is the day after the last posting that touched the
+    account. Beancount's ``close`` is exclusive of the asserted day, so
+    ``last_date + 1`` reads as "no postings on or after the day after the
+    final sell" — which is exactly the situation when the position has
+    been fully wound down on the previous day.
+
+    No assumption is made about ``open`` directives being present in
+    ``rendered``. ISIN accounts are identified by scanning **posting
+    units** for ISIN-shaped commodities, so this works equally well on
+    self-contained :func:`render_all` output (has opens) and on partial
+    ingest output (no opens). Beancount validation may emit "no Open
+    directive" errors during the load — those are ignored; the parser
+    still populates ``entries`` with the parsed transactions, which is
+    all we need for the units-balance calculation.
+
+    Returns the empty string when no qualifying accounts exist (e.g. a
+    cash-only batch, or every ISIN position still has open units).
+    """
+
+    # Lazy import: keeps ``beancount`` off the import path of every caller
+    # of the writer package, even those that never call render_all.
+    try:
+        from beancount import loader  # type: ignore[import-not-found]
+        from beancount.core.data import (  # type: ignore[import-not-found]
+            Transaction as BcTransaction,
+        )
+    except ImportError:  # pragma: no cover — beancount is a hard dep
+        return ""
+
+    entries, _errors, _options = loader.load_string(rendered)
+
+    # Hand off to the pure-Python core so the close logic is testable
+    # without requiring beancount at import time. Filter to Transaction
+    # entries with units-bearing postings — the only postings that can
+    # affect a holding's units balance.
+    posting_stream = (
+        (entry.date, posting.account, posting.units.number, posting.units.currency)
+        for entry in entries
+        if isinstance(entry, BcTransaction)
+        for posting in entry.postings
+        if posting.units is not None
+    )
+    return _close_directives_from_postings(posting_stream)
+
+
+def _close_directives_from_postings(
+    postings: Iterable[tuple[datetime.date, str, Decimal, str]],
+) -> str:
+    """Pure-Python core of :func:`render_close_directives`.
+
+    Takes ``(date, account, units, currency)`` tuples; sums units per
+    account for ISIN-shaped currencies; emits close directives for
+    accounts whose final balance is exactly zero.
+
+    Cash postings, fee postings, dividend income — all use 3-letter
+    fiat codes and are skipped automatically by the ISIN regex filter.
+    """
+
+    balances: dict[str, Decimal] = {}
+    last_dates: dict[str, datetime.date] = {}
+    for entry_date, account, units, currency in postings:
+        if not _ISIN_RE.match(currency):
+            continue
+        balances[account] = balances.get(account, Decimal(0)) + units
+        prev = last_dates.get(account)
+        if prev is None or entry_date > prev:
+            last_dates[account] = entry_date
+
+    closes: list[tuple[datetime.date, str]] = []
+    for account, bal in balances.items():
+        if bal != 0:
+            continue
+        last = last_dates.get(account)
+        if last is None:  # Defensive — bal != 0 was the only branch out.
+            continue
+        closes.append((last + datetime.timedelta(days=1), account))
+
+    closes.sort()
+    return "\n".join(f"{d.isoformat()} close {a}" for d, a in closes)
 
 
 def _render_header(result: ExtractionResult) -> str:

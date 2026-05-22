@@ -107,6 +107,15 @@ def ingest(
         chunks.append(beancount_writer.render(result))
 
     rendered = "\n\n".join(chunks)
+
+    # Append ``close`` directives for ISIN-keyed asset accounts whose
+    # final units balance across the batch is exactly zero. Detection
+    # is conservative — if a position closes here but reopens in a
+    # later run, no close is emitted (this batch's net would be > 0).
+    closes = beancount_writer.render_close_directives(rendered)
+    if closes:
+        rendered = f"{rendered}\n\n{closes}\n"
+
     if output is None:
         console.print(rendered)
     else:
