@@ -48,6 +48,18 @@ def _reporting(isin: str, name: str = "Fund") -> CommodityMetadata:
     )
 
 
+def _dds(isin: str) -> CommodityMetadata:
+    return CommodityMetadata(
+        isin=isin,
+        name="Discounted bond",
+        domicile="DE",
+        reporting_status="uk-domestic",
+        asset_class="bond",
+        first_acquired=date(2018, 1, 1),
+        deeply_discounted=True,
+    )
+
+
 def test_basic_pool_disposal_gain_in_year() -> None:
     isin = "IE00B3VWN518"
     txs = [
@@ -139,6 +151,38 @@ def test_disposal_without_acquisition_is_flagged() -> None:
     assert report.unmatched_isins == [isin]
     assert report.rows[0].cost_gbp == Decimal("0.00")
     assert report.rows[0].gain_gbp == Decimal("1500.00")
+
+
+def test_deeply_discounted_routed_out_of_cgt() -> None:
+    isin = "DE000BU3Z005"
+    txs = [
+        _tx(doc_type=DocumentType.BUY_BONDS, isin=isin, qty=Decimal("1000"),
+            amount=Decimal("-900"), on=date(2024, 5, 1)),
+        _tx(doc_type=DocumentType.SELL_BONDS, isin=isin, qty=Decimal("-1000"),
+            amount=Decimal("1100"), on=date(2025, 6, 1)),
+    ]
+    report = compute_sa108(
+        txs, tax_year_label="2025-26", commodities={isin: _dds(isin)}
+    )
+    # Taxed as income → not on the CGT rows, on dds_disposals instead.
+    assert report.rows == []
+    assert len(report.dds_disposals) == 1
+    assert report.dds_disposals[0].gain_gbp == Decimal("200.00")
+
+
+def test_undiscounted_bond_stays_in_cgt() -> None:
+    isin = "DE000BU3Z005"
+    txs = [
+        _tx(doc_type=DocumentType.BUY_BONDS, isin=isin, qty=Decimal("1000"),
+            amount=Decimal("-900"), on=date(2024, 5, 1)),
+        _tx(doc_type=DocumentType.SELL_BONDS, isin=isin, qty=Decimal("-1000"),
+            amount=Decimal("1100"), on=date(2025, 6, 1)),
+    ]
+    report = compute_sa108(
+        txs, tax_year_label="2025-26", commodities={isin: _reporting(isin)}
+    )
+    assert len(report.rows) == 1
+    assert report.dds_disposals == []
 
 
 def test_disposal_outside_year_excluded() -> None:

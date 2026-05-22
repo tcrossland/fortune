@@ -78,6 +78,11 @@ class CommodityMetadata(BaseModel):
     reporting_status: ReportingStatus
     asset_class: AssetClass
     first_acquired: date
+    # Deeply discounted security (broadly, a bond issued/acquired at a
+    # discount above the de-minimis): its gain is taxed as income, not
+    # CGT, and a loss is generally not allowable. User-asserted — it
+    # depends on issue terms HMRC publishes, not derivable from price.
+    deeply_discounted: bool = False
 
     @field_validator("isin")
     @classmethod

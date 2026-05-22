@@ -1370,6 +1370,27 @@ def _write_offshore_income_gains_csv(path: Path, report: Sa108Report) -> int:
     return len(rows)
 
 
+def _write_deep_discounted_csv(path: Path, report: Sa108Report) -> int:
+    """Write deeply discounted security disposals — gain taxed as income,
+    loss generally not allowable. Returns the row count."""
+
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow([
+            "disposal_date", "isin", "commodity_name", "quantity",
+            "proceeds_gbp", "cost_gbp", "gain_gbp", "match_type",
+            "acquisition_dates",
+        ])
+        for r in report.dds_disposals:
+            writer.writerow([
+                r.disposal_date.isoformat(), r.isin, r.commodity_name,
+                _qty(r.quantity), _money(r.proceeds_gbp), _money(r.cost_gbp),
+                _money(r.gain_gbp), r.match_type,
+                ";".join(d.isoformat() for d in r.acquisition_dates),
+            ])
+    return len(report.dds_disposals)
+
+
 def _write_tax_summary(
     path: Path,
     year: str,
@@ -1419,6 +1440,17 @@ def _write_tax_summary(
         )
         lines.append(f"  disposals: {len(offshore)}")
         lines.append(f"  total gain: {_total(offshore, 'gain_gbp')} GBP")
+        lines.append("")
+    if sa108.dds_disposals:
+        dds_losses = _money(
+            sum((r.gain_gbp for r in sa108.dds_disposals if r.gain_gbp < 0), Decimal(0))
+        )
+        lines.append("Deep discounted securities (taxed to income):")
+        lines.append(f"  disposals: {len(sa108.dds_disposals)}")
+        lines.append(f"  gains taxed to income: {_gains(sa108.dds_disposals)} GBP")
+        lines.append(
+            f"  securities losses (generally not allowable): {dds_losses} GBP"
+        )
         lines.append("")
     if unclassified:
         isins = sorted({r.isin for r in unclassified})
@@ -1501,11 +1533,12 @@ def tax_report(
     Reads the structured transaction sidecars (no beancount parsing),
     applies UK tax-year boundaries and section 104 / same-day / 30-day
     matching, and writes ``sa108-disposals.csv``,
-    ``sa106-dividends.csv``, ``sa106-offshore-income-gains.csv`` and
-    ``summary.txt``. The interest CSV is the only piece still
-    deferred (current-account interest carries no country/ISIN, and
-    bond accrued interest is the only ISIN-bearing source); affected
-    rows are flagged in the summary so nothing is silently dropped.
+    ``sa106-dividends.csv``, ``sa106-offshore-income-gains.csv``,
+    ``sa106-deep-discounted.csv`` and ``summary.txt``. The interest CSV
+    is the only piece still deferred (current-account interest carries no
+    country/ISIN, and bond accrued interest is the only ISIN-bearing
+    source); affected rows are flagged in the summary so nothing is
+    silently dropped.
     """
 
     _configure_logging(verbose)
@@ -1549,6 +1582,9 @@ def tax_report(
     n_oig = _write_offshore_income_gains_csv(
         out_dir / "sa106-offshore-income-gains.csv", sa108
     )
+    n_dds = _write_deep_discounted_csv(
+        out_dir / "sa106-deep-discounted.csv", sa108
+    )
     _write_tax_summary(
         out_dir / "summary.txt", year, sa108, sa106,
         rate_change_date=settings.cgt_rate_change_dates.get(year),
@@ -1557,7 +1593,7 @@ def tax_report(
     err_console.print(
         f"Wrote tax report for {year} to {out_dir} "
         f"({n_cgt} SA108 disposal(s), {n_div} SA106 dividend group(s), "
-        f"{n_oig} offshore income gain(s))"
+        f"{n_oig} offshore income gain(s), {n_dds} deep-discounted disposal(s))"
     )
 
 

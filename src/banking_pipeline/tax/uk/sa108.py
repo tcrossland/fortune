@@ -58,6 +58,9 @@ class Sa108Row:
 @dataclass
 class Sa108Report:
     rows: list[Sa108Row]
+    # Disposals of deeply discounted securities — taxed as income, not
+    # CGT — routed out of ``rows`` so they don't land on the CGT return.
+    dds_disposals: list[Sa108Row] = field(default_factory=list)
     # ISINs excluded because a trade couldn't be converted to GBP (no
     # per-transaction rate and none from the rate source) — emitting a
     # half-converted pool would be worse than flagging the gap.
@@ -114,6 +117,7 @@ def compute_sa108(
 
     opening = opening_positions or {}
     rows: list[Sa108Row] = []
+    dds: list[Sa108Row] = []
     missing: list[str] = []
     unmatched: list[str] = []
 
@@ -162,10 +166,13 @@ def compute_sa108(
         meta = commodities.get(isin)
         status = meta.reporting_status if meta is not None else "unknown"
         name = meta.name if meta is not None else ""
+        # Deeply discounted securities are taxed as income, not CGT, so
+        # their disposals leave the CGT rows entirely.
+        target = dds if (meta is not None and meta.deeply_discounted) else rows
         for m in match_disposals(acqs, disps):
             if not (start <= m.disposal_date <= end):
                 continue
-            rows.append(
+            target.append(
                 Sa108Row(
                     disposal_date=m.disposal_date,
                     isin=isin,
@@ -182,8 +189,12 @@ def compute_sa108(
             )
 
     rows.sort(key=lambda r: (r.disposal_date, r.isin))
+    dds.sort(key=lambda r: (r.disposal_date, r.isin))
     missing.sort()
     unmatched.sort()
     return Sa108Report(
-        rows=rows, missing_rate_isins=missing, unmatched_isins=unmatched
+        rows=rows,
+        dds_disposals=dds,
+        missing_rate_isins=missing,
+        unmatched_isins=unmatched,
     )

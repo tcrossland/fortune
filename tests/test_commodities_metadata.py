@@ -95,6 +95,25 @@ first_acquired = 2019-01-01
         load_commodities(_write(tmp_path, toml))
 
 
+def test_deeply_discounted_defaults_false_and_parses(tmp_path: Path) -> None:
+    assert load_commodities(_write(tmp_path, _VALID_TOML))[
+        "IE00B3VWN518"
+    ].deeply_discounted is False
+    toml = """
+[[commodity]]
+isin = "DE000BU3Z005"
+name = "Discounted bond"
+domicile = "DE"
+reporting_status = "uk-domestic"
+asset_class = "bond"
+first_acquired = 2023-11-24
+deeply_discounted = true
+"""
+    assert load_commodities(_write(tmp_path, toml))[
+        "DE000BU3Z005"
+    ].deeply_discounted is True
+
+
 def test_accepts_structured_product_internal_ref(tmp_path: Path) -> None:
     # Pictet structured products carry an 11-char internal ref, not an
     # ISIN — they still need metadata for tax classification.
