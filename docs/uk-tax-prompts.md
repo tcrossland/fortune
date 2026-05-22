@@ -29,6 +29,53 @@ withholding tax separately disclosed (SA106), and the UK accrued
 income scheme requires accrued interest on bond purchases to be
 treated as interest income, not as part of the CGT cost basis.
 
+## Design choice — GBP as metadata, not as embedded `{cost}`
+
+The ledger stays in the native trade currency. GBP figures are
+carried as **posting metadata** (`gbp-rate`, `trade-date`) and **all
+GBP arithmetic — section 104 pool, same-day and 30-day matching,
+gain/loss computation — happens in the `tax-report` CLI** consuming
+the sidecar `transactions.jsonl`, not in beancount.
+
+Reasons:
+
+- Beancount's booking methods (`AVERAGE`, `STRICT`, …) do not
+  implement UK matching rules. Same-day and 30-day "bed and
+  breakfast" matching sit above the section 104 pool; whatever
+  beancount computes would be an approximation that prompt 7's
+  calculator overrides. Having beancount also compute a (different)
+  number creates two competing answers.
+- Pictet statements are denominated in EUR/USD/etc. Keeping the
+  ledger in those currencies makes reconciliation against the source
+  statements trivial and sidesteps per-currency tolerance interactions
+  at `bean-check` time.
+- HMRC publishes monthly average rates and occasionally republishes;
+  a user might also switch from monthly average to daily mid-project.
+  Metadata-only means re-running the tax report; embedded `{cost}`
+  would mean regenerating ledger history.
+- The cash leg of an FX-funded purchase also has a GBP value worth
+  carrying. Metadata applies symmetrically to all postings on a
+  transaction; `{cost}` does not.
+- Smaller writer surface — builders append metadata lines to
+  existing postings instead of restructuring cost annotations. The
+  back-compat contract ("byte-identical when `gbp_rate is None`") is
+  easier to honour.
+
+Trade-offs accepted:
+
+- No Fava-visible realised gains directly on the ledger. The
+  `tax-report` CLI optionally emits a derived
+  `tax-adjustments.beancount` file (per tax year) that the user can
+  `include` from `main.beancount` if they want CGT visibility in
+  Fava. This file is generated output and treated like
+  `data/portfolio.beancount`.
+- Metadata is not validated by beancount the way `{cost}` is. The
+  `tax-report` CLI cross-checks the JSONL sidecar against the
+  ledger and warns on drift.
+- No `Income:CapitalGains:Foreign:*` account is written by the
+  writer itself. Capital-gains accounts only appear in the derived
+  `tax-adjustments.beancount` if the user opts in.
+
 ---
 
 ## Prompt 1 — GBP cost basis on the `Transaction` model
@@ -88,72 +135,97 @@ touch any builder under `src/banking_pipeline/writer/`.
 
 ---
 
-## Prompt 2 — FX-aware builders emit GBP cost-basis annotations
+## Prompt 2 — FX-aware builders emit GBP-rate metadata
 
-Update the beancount writer in `banking-pipeline` to emit GBP
-cost-basis annotations on security postings when
-`Transaction.gbp_rate` is set. Builds on the prior change that added
-`gbp_rate` to `Transaction`. Read `CLAUDE.md` first — the "Beancount
-output conventions" and "Strict-mode dispatch" sections govern this
-work.
+Update the beancount writer in `banking-pipeline` to attach
+GBP-rate metadata to postings when `Transaction.gbp_rate` is set.
+Builds on prompt 1 (which added `gbp_rate` to `Transaction`). Read
+`CLAUDE.md` first — the "Beancount output conventions" and
+"Strict-mode dispatch" sections govern this work, and read the
+top-of-file "Design choice — GBP as metadata" section to understand
+why this is metadata rather than `{cost}`.
 
-Background: beancount's `{cost, date}` syntax pins a lot's cost
-basis. For UK CGT we want non-GBP acquisitions to record the GBP cost
-so disposals against the section 104 pool calculate the realised gain
-in GBP automatically.
+Background: the ledger stays in the native trade currency. The GBP
+rate is carried as **posting metadata** (`gbp-rate`, `trade-date`)
+on every posting that participates in a UK-CGT-relevant event. All
+GBP arithmetic (section 104 pool, same-day / 30-day matching, gain
+computation) is deferred to the `tax-report` CLI in prompt 7. The
+writer's only job here is to make the rate addressable per posting.
 
 Changes:
 
 1. `src/banking_pipeline/writer/format.py` — add
-   `format_gbp_cost(unit_price_local: Decimal, gbp_rate: Decimal,
-   trade_date: date) -> str` returning a
-   `{X.XXXX GBP, YYYY-MM-DD}` string. Match the decimal precision
-   used elsewhere in the file for cost annotations.
+   `format_gbp_metadata(gbp_rate: Decimal, trade_date: date,
+   indent: int = 4) -> list[str]` returning the two indented
+   metadata lines:
 
-2. Acquisition builders under `src/banking_pipeline/writer/builders/`
-   (review every builder; identify those that add to a security
-   holding — `buy_bonds`, `buy_equity`, `subscription`,
-   `fund_subscription`, anything analogous):
-   - When `transaction.gbp_rate is not None` *and*
-     `transaction.currency != "GBP"`, append the GBP cost annotation
-     to the security posting.
-   - Cash leg keeps its current `@` annotation against the security
-     currency.
-   - When `gbp_rate is None`, behave exactly as today.
+   ```
+       gbp-rate: "0.8384"
+       trade-date: 2026-05-22
+   ```
 
-3. Disposal builders (`sell_bonds`, `sell_equity`, `redemption`,
-   etc.):
-   - When `gbp_rate is not None`, emit the security reduction using
-     lot-matching syntax with an empty cost
-     (`-N ISIN {} @ price CCY`) so beancount draws from the pool.
-   - Route the realised P&L to
-     `Income:CapitalGains:Foreign:<ISIN>`. Make this configurable via
-     a new field
-     `capital_gains_account_template: str = "Income:CapitalGains:Foreign:{isin}"`
-     on `BankWriterProfile` in
-     `src/banking_pipeline/writer/profile.py`.
+   Decimal precision: render the rate to 6 significant figures (HMRC
+   monthly average rates are published to 4 dp; daily rates to 6 dp;
+   6 sig fig covers both). Quote the rate as a string in beancount
+   metadata to avoid float coercion by downstream consumers. Make
+   the helper accept a list of postings rather than a single string
+   so callers can attach metadata to multiple postings in one call.
 
-4. New golden test pair
-   `tests/fixtures/en/pictet/buy_equity.uk_gbp.txt` and `.beancount`
-   exercising a EUR-denominated buy with `gbp_rate` populated. The
-   expected output must show the `{X.XXXX GBP, YYYY-MM-DD}`
-   annotation on the security posting. Add the corresponding feed-in
-   mechanism to whatever test loads `Transaction` directly (or, if
-   goldens load via fixture text, add a small unit test next to the
-   builder that constructs a `Transaction` with `gbp_rate` set and
-   asserts on the rendered string).
+2. Builders under `src/banking_pipeline/writer/builders/` that
+   participate in CGT-relevant events — review every builder;
+   targets include `security_trade` (buy/sell), `bond_trade`,
+   `switch_trade`, `fx_settlement`, and any redemption / final
+   redemption path. For each:
+   - When `transaction.gbp_rate is not None`, append
+     `format_gbp_metadata(...)` lines **under every posting on the
+     entry**, not just the security leg. The cash leg's GBP value is
+     useful for FX-disposal sanity checks and for cash-leg
+     reconciliation in the tax report.
+   - The posting amount, account, and existing `@` annotations are
+     unchanged. The cash leg keeps its existing `@ <price>
+     <security_ccy>` form on FX-bearing trades.
+   - When `gbp_rate is None`, no metadata is emitted — output is
+     byte-identical to today.
 
-5. Do **not** modify existing fixtures or goldens. The contract is:
-   with `gbp_rate=None` (the prior default), output is byte-identical
-   to today. Re-run the full golden suite to confirm.
+3. Income builders (`dividend.py`, `interest.py`) — also attach the
+   metadata when `gbp_rate` is set on the income transaction, so the
+   tax report can compute the GBP value of dividends and coupons
+   from the same metadata source as trades.
 
-6. Hybrid extractor strict-mode dispatch in `fields/hybrid.py` is out
+4. Do **not** add a `capital_gains_account_template` to
+   `BankWriterProfile`. The writer does not emit
+   `Income:CapitalGains:Foreign:*` postings under this design —
+   capital-gains accounts live in the derived
+   `tax-adjustments.beancount` produced by the `tax-report` CLI
+   (prompt 7), not in source ingest output.
+
+5. Do **not** use beancount's `{cost, date}` lot-annotation syntax
+   for UK-CGT purposes. Existing `{cost}` usage for other reasons
+   (e.g. tracking fund unit prices) stays as-is; just don't introduce
+   GBP-denominated cost annotations.
+
+6. Goldens:
+   - Add `tests/fixtures/en/pictet/buy_equity.uk_gbp.txt` and
+     `.beancount` exercising a EUR-denominated buy with `gbp_rate`
+     populated. The expected output should show
+     `gbp-rate: "0.838400"` and `trade-date: YYYY-MM-DD` indented
+     under each posting.
+   - Add a matching `sell_equity.uk_gbp.txt` and `.beancount` for
+     the disposal counterpart. The disposal output has no special
+     lot-matching syntax — just metadata, same as the buy.
+   - **Do not modify existing fixtures or goldens.** The contract is
+     byte-identical output when `gbp_rate is None`. Re-run the full
+     golden suite to confirm.
+
+7. Hybrid extractor strict-mode dispatch in `fields/hybrid.py` is out
    of scope — do not change it.
 
 Validate: `uv run ruff check .`, `uv run mypy src`,
 `uv run pytest`. Then build a tiny ad-hoc ledger including the new
-GBP-aware golden plus the existing `main.beancount` tolerance lines
-and confirm `uv run banking-pipeline check` passes.
+GBP-aware goldens plus the existing `main.beancount` tolerance lines
+and confirm `uv run banking-pipeline check` passes (posting metadata
+is valid beancount; bean-check should not object to either the
+`gbp-rate` string or the `trade-date` date value).
 
 ---
 
@@ -360,10 +432,15 @@ Changes:
      (`BUY_BONDS` or its Spanish counterpart), split the cash leg
      into:
      ```
-     Assets:<prefix>:<portfolio>:<ISIN>   <N> <ISIN> {<gbp_unit_cost> GBP, <date>}
+     Assets:<prefix>:<portfolio>:<ISIN>   <N> <ISIN> @ <price> <ccy>
      Income:<prefix>:<portfolio>:<ISIN>:AccruedInterest  -<accrued_interest> <ccy>
      Assets:<prefix>:<portfolio>:<ccy>    -<gross_cash> <ccy>
      ```
+     The security leg remains in trade currency — UK CGT cost basis
+     is recovered downstream from the `gbp-rate` posting metadata
+     emitted by prompt 2 plus this transaction's accrued-interest
+     split.
+
      The `Income:…:AccruedInterest` posting is a debit (positive on
      income-side = a reduction of interest income — this is the UK
      accrued income scheme treatment) but emitted as the
@@ -503,13 +580,20 @@ and confirm every generated `.beancount` has a matching
 Implement a new `banking-pipeline tax-report` subcommand that
 consumes the sidecar `.transactions.jsonl` files (prompt 6), applies
 UK tax-year boundaries and section 104 / matching rules, and emits
-two CSVs ready to be transcribed onto SA106 (foreign income) and
-SA108 (capital gains).
+CSVs ready to be transcribed onto SA106 (foreign income) and SA108
+(capital gains).
 
-This is the consumer side of all prior prompts: it relies on GBP
-cost basis (1, 2), commodity reporting-status metadata (3),
-WHT-tagged dividends and interest (4), accrued-interest splits (5),
-and the structured sidecar (6).
+This is the consumer side of all prior prompts. **All GBP arithmetic
+lives here** — the writer (prompts 2, 4, 5) only carries the GBP
+rate as metadata and renders source-currency postings. The
+`tax-report` CLI does the GBP conversion, section 104 matching,
+same-day and 30-day rules, gain computation, and reporting-status
+partitioning.
+
+It relies on the GBP-rate metadata produced by prompt 2 (via
+`Transaction.gbp_rate` from prompt 1), commodity reporting-status
+metadata (3), WHT fields on `Transaction` (4), the accrued-interest
+split (5), and the structured sidecar (6).
 
 Read `CLAUDE.md`'s licence-hygiene note — `import beancount` remains
 forbidden. The CLI works entirely off the JSONL sidecars and the
@@ -573,7 +657,7 @@ Changes:
      advices that weren't enriched at extraction time (defensive —
      in practice prompt 1's enrichment covers this).
 
-   Outputs (all CSV, all GBP):
+   Outputs (CSVs are all GBP):
    - `<out>/sa106-dividends.csv` — columns: `country`, `isin`,
      `commodity_name`, `gross_gbp`, `wht_gbp`, `net_gbp`,
      `document_count`.
@@ -586,6 +670,23 @@ Changes:
      `acquisition_dates`.
    - `<out>/summary.txt` — human-readable totals and any warnings
      (`WARN_UNCLASSIFIED`, missing GBP rates, unreconciled lots).
+   - `<out>/tax-adjustments.beancount` — **optional**, emitted only
+     when `--emit-beancount` is passed. A derived beancount file the
+     user can `include` from `main.beancount` for Fava visibility:
+     one entry per matched disposal posting realised gain/loss to
+     `Income:CapitalGains:Foreign:<ISIN>` and a balancing posting to
+     a synthetic `Equity:UKTax:Adjustments:<year>` account. The file
+     header explains it is generated and must not be hand-edited.
+     Treated like `data/portfolio.beancount`: regenerated on every
+     `tax-report` run.
+
+3a. **Drift check.** Before computing, walk the user's existing
+    ingest output and confirm every transaction in the sidecar JSONL
+    has a corresponding entry in the rendered `.beancount` (same
+    transaction number / source document). Warn loudly on
+    discrepancies — this is the cross-check the metadata-only
+    design relies on to catch the case where someone hand-edits a
+    posting and forgets to refresh the sidecar.
 
 3. `src/banking_pipeline/config.py` — add
    `tax_reports_dir: Path = Path("reports/uk-tax")`.
@@ -599,16 +700,26 @@ Changes:
      grouping, missing-WHT-country guard.
    - `test_sa108.py` — partition by reporting status, unclassified
      warning.
+   - `test_drift_check.py` — sidecar entry with no matching ledger
+     row produces a `WARN_DRIFT` warning; ledger row with no
+     matching sidecar entry also warns.
+   - `test_tax_adjustments_beancount.py` — `--emit-beancount`
+     produces a parseable file with the expected
+     `Income:CapitalGains:Foreign:*` and
+     `Equity:UKTax:Adjustments:<year>` postings balanced per
+     disposal. The omission of the flag suppresses the file.
    - `test_tax_report_cli.py` — end-to-end against a tiny fixture
      ledger covering one acquisition, one same-day partial disposal,
      one s104 disposal, one dividend with WHT, one coupon, and one
      non-reporting fund disposal. Snapshot the CSVs.
 
 5. README — new "UK tax reporting" section pointing at
-   `banking-pipeline tax-report`, the CSV layouts, and the
-   limitations (no `bed-and-breakfast` matching across tax-year
-   boundaries beyond 30 days; no automatic excess reportable income
-   handling — call those out as known follow-ups).
+   `banking-pipeline tax-report`, the CSV layouts, the optional
+   `--emit-beancount` flag and how to wire its output into
+   `main.beancount` via `include`, and the limitations (no
+   `bed-and-breakfast` matching across tax-year boundaries beyond 30
+   days; no automatic excess reportable income handling — call
+   those out as known follow-ups).
 
 Constraints: still no `import beancount`. All inputs are JSONL
 sidecars + the commodity TOML. The CLI must complete without an
