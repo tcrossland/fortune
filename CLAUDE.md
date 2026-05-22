@@ -82,9 +82,10 @@ silently when `BANKPIPE_ANTHROPIC_API_KEY` is unset.
 
 ```
 src/banking_pipeline/
-├── cli.py              Typer entrypoint (ingest | classify | scan |
-│                         extract-text | revolut | prices | balances |
-│                         portfolio | check | rebuild)
+├── cli.py              Typer entrypoint (ingest | dump-transactions |
+│                         classify | scan | extract-text | revolut |
+│                         prices | balances | portfolio | check |
+│                         rebuild | tax-report)
 ├── pipeline.py         Top-level Pipeline orchestration
 ├── models.py           Domain models — DocumentType, BankId, Language,
 │                         RawDocument, Classification, Transaction,
@@ -96,6 +97,12 @@ src/banking_pipeline/
 ├── balances_extract.py Pictet monthly-statement → balance assertions
 ├── prices_extract.py   Per-trade + monthly-statement → price directives
 ├── portfolio_aggregate.py Central account opens + per-year includes
+├── commodities_metadata.py  TOML loader for `data/commodities.toml`
+│                              (ISIN → domicile, reporting status,
+│                              asset class)
+├── transaction_sidecar.py   JSONL `*.transactions.jsonl` writer/reader
+│                              — the structured substrate `tax-report`
+│                              consumes
 ├── extractors/
 │   └── pdf_text.py     pypdfium2-based PDF → text
 ├── classifiers/
@@ -108,7 +115,24 @@ src/banking_pipeline/
 │   ├── regex_extract.py  Generic regex field extraction
 │   ├── llm_extract.py    Claude tool-use structured extraction
 │   ├── validators.py     ISIN / IBAN via python-stdnum
-│   └── hybrid.py         Template → regex → LLM dispatch
+│   └── hybrid.py         Template → regex → LLM dispatch + post-
+│                           extraction enrichment (GBP rate stamp,
+│                           withholding-country override)
+├── fx/
+│   └── gbp_rates.py    `GbpRateSource` protocol +
+│                         `HmrcMonthlyAverageSource` (data/fx CSV) +
+│                         `NullSource`; `build_rate_source(settings)`
+│                         picks one
+├── tax/
+│   └── uk/
+│       ├── tax_year.py    UK tax-year boundary helpers (6 Apr–5 Apr,
+│       │                    label `"YYYY-YY"`)
+│       ├── currency.py    `to_gbp(...)` — preferred per-tx rate, else
+│       │                    `GbpRateSource` fallback, else None
+│       ├── section_104.py Section 104 pool + same-day + 30-day
+│       │                    "bed and breakfast" share-matching
+│       ├── sa108.py       SA108 CGT row builder (reads sidecars)
+│       └── sa106.py       SA106 foreign-dividend aggregation
 ├── templates/
 │   ├── __init__.py       TEMPLATE_REGISTRY (populated at import)
 │   └── pictet/           ~40 per-doctype templates (EN + ES locales)
@@ -150,6 +174,17 @@ src/banking_pipeline/
   (`counter_currency` / `counter_amount`), not two transactions
   balanced against `Equity:Uncategorized`. Same pattern for
   self-to-self payments (`gross_amount` / `counter_account`).
+- `Transaction` also carries the UK-tax substrate the `tax-report`
+  CLI needs without re-parsing beancount: `gbp_rate` (GBP per 1 unit
+  of `currency` at trade date, stamped during extraction);
+  `gross_income` / `withholding_tax` / `withholding_country` for
+  foreign-dividend WHT (model invariant: `gross_income -
+  withholding_tax == amount`); `accrued_interest` for bond
+  buys/sells (UK accrued-income-scheme split — keep it signed
+  as Pictet prints it, the bond builder flips the sign for the
+  income leg); and `document_type` provenance stamped by `Pipeline`
+  after classification so sidecar consumers can tell a buy from a
+  sell from a dividend without re-classifying.
 
 ## Classifier / template extension points
 
@@ -241,10 +276,56 @@ the imbalance) or as an exception under `--strict`.
 - `examples/accounts.beancount` is a starter chart of accounts for
   external readers — not loaded by the rebuild.
 
+## UK tax reporting
+
+The tax pipeline is deliberately separate from the beancount writer
+and reads the JSONL sidecars, not the ledger:
+
+- Every `ingest` / `rebuild` writes a `<stem>.transactions.jsonl`
+  next to each `.beancount` (see `transaction_sidecar.py`). This
+  is the **load-bearing** substrate `tax-report` consumes — never
+  re-parse beancount text for tax math. `dump-transactions <pdf>`
+  prints the same JSONL to stdout for ad-hoc inspection.
+- GBP cost basis is carried as posting **metadata** (`gbp-rate`,
+  `trade-date`) and as the structured `Transaction.gbp_rate` in
+  the sidecar. All section 104 / same-day / 30-day matching
+  happens in `tax/uk/section_104.py` from the sidecar, not in
+  beancount — beancount's booking methods do not implement UK
+  matching rules and would compete with the correct answer. The
+  rationale is documented at length in `docs/uk-tax-prompts.md`.
+- Rate sources are pluggable via the `GbpRateSource` protocol in
+  `fx/gbp_rates.py`. Today there are two: `HmrcMonthlyAverageSource`
+  (user-maintained CSV at `data/fx/hmrc-monthly-average.csv`,
+  columns `month` `YYYY-MM`, `currency`, `rate`) and `NullSource`
+  (default — no rate, the rest of the pipeline behaves exactly as
+  before). `BANKPIPE_GBP_RATE_SOURCE=hmrc-monthly` opts in.
+- Reporting status (`reporting` / `non-reporting` / `uk-domestic` /
+  `unknown`) lives in `data/commodities.toml` keyed by ISIN and is
+  loaded by `commodities_metadata.py`. The `tax-report` command
+  routes disposals to SA108 (CGT, for reporting / uk-domestic) vs.
+  SA106 offshore income gains (non-reporting), and flags unknown
+  status in `summary.txt` rather than guessing.
+- `tax-report --year 2025-26` produces `sa108-disposals.csv`,
+  `sa106-dividends.csv`, `sa106-offshore-income-gains.csv` and
+  `summary.txt` under `reports/uk-tax/<year>/`. The interest CSV
+  is the only piece genuinely deferred (current-account interest
+  carries no country/ISIN; bond accrued interest is the only
+  ISIN-bearing interest source).
+- The model invariant `gross_income - withholding_tax == amount`
+  (within a cent) is enforced in `Transaction`'s
+  `@model_validator` — break it and `pydantic` raises at
+  construction time. Don't paper over it; fix the template.
+
 ## CLI surface (run via `uv run banking-pipeline …`)
 
 - `ingest` — classify + extract + render one or more PDFs; supports
   `--check <ledger>` to validate in the same step and `--strict`.
+  Always writes a `<stem>.transactions.jsonl` sidecar next to the
+  output `.beancount` (no flag needed; it's part of the output
+  contract).
+- `dump-transactions` — extract one or more PDFs and print the JSONL
+  sidecar to stdout. Same structured form `ingest` writes, but
+  without touching the ledger.
 - `classify` — just print the language/bank/doctype verdict.
 - `scan` — walk a directory; one row per PDF; `--json` for JSONL.
 - `extract-text` — dump PDF text; `--show-rules` shows which rules
@@ -257,6 +338,11 @@ the imbalance) or as an exception under `--strict`.
   `clean → ingest per source → prices/portfolio/balances → check`
   sequence.
 - `revolut` — separate side path; Revolut Personal CSV → beancount.
+- `tax-report` — read `*.transactions.jsonl` sidecars under
+  `--source` (default `data`), apply UK tax-year bounds + section
+  104 matching, and write the SA108 / SA106 CSVs to
+  `<tax_reports_dir>/<year>/` (default `reports/uk-tax/<year>/`).
+  `--rate-source` overrides `gbp_rate_source` for the run.
 
 ## Configuration
 
@@ -266,6 +352,11 @@ the imbalance) or as an exception under `--strict`.
   driving payment-routing — `beneficiary_bank_map` (self-to-self
   destinations like Revolut) and `counterparty_account_map`
   (third-party named counterparties → account segments).
+- UK-tax knobs (all optional, default to the no-op behaviour):
+  `gbp_rate_source` (`"null"` | `"hmrc-monthly"`), `hmrc_rate_path`
+  (defaults to `data/fx/hmrc-monthly-average.csv`),
+  `commodities_metadata_path` (defaults to `data/commodities.toml`
+  when present), `tax_reports_dir` (defaults to `reports/uk-tax`).
 - Batch config: `banking-pipeline.toml` (gitignored, schema in
   `batch_config.py`). Carries personal Dropbox/iCloud paths.
 - `.env.example` lists the env vars; copy to `.env` for local work.

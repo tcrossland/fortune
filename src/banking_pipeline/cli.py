@@ -1444,10 +1444,12 @@ def tax_report(
 
     Reads the structured transaction sidecars (no beancount parsing),
     applies UK tax-year boundaries and section 104 / same-day / 30-day
-    matching, and writes ``sa108-disposals.csv``, ``sa106-dividends.csv``
-    and ``summary.txt``. Non-reporting (offshore income gains) and
-    interest CSVs are a deferred follow-up; they're flagged in the
-    summary so nothing is silently dropped.
+    matching, and writes ``sa108-disposals.csv``,
+    ``sa106-dividends.csv``, ``sa106-offshore-income-gains.csv`` and
+    ``summary.txt``. The interest CSV is the only piece still
+    deferred (current-account interest carries no country/ISIN, and
+    bond accrued interest is the only ISIN-bearing source); affected
+    rows are flagged in the summary so nothing is silently dropped.
     """
 
     _configure_logging(verbose)

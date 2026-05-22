@@ -199,9 +199,37 @@ Outputs (all GBP):
   `match_type`, `acquisition_dates`.
 - `summary.txt` — totals plus warnings for anything not on a CSV.
 
-GBP figures use each transaction's trade-date `gbp_rate` (from ingest),
-with `--rate-source hmrc-monthly` as a fallback for older transactions.
-Reporting status comes from `data/commodities.toml` (see above).
+### GBP rates
+
+GBP figures use each transaction's trade-date `gbp_rate` stamped
+during `ingest` (when `BANKPIPE_GBP_RATE_SOURCE` is set), with
+`--rate-source hmrc-monthly` available as a fallback for older
+sidecars whose `gbp_rate` is unset.
+
+The HMRC monthly-average source reads a user-maintained CSV at
+`data/fx/hmrc-monthly-average.csv` (override with
+`BANKPIPE_HMRC_RATE_PATH`). Columns: `month` (`YYYY-MM`),
+`currency` (ISO-4217), `rate` (GBP per 1 unit of `currency`).
+HMRC publishes the rates in their "Exchange rates from HMRC in
+CSV and XML format" tables on GOV.UK; populate the CSV from
+whichever months and currencies you trade in. A missing month or
+currency yields `None` rather than failing — the missing ISINs
+are flagged in `summary.txt`. Per-date / daily rates can be
+plugged in by adding a new implementation of the
+`GbpRateSource` protocol in `banking_pipeline.fx.gbp_rates`;
+no daily source ships today.
+
+### Commodity metadata (`data/commodities.toml`)
+
+`tax-report` needs to know each ISIN's reporting status to route
+disposals correctly. The hand-curated `data/commodities.toml` is
+the source — one section per ISIN with at least `name` and
+`reporting_status` (`reporting` / `non-reporting` / `uk-domestic` /
+`unknown`); `domicile` (ISO 3166-1 alpha-2) overrides the ISIN
+prefix as the withholding-tax country. See
+`data/commodities.example.toml` for the schema. `portfolio
+--list-missing-metadata` prints every in-use ISIN not yet in the
+file, which is the loop for keeping it in sync.
 
 **Known limitations (current cut):** the SA106 *interest* CSV isn't
 emitted — the only ISIN-bearing interest is bond accrued interest, and
@@ -281,11 +309,19 @@ fixture it broke on.
 
 ```
 src/banking_pipeline/
-├── cli.py              Typer entrypoint (classify | scan | ingest | extract-text)
+├── cli.py              Typer entrypoint (classify | scan | ingest |
+│                         dump-transactions | extract-text | revolut |
+│                         prices | balances | portfolio | check |
+│                         rebuild | tax-report)
 ├── config.py           Pydantic settings
 ├── models.py           Domain models (RawDocument, Transaction, DocumentType, BankId, Language)
 ├── pipeline.py         Top-level orchestration
-├── beancount_writer.py Render Transactions as beancount text
+├── beancount_writer.py Back-compat re-export of writer/
+├── balances_extract.py Pictet monthly-statement → balance assertions
+├── prices_extract.py   Per-trade + monthly-statement → price directives
+├── portfolio_aggregate.py Central account opens + per-year includes
+├── commodities_metadata.py  TOML loader for data/commodities.toml
+├── transaction_sidecar.py   JSONL *.transactions.jsonl reader/writer
 ├── extractors/
 │   └── pdf_text.py     pypdfium2-based PDF → text
 ├── classifiers/
@@ -298,8 +334,15 @@ src/banking_pipeline/
 │   ├── regex_extract.py  Generic regex field extraction
 │   ├── llm_extract.py    Claude tool-use structured extraction
 │   ├── validators.py     ISIN / IBAN via python-stdnum
-│   └── hybrid.py         Template → regex → LLM
-└── templates/          Per-bank extractors (add your own)
+│   └── hybrid.py         Template → regex → LLM + GBP-rate enrichment
+├── fx/
+│   └── gbp_rates.py    GbpRateSource protocol + HMRC monthly source
+├── tax/
+│   └── uk/             SA108 / SA106 builders, section 104 matcher,
+│                         tax-year helpers, GBP conversion
+├── writer/             Doctype → builder routing, per-shape builders
+├── templates/          Per-bank extractors (add your own)
+└── revolut/            Revolut CSV side path
 
 tests/fixtures/<lang>/<bank>/<doctype>.txt
                      ^      ^       ^
