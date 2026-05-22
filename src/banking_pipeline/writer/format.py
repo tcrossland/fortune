@@ -184,6 +184,33 @@ def transaction_number_comment(tx: Transaction) -> str | None:
     return f"  no: {tx.transaction_number}"
 
 
+def gbp_rate_metadata(tx: Transaction) -> str | None:
+    """The ``    gbp-rate: "<rate>"`` posting-metadata line, or ``None``.
+
+    Returned for the security posting of a non-GBP trade carrying a
+    trade-date GBP rate (``tx.gbp_rate``, populated by the extractor —
+    see :mod:`banking_pipeline.fx.gbp_rates`). The value is GBP per 1
+    unit of ``tx.currency`` — the currency of the cash consideration,
+    which is what UK CGT converts to GBP — quoted as a string so the
+    ``Decimal`` precision survives a beancount round-trip.
+
+    The cost basis itself stays in the trade's native currency: the
+    ledger is kept in EUR/USD/etc. and the GBP / section-104
+    computation happens downstream at tax-report time off this rate.
+    Indented one level deeper than the posting so beancount attaches it
+    to that posting.
+
+    Returns ``None`` (no line emitted) when no rate is available or the
+    consideration is already GBP — a GBP trade needs no conversion, and
+    suppressing it keeps every existing ``gbp_rate``-free entry
+    byte-identical to today.
+    """
+
+    if tx.gbp_rate is None or tx.currency.upper() == "GBP":
+        return None
+    return f'    gbp-rate: "{tx.gbp_rate}"'
+
+
 # Map Pictet's printed cost-line descriptions to a canonical beancount
 # account segment. Pictet uses "Costes" / "Costs" as a deliberately
 # broad term that covers three economically distinct things:

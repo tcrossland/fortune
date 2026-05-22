@@ -16,6 +16,7 @@ from banking_pipeline.writer.format import (
     escape,
     fee_segment,
     format_amount,
+    gbp_rate_metadata,
     header_line,
     inline_open_directive,
     portfolio_segment,
@@ -131,6 +132,9 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
         isin,
         extras=cost_basis,
     )
+    # Trade-date GBP rate, attached to the security posting as metadata
+    # (``None`` when the rate is absent or the trade is already GBP).
+    gbp_meta = gbp_rate_metadata(tx)
 
     # --- Fees leg(s) ---------------------------------------------------
     # Emitted whenever the document carries non-zero fees, regardless of
@@ -191,12 +195,16 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     # --- Posting order: asset-first for buys, cash-first for sells -----
     if doc_type in SECURITY_BUY_TYPES:
         lines.append(asset_line)
+        if gbp_meta:
+            lines.append(gbp_meta)
         lines.extend(fees_lines)
         lines.append(cash_line)
     else:
         lines.append(cash_line)
         lines.extend(fees_lines)
         lines.append(asset_line)
+        if gbp_meta:
+            lines.append(gbp_meta)
         # Elastic ``Income:<prefix>:<ISIN>:Realized`` posting on every
         # sell — beancount auto-balances it against the difference
         # between the cost basis pulled from inventory (via ``{}``) and
@@ -278,6 +286,9 @@ def _render_sell_with_breakdown(
             extras=cost_basis,
         )
     )
+    gbp_meta = gbp_rate_metadata(tx)
+    if gbp_meta:
+        lines.append(gbp_meta)
 
     # Per-item expense legs. Each fee item becomes its own posting
     # with the item's description as an inline beancount comment AND

@@ -18,6 +18,7 @@ from banking_pipeline.writer.format import (
     escape,
     fee_segment,
     format_amount,
+    gbp_rate_metadata,
     inline_open_directive,
     portfolio_segment,
     transaction_number_comment,
@@ -128,6 +129,9 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
         isin,
         extras=cost_basis,
     )
+    # Trade-date GBP rate as security-posting metadata (``None`` when
+    # the rate is absent or the trade is already GBP).
+    gbp_meta = gbp_rate_metadata(tx)
 
     # Fee leg — Pictet prints negative inside the CASH EFFECT block on
     # both directions; expense accounts hold positive amounts. The
@@ -169,6 +173,8 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     if is_buy:
         # Asset-first ordering: the account receiving value leads.
         lines.append(asset_line)
+        if gbp_meta:
+            lines.append(gbp_meta)
         if fee_line is not None:
             lines.append(fee_line)
         if interest_line is not None:
@@ -184,6 +190,8 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
         if interest_line is not None:
             lines.append(interest_line)
         lines.append(asset_line)
+        if gbp_meta:
+            lines.append(gbp_meta)
         if tx.isin:
             lines.append(f"  Income:{prefix}:{portfolio}:{isin}:Realized")
 
