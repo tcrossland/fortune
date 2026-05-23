@@ -50,6 +50,10 @@ class Sa108Row:
     cost_gbp: Decimal
     gain_gbp: Decimal
     match_type: str
+    # Acquisition date(s) supplying the cost. Same-day / 30-day matches
+    # carry the actual matched acquisition date; for a section 104 pool
+    # (an aggregate with no single date) this is the pool's earliest
+    # acquisition — the "acquired since" date for the holding.
     acquisition_dates: list[date]
     # CGT rate-change bucket: ``"pre"`` / ``"post"`` relative to the tax
     # year's rate-change date, or ``""`` when the year has no split.
@@ -172,9 +176,16 @@ def compute_sa108(
         # their disposals leave the CGT rows entirely.
         target = dds if (meta is not None and meta.deeply_discounted) else rows
         adjustments = (cost_adjustments or {}).get(isin)
+        # Pool "acquired since" date — the earliest acquisition of this
+        # holding, used to date section 104 rows (which the matcher leaves
+        # without an acquisition date because the pool is an aggregate).
+        first_acq = min((a.date for a in acqs), default=None)
         for m in match_disposals(acqs, disps, adjustments):
             if not (start <= m.disposal_date <= end):
                 continue
+            acq_dates = m.acquisition_dates
+            if not acq_dates and first_acq is not None:
+                acq_dates = [first_acq]
             target.append(
                 Sa108Row(
                     disposal_date=m.disposal_date,
@@ -186,7 +197,7 @@ def compute_sa108(
                     cost_gbp=m.cost_gbp,
                     gain_gbp=m.gain_gbp,
                     match_type=m.matched_against,
-                    acquisition_dates=m.acquisition_dates,
+                    acquisition_dates=acq_dates,
                     period=_period(m.disposal_date, rate_change_date),
                 )
             )

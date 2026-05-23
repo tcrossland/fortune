@@ -80,6 +80,25 @@ def test_basic_pool_disposal_gain_in_year() -> None:
     assert row.commodity_name == "Fund"
 
 
+def test_s104_row_dated_to_pool_first_acquisition() -> None:
+    isin = "IE00B3VWN518"
+    txs = [
+        _tx(doc_type=DocumentType.BUY_ETF, isin=isin, qty=Decimal("50"),
+            amount=Decimal("-500"), on=date(2022, 3, 1)),
+        _tx(doc_type=DocumentType.BUY_ETF, isin=isin, qty=Decimal("50"),
+            amount=Decimal("-600"), on=date(2023, 7, 1)),
+        _tx(doc_type=DocumentType.SELL_ETF, isin=isin, qty=Decimal("-100"),
+            amount=Decimal("1500"), on=date(2025, 6, 1)),
+    ]
+    report = compute_sa108(
+        txs, tax_year_label="2025-26", commodities={isin: _reporting(isin)}
+    )
+    row = report.rows[0]
+    assert row.match_type == "s104"
+    # The pool has no single acquisition date; report the earliest.
+    assert row.acquisition_dates == [date(2022, 3, 1)]
+
+
 def test_rate_change_date_buckets_disposals() -> None:
     isin = "IE00B3VWN518"
     txs = [
