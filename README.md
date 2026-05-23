@@ -202,7 +202,28 @@ Outputs (all GBP):
   (taxed as income, not CGT): `disposal_date`, `isin`,
   `commodity_name`, `quantity`, `proceeds_gbp`, `cost_gbp`, `gain_gbp`,
   `match_type`, `acquisition_dates`.
+- `sa106-deep-discounted.csv` — disposals of securities flagged
+  `deeply_discounted` in `data/commodities.toml` (gain taxed as income,
+  loss generally not allowable).
+- `sa106-eri.csv` — excess reportable income for accumulating reporting
+  funds (from `data/eri.toml`), split dividend / interest:
+  `taxable_income_gbp`, `equalisation_gbp`, `base_cost_adjustment_gbp`.
+  The base-cost adjustment also uplifts the section 104 pool, so a later
+  disposal isn't taxed again on income already charged.
 - `summary.txt` — totals plus warnings for anything not on a CSV.
+
+For `sa108-disposals.csv`, the `period` column splits a year's gains
+before / on-or-after its CGT rate-change date (e.g. 30 Oct 2024 for
+2024-25), and `acquisition_dates` carries the section 104 pool's
+earliest acquisition ("acquired since") for pooled disposals.
+
+Three optional user-maintained TOMLs refine the figures, each gitignored
+with a committed `.example.toml`: `data/commodities.toml` (reporting
+status and the `deeply_discounted` / `distributions_as_interest` flags),
+`data/opening-positions.toml` (pre-ledger section 104 cost basis — pass
+`--opening-positions`), and `data/eri.toml` (excess reportable income —
+pass `--eri`). Current-account interest is *not* foreign income: it's
+loan interest the user pays, booked to `Expenses`.
 
 ### GBP rates
 
@@ -231,17 +252,21 @@ disposals correctly. The hand-curated `data/commodities.toml` is
 the source — one section per ISIN with at least `name` and
 `reporting_status` (`reporting` / `non-reporting` / `uk-domestic` /
 `unknown`); `domicile` (ISO 3166-1 alpha-2) overrides the ISIN
-prefix as the withholding-tax country. See
+prefix as the withholding-tax country. Two optional booleans reroute
+income: `deeply_discounted` (gain taxed as income) and
+`distributions_as_interest` (a >60% interest-bearing "bond fund" — its
+distributions and ERI are foreign interest, not dividends). See
 `data/commodities.example.toml` for the schema. `portfolio
 --list-missing-metadata` prints every in-use ISIN not yet in the
 file, which is the loop for keeping it in sync.
 
-**Known limitations (current cut):** the SA106 *interest* CSV isn't
-emitted — the only ISIN-bearing interest is bond accrued interest, and
-current-account interest carries no country/ISIN, so a faithful mapping
-is deferred until there's a clearer source. Unclassified holdings (no
-commodity metadata) are flagged in `summary.txt` rather than guessed.
-No excess-reportable-income handling; that's a follow-up.
+**Notes / limitations:** unclassified holdings (no commodity metadata)
+are flagged in `summary.txt` rather than guessed. Cost basis falls back
+to zero (and the summary warns "disposed more than acquired") when a
+disposal pre-dates the ledger and no `data/opening-positions.toml` lot
+covers it. The annual exempt amount, rate arithmetic, and FIG-regime
+relief are left to the user / their software — `tax-report` produces the
+figures, not the final tax computation.
 
 ## Validation
 

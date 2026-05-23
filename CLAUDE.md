@@ -99,7 +99,10 @@ src/banking_pipeline/
 ├── portfolio_aggregate.py Central account opens + per-year includes
 ├── commodities_metadata.py  TOML loader for `data/commodities.toml`
 │                              (ISIN → domicile, reporting status,
-│                              asset class)
+│                              asset class, `deeply_discounted`,
+│                              `distributions_as_interest`)
+├── opening_positions.py     TOML loader for `data/opening-positions.toml`
+│                              — pre-ledger section-104 lots (cost basis)
 ├── transaction_sidecar.py   JSONL `*.transactions.jsonl` writer/reader
 │                              — the structured substrate `tax-report`
 │                              consumes
@@ -130,9 +133,14 @@ src/banking_pipeline/
 │       ├── currency.py    `to_gbp(...)` — preferred per-tx rate, else
 │       │                    `GbpRateSource` fallback, else None
 │       ├── section_104.py Section 104 pool + same-day + 30-day
-│       │                    "bed and breakfast" share-matching
-│       ├── sa108.py       SA108 CGT row builder (reads sidecars)
-│       └── sa106.py       SA106 foreign-dividend aggregation
+│       │                    "bed and breakfast" share-matching +
+│       │                    dated pool-cost adjustments (ERI uplift)
+│       ├── sa108.py       SA108 CGT row builder (reads sidecars);
+│       │                    routes deeply-discounted → income, non-
+│       │                    reporting → offshore-income-gains
+│       ├── sa106.py       SA106 foreign dividend + interest aggregation
+│       └── eri.py         Excess reportable income + equalisation
+│                            (data/eri.toml → income + base-cost uplift)
 ├── templates/
 │   ├── __init__.py       TEMPLATE_REGISTRY (populated at import)
 │   └── pictet/           ~40 per-doctype templates (EN + ES locales)
@@ -273,6 +281,20 @@ the imbalance) or as an exception under `--strict`.
   it owns `option "operating_currency"`, the booking method, and the
   central account opens. Don't hand-edit it. Hand-curated overrides
   go in `main.beancount`, which `include`s the aggregate.
+  - `main.beancount` (the `bean-check` root) must itself declare
+    `option "booking_method" "FIFO"` and `operating_currency`:
+    beancount reads those options **only from the root file**, not
+    from an included one, so the copies in `portfolio.beancount` only
+    take effect when it's loaded directly (e.g. in Fava). Omitting
+    `booking_method` from the root drops booking to `STRICT`, and every
+    `{}` switch-out that matches more than one lot then fails
+    bean-check with "Ambiguous matches".
+- `portfolio_aggregate` only treats flat per-year ingest files as
+  sources: it skips any `*.beancount` that itself contains an
+  `include` (a stale or per-account aggregate it once wrote), and only
+  constrains a `…:<CCY>` account leaf to a currency when that token
+  actually appears as a posting currency (so `…:Earnout:IBM` isn't
+  mistaken for a currency). Both guard against `bean-check` errors.
 - `examples/accounts.beancount` is a starter chart of accounts for
   external readers — not loaded by the rebuild.
 
@@ -304,13 +326,27 @@ and reads the JSONL sidecars, not the ledger:
   loaded by `commodities_metadata.py`. The `tax-report` command
   routes disposals to SA108 (CGT, for reporting / uk-domestic) vs.
   SA106 offshore income gains (non-reporting), and flags unknown
-  status in `summary.txt` rather than guessing.
-- `tax-report --year 2025-26` produces `sa108-disposals.csv`,
-  `sa106-dividends.csv`, `sa106-offshore-income-gains.csv` and
-  `summary.txt` under `reports/uk-tax/<year>/`. The interest CSV
-  is the only piece genuinely deferred (current-account interest
-  carries no country/ISIN; bond accrued interest is the only
-  ISIN-bearing interest source).
+  status in `summary.txt` rather than guessing. Two further per-ISIN
+  flags reroute income out of CGT/dividends: `deeply_discounted`
+  (gain taxed as income) and `distributions_as_interest` (a >60%
+  interest-bearing "bond fund" — its distributions and ERI are
+  foreign interest, not dividends).
+- Three user-maintained TOMLs feed `tax-report`, all gitignored with a
+  committed `.example.toml`: `data/commodities.toml` (status / flags),
+  `data/opening-positions.toml` (pre-ledger section-104 lots — seeds
+  cost basis so a disposal isn't matched at zero cost; the summary
+  warns "disposed more than acquired" when one is missing), and
+  `data/eri.toml` (excess reportable income; the displayed date is the
+  fund *distribution* date and units are measured at the period end six
+  months earlier — see `tax/uk/eri.py`).
+- `tax-report --year 2025-26` writes, under `reports/uk-tax/<year>/`:
+  `sa108-disposals.csv` (CGT; `period` splits gains pre / on-or-after
+  the year's CGT rate-change date from `cgt_rate_change_dates`),
+  `sa106-dividends.csv`, `sa106-interest.csv`,
+  `sa106-offshore-income-gains.csv`, `sa106-deep-discounted.csv`,
+  `sa106-eri.csv`, and `summary.txt`. Current-account interest is
+  *not* foreign income — it posts to `Expenses` (loan interest the
+  user pays), so it has no SA106 line.
 - The model invariant `gross_income - withholding_tax == amount`
   (within a cent) is enforced in `Transaction`'s
   `@model_validator` — break it and `pydantic` raises at
@@ -356,7 +392,10 @@ and reads the JSONL sidecars, not the ledger:
   `gbp_rate_source` (`"null"` | `"hmrc-monthly"`), `hmrc_rate_path`
   (defaults to `data/fx/hmrc-monthly-average.csv`),
   `commodities_metadata_path` (defaults to `data/commodities.toml`
-  when present), `tax_reports_dir` (defaults to `reports/uk-tax`).
+  when present), `opening_positions_path` (`data/opening-positions.toml`),
+  `eri_path` (`data/eri.toml`), `tax_reports_dir` (defaults to
+  `reports/uk-tax`), and `cgt_rate_change_dates` (`{label: date}`,
+  default `{"2024-25": 2024-10-30}` — the mid-year CGT rate change).
 - Batch config: `banking-pipeline.toml` (gitignored, schema in
   `batch_config.py`). Carries personal Dropbox/iCloud paths.
 - `.env.example` lists the env vars; copy to `.env` for local work.
