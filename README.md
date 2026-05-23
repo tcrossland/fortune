@@ -193,6 +193,11 @@ Outputs (all GBP):
 - `sa106-dividends.csv` — foreign dividends grouped by source country
   and ISIN: `country`, `isin`, `commodity_name`, `gross_gbp`,
   `wht_gbp`, `net_gbp`, `document_count`.
+- `sa106-interest.csv` — foreign interest, same columns as the
+  dividends CSV. Holds distributions from offshore funds flagged
+  `distributions_as_interest` in `data/commodities.toml` (the UK
+  ">60% interest-bearing" bond-fund rule), which are taxed as interest
+  rather than dividends.
 - `sa106-offshore-income-gains.csv` — disposals of non-reporting funds
   (taxed as income, not CGT): `disposal_date`, `isin`,
   `commodity_name`, `quantity`, `proceeds_gbp`, `cost_gbp`, `gain_gbp`,

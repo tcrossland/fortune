@@ -83,6 +83,12 @@ class CommodityMetadata(BaseModel):
     # CGT, and a loss is generally not allowable. User-asserted — it
     # depends on issue terms HMRC publishes, not derivable from price.
     deeply_discounted: bool = False
+    # Offshore fund that is more than 60% invested in interest-bearing
+    # assets (the UK "bond fund" rule): its distributions — and excess
+    # reportable income — are taxed as foreign *interest*, not dividends,
+    # so they belong in the SA106 interest box. User-asserted; it depends
+    # on the fund's underlying asset mix, not derivable from the advice.
+    distributions_as_interest: bool = False
 
     @field_validator("isin")
     @classmethod

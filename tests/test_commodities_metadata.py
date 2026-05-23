@@ -114,6 +114,27 @@ deeply_discounted = true
     ].deeply_discounted is True
 
 
+def test_distributions_as_interest_defaults_false_and_parses(
+    tmp_path: Path,
+) -> None:
+    assert load_commodities(_write(tmp_path, _VALID_TOML))[
+        "IE00B3VWN518"
+    ].distributions_as_interest is False
+    toml = """
+[[commodity]]
+isin = "LU2096759431"
+name = "JPM Income Fund"
+domicile = "LU"
+reporting_status = "reporting"
+asset_class = "bond"
+first_acquired = 2024-09-12
+distributions_as_interest = true
+"""
+    assert load_commodities(_write(tmp_path, toml))[
+        "LU2096759431"
+    ].distributions_as_interest is True
+
+
 def test_accepts_structured_product_internal_ref(tmp_path: Path) -> None:
     # Pictet structured products carry an 11-char internal ref, not an
     # ISIN — they still need metadata for tax classification.

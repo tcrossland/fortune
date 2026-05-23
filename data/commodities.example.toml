@@ -20,3 +20,7 @@ asset_class = "equity-etf"       # equity-etf | bond | equity-fund | money-marke
 first_acquired = 2018-03-15
 # deeply_discounted = true       # optional: a deeply discounted security
                                  # (gain taxed as income, not CGT)
+# distributions_as_interest = true  # optional: a >60%-interest-bearing
+                                 # offshore fund ("bond fund" rule) — its
+                                 # distributions/ERI are foreign interest,
+                                 # not dividends (SA106 interest box)

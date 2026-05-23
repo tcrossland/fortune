@@ -1348,6 +1348,24 @@ def _write_sa106_dividends_csv(path: Path, report: Sa106Report) -> int:
     return len(report.dividends)
 
 
+def _write_sa106_interest_csv(path: Path, report: Sa106Report) -> int:
+    """Foreign interest — distributions from >60%-interest-bearing
+    offshore funds (the UK 'bond fund' rule). Returns the row count."""
+
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow([
+            "country", "isin", "commodity_name", "gross_gbp", "wht_gbp",
+            "net_gbp", "document_count",
+        ])
+        for r in report.interest:
+            writer.writerow([
+                r.country, r.isin, r.commodity_name, _money(r.gross_gbp),
+                _money(r.wht_gbp), _money(r.net_gbp), r.document_count,
+            ])
+    return len(report.interest)
+
+
 def _write_offshore_income_gains_csv(path: Path, report: Sa108Report) -> int:
     """Write disposals of non-reporting funds — taxed as offshore income
     gains (SA106), not CGT. Same per-disposal shape as the SA108 file
@@ -1457,6 +1475,14 @@ def _write_tax_summary(
         f"  total withholding tax: {_total(sa106.dividends, 'wht_gbp')} GBP",
         "",
     ]
+    if sa106.interest:
+        lines += [
+            "SA106 foreign interest (bond-fund distributions):",
+            f"  groups: {len(sa106.interest)}",
+            f"  total gross: {_total(sa106.interest, 'gross_gbp')} GBP",
+            f"  total withholding tax: {_total(sa106.interest, 'wht_gbp')} GBP",
+            "",
+        ]
     if eri.rows:
         eri_div = [r for r in eri.rows if r.income_type == "dividend"]
         eri_int = [r for r in eri.rows if r.income_type == "interest"]
@@ -1583,11 +1609,14 @@ def tax_report(
     Reads the structured transaction sidecars (no beancount parsing),
     applies UK tax-year boundaries and section 104 / same-day / 30-day
     matching, and writes ``sa108-disposals.csv``,
-    ``sa106-dividends.csv``, ``sa106-offshore-income-gains.csv``,
-    ``sa106-deep-discounted.csv``, ``sa106-eri.csv`` (excess reportable
-    income, which also uplifts the CGT base cost) and ``summary.txt``.
-    Cash interest distributions remain unmodelled (the ledger carries no
-    such advice); reporting-fund interest arrives via ERI.
+    ``sa106-dividends.csv``, ``sa106-interest.csv`` (distributions from
+    >60%-interest-bearing offshore funds, flagged via
+    ``distributions_as_interest`` in commodities metadata),
+    ``sa106-offshore-income-gains.csv``, ``sa106-deep-discounted.csv``,
+    ``sa106-eri.csv`` (excess reportable income, which also uplifts the
+    CGT base cost) and ``summary.txt``. Current-account interest is loan
+    interest the user pays (an expense), so it isn't foreign income;
+    reporting-fund accumulated interest arrives via ERI.
     """
 
     _configure_logging(verbose)
@@ -1644,6 +1673,7 @@ def tax_report(
     out_dir.mkdir(parents=True, exist_ok=True)
     n_cgt = _write_sa108_csv(out_dir / "sa108-disposals.csv", sa108)
     n_div = _write_sa106_dividends_csv(out_dir / "sa106-dividends.csv", sa106)
+    n_int = _write_sa106_interest_csv(out_dir / "sa106-interest.csv", sa106)
     n_oig = _write_offshore_income_gains_csv(
         out_dir / "sa106-offshore-income-gains.csv", sa108
     )
@@ -1659,6 +1689,7 @@ def tax_report(
     err_console.print(
         f"Wrote tax report for {year} to {out_dir} "
         f"({n_cgt} SA108 disposal(s), {n_div} SA106 dividend group(s), "
+        f"{n_int} SA106 interest group(s), "
         f"{n_oig} offshore income gain(s), {n_dds} deep-discounted disposal(s), "
         f"{n_eri} ERI group(s))"
     )
