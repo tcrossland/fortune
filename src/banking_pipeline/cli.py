@@ -25,7 +25,7 @@ from banking_pipeline import (
 from banking_pipeline import (
     reconcile as reconcile_mod,
 )
-from banking_pipeline.batch_config import BatchConfig, CheckStep, Source, load_config
+from banking_pipeline.batch_config import BatchConfig, Source, load_config
 from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.classifiers.bank import BANK_RULES, BankRuleClassifier
 from banking_pipeline.classifiers.language import LANGUAGE_RULES, LanguageRuleClassifier
@@ -701,6 +701,40 @@ def reconcile(
 
     _configure_logging(verbose)
 
+    out_dir = output or settings.reconciliation_dir
+    report = _run_reconcile(ledger, balances, out_dir)
+    if report is None:
+        # Nothing to reconcile (no assertions / no bean-check binary);
+        # _run_reconcile already explained why. Not an error.
+        raise typer.Exit(code=0)
+    if report.has_drift or (strict and report.coverage_gaps):
+        raise typer.Exit(code=1)
+
+
+def _run_reconcile(
+    ledger: Path, balances: Path, out_dir: Path
+) -> reconcile_mod.ReconReport | None:
+    """Reconcile statement balances against ``ledger`` and write the report.
+
+    Shared by the ``reconcile`` command and the ``rebuild`` post-step so
+    both behave identically. Runs ``bean-check`` once, parses its
+    balance-assertion failures (matched back to the asserted line),
+    builds the report, writes ``summary.txt`` / ``drift.csv`` under
+    ``out_dir``, and echoes the summary.
+
+    Returns the report, or ``None`` when reconciliation couldn't run —
+    a missing balances file, no assertions in it, or no ``bean-check``
+    binary. The caller treats ``None`` as "nothing to gate on". A
+    missing binary is a warning (the user opted out of validation),
+    consistent with the ``check`` step.
+    """
+
+    if not balances.exists():
+        err_console.print(
+            f"[yellow]reconcile skipped:[/yellow] balances file "
+            f"{balances} doesn't exist"
+        )
+        return None
     assertions = reconcile_mod.parse_assertions(
         balances.read_text(encoding="utf-8")
     )
@@ -709,24 +743,22 @@ def reconcile(
             f"[yellow]No balance assertions found in {balances}.[/yellow] "
             "Run `banking-pipeline balances` to generate them first."
         )
-        raise typer.Exit(code=0)
+        return None
 
     # bean-check evaluates every assertion in one pass and prints a
-    # failure line per drift. A balance failure alone doesn't make
-    # bean-check return nonzero, so we parse its output regardless of
-    # return code; only a missing binary is fatal (we can't reconcile
-    # without it).
+    # failure line per drift. We parse its output regardless of return
+    # code (it exits nonzero on drift, which is exactly the case we want
+    # to report); only a missing binary stops us.
     result = bean_check.run_bean_check(ledger)
     if result.binary_missing:
-        err_console.print(f"[red]reconcile failed:[/red] {result.stderr}")
-        raise typer.Exit(code=1)
+        err_console.print(f"[yellow]warning:[/yellow] {result.stderr}")
+        return None
 
     failures = reconcile_mod.parse_bean_check_failures(
         result.stderr, balances_name=balances.name
     )
     report = reconcile_mod.build_report(assertions, failures)
 
-    out_dir = output or settings.reconciliation_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     summary = reconcile_mod.render_summary(
         report, ledger=str(ledger), balances=str(balances)
@@ -738,9 +770,7 @@ def reconcile(
 
     err_console.print(summary, markup=False, highlight=False, soft_wrap=True)
     err_console.print(f"Wrote {out_dir}/summary.txt and {out_dir}/drift.csv")
-
-    if report.has_drift or (strict and report.coverage_gaps):
-        raise typer.Exit(code=1)
+    return report
 
 
 @app.command()
@@ -953,11 +983,39 @@ def _do_rebuild(
                 f"  wrote {output_path} ({total} balance assertion(s))"
             )
 
-    # --- Step 4: bean-check validation -----------------------------------
+    # --- Step 4: reconcile -----------------------------------------------
+    # Runs *before* bean-check: bean-check exits nonzero on a drifted
+    # assertion, so going first guarantees reconcile's localised report
+    # (drift rows + earliest-drift + coverage gaps) is written and
+    # printed. Reconcile is a gate in its own right — drift fails the
+    # rebuild, and coverage gaps fail it under strict (bean-check can't
+    # see a missing assertion).
+    if cfg.post.reconcile.enabled:
+        rec = cfg.post.reconcile
+        rec_ledger = _resolve_ledger(rec.ledger, data_dir)
+        rec_balances = _resolve_balances(rec.balances, data_dir)
+        rec_strict = rec.strict or strict
+        err_console.print(
+            f"[bold]reconcile[/bold] {rec_ledger} vs {rec_balances}"
+            + (" (strict)" if rec_strict else "")
+        )
+        if not dry_run:
+            out_dir = (
+                settings.reconciliation_dir
+                if settings.reconciliation_dir.is_absolute()
+                else project_root / settings.reconciliation_dir
+            )
+            report = _run_reconcile(rec_ledger, rec_balances, out_dir)
+            if report is not None and (
+                report.has_drift or (rec_strict and report.coverage_gaps)
+            ):
+                raise typer.Exit(code=1)
+
+    # --- Step 5: bean-check validation -----------------------------------
     # Runs last so it sees every freshly-built file. A non-zero exit
     # from bean-check raises typer.Exit so cron / CI notices.
     if cfg.post.check.enabled:
-        ledger = _resolve_check_ledger(cfg.post.check, data_dir)
+        ledger = _resolve_ledger(cfg.post.check.ledger, data_dir)
         # CLI ``--strict`` overrides the config — when set, escalate
         # bean-check warnings to errors regardless of what
         # ``[post.check] strict`` says.
@@ -970,20 +1028,37 @@ def _do_rebuild(
             _run_check_or_exit(ledger, strict=check_strict)
 
 
-def _resolve_check_ledger(check: CheckStep, data_dir: Path) -> Path:
-    """Pick the ledger entry-point bean-check should validate.
+def _resolve_ledger(ledger: str, data_dir: Path) -> Path:
+    """Resolve a rebuild ledger setting (``[post.check]`` / ``[post.reconcile]``).
 
-    Defaults to ``<data_dir>/portfolio.beancount`` (the aggregate the
-    ``portfolio`` step writes — it ``include``s everything else, so
-    checking it transitively checks the whole rebuild). An explicit
-    ``[post.check] ledger = "..."`` overrides — useful when you have
-    a parent ``main.beancount`` that ``include``s the rebuild output
-    alongside hand-curated opens / commodities / metadata.
+    Empty string defaults to ``<data_dir>/portfolio.beancount`` (the
+    aggregate the ``portfolio`` step writes — it ``include``s everything
+    else, so checking it transitively checks the whole rebuild). An
+    explicit value overrides — useful when you have a parent
+    ``main.beancount`` that ``include``s the rebuild output alongside
+    hand-curated opens / commodities / metadata. Relative paths resolve
+    against the project root (``data_dir``'s parent).
     """
 
-    if not check.ledger:
+    if not ledger:
         return data_dir / "portfolio.beancount"
-    explicit = Path(check.ledger).expanduser()
+    explicit = Path(ledger).expanduser()
+    if explicit.is_absolute():
+        return explicit
+    return (data_dir.parent / explicit).resolve()
+
+
+def _resolve_balances(balances: str, data_dir: Path) -> Path:
+    """Resolve a ``[post.reconcile] balances`` setting to a path.
+
+    Empty string defaults to ``<data_dir>/balances.beancount`` (what the
+    ``balances`` step writes). Otherwise resolved like
+    :func:`_resolve_ledger`.
+    """
+
+    if not balances:
+        return data_dir / "balances.beancount"
+    explicit = Path(balances).expanduser()
     if explicit.is_absolute():
         return explicit
     return (data_dir.parent / explicit).resolve()

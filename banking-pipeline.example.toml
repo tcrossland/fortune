@@ -69,6 +69,28 @@ balances = false     # ``banking-pipeline balances <data_dir> --statement ...``
 # ]
 
 
+# Statement-balance reconciliation. Runs just *before* the bean-check
+# step. bean-check exits nonzero on a drifted balance assertion, so
+# running reconcile first guarantees its localised drift report is
+# written and printed (drift rows with signed differences, the earliest
+# date each account diverged, and coverage gaps — statement months with
+# no assertion). The report lands under ``reports/reconciliation/``
+# (``summary.txt`` + ``drift.csv``).
+#
+# Off by default: it needs balance assertions to compare against, so
+# enable it together with ``[post] balances = true`` (or a
+# hand-maintained ``balances.beancount``). ``ledger`` resolves like
+# ``[post.check]`` below (""→ data/portfolio.beancount); ``balances``
+# defaults to ``<data_dir>/balances.beancount``. Drift fails the
+# rebuild; ``strict = true`` also fails it on coverage gaps. A missing
+# ``bean-check`` binary degrades to a warning, like the check step.
+[post.reconcile]
+enabled = false
+ledger = ""      # "" = data/portfolio.beancount (same default as [post.check])
+balances = ""    # "" = data/balances.beancount
+strict = false   # set true to fail the rebuild on coverage gaps too
+
+
 # bean-check validation. Runs after every other post-step so it sees
 # the freshly-built ledger. Default ledger is
 # ``<data_dir>/portfolio.beancount`` — the aggregate the ``portfolio``

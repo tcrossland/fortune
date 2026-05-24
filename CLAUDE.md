@@ -266,7 +266,9 @@ the imbalance) or as an exception under `--strict`.
 
 `banking-pipeline ingest --strict` and `banking-pipeline rebuild
 --strict` both turn this on; `rebuild --strict` also escalates
-`bean-check` warnings to errors regardless of `[post.check] strict`.
+`bean-check` warnings to errors regardless of `[post.check] strict`,
+and escalates reconcile coverage gaps to a failed rebuild regardless
+of `[post.reconcile] strict`.
 
 ## Beancount output conventions
 
@@ -387,8 +389,10 @@ and reads the JSONL sidecars, not the ledger:
   Defaults: `ledger=main.beancount`, `--balances=data/balances.beancount`.
 - `rebuild` — end-to-end run driven by `banking-pipeline.toml`
   (gitignored; copy from `banking-pipeline.example.toml`). Owns the
-  `clean → ingest per source → prices/portfolio/balances → check`
-  sequence.
+  `clean → ingest per source → prices/portfolio/balances → reconcile
+  → check` sequence. `[post.reconcile]` (off by default) runs *before*
+  `check` so its drift report lands even though `bean-check` exits
+  nonzero on the same drift.
 - `revolut` — separate side path; Revolut Personal CSV → beancount.
 - `tax-report` — read `*.transactions.jsonl` sidecars under
   `--source` (default `data`), apply UK tax-year bounds + section

@@ -122,6 +122,48 @@ class CheckStep(BaseModel):
     strict: bool = False
 
 
+class ReconcileStep(BaseModel):
+    """Configuration for the statement-balance reconciliation step.
+
+    Reconciliation runs ``bean-check`` over the ledger, parses its
+    balance-assertion failures, and writes a drift report (see
+    :mod:`banking_pipeline.reconcile`). In the rebuild it runs *before*
+    the plain ``check`` step, because ``bean-check`` itself exits
+    nonzero on drift — running first guarantees the localised report
+    (drift rows + earliest-drift + coverage gaps) is produced, and lets
+    reconcile gate on coverage gaps that ``check`` structurally can't
+    see (a missing assertion isn't an error).
+
+    Off by default: it needs balance assertions to compare against, so
+    it's only useful once the ``balances`` step (or a hand-maintained
+    ``balances.beancount``) is in play.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Whether to reconcile at the end of every rebuild. Default false:
+    # without a ``balances.beancount`` there's nothing to compare, and
+    # the step degrades to a no-op warning rather than failing.
+    enabled: bool = False
+
+    # Ledger entry point. Empty string (the default) resolves to
+    # ``<data_dir>/portfolio.beancount`` — the same resolution as
+    # ``[post.check]``. Must ``include`` the balance assertions for
+    # reconcile to see drift (the portfolio aggregate and a parent
+    # ``main.beancount`` both do).
+    ledger: str = ""
+
+    # Statement-asserted balances file (the expected side). Empty string
+    # (the default) resolves to ``<data_dir>/balances.beancount`` — what
+    # the ``balances`` step writes.
+    balances: str = ""
+
+    # When true, escalate coverage gaps (statement months with no
+    # assertion) to a failed rebuild. Drift always fails regardless of
+    # this flag; gaps are warnings unless this is set.
+    strict: bool = False
+
+
 class PostSteps(BaseModel):
     """Toggles for the post-ingest aggregator commands."""
 
@@ -164,6 +206,11 @@ class PostSteps(BaseModel):
     # Booking-method override for ``banking-pipeline portfolio``. Empty
     # string lets the CLI fall back to its own default (``"FIFO"``).
     booking_method: str = ""
+
+    # Statement-balance reconciliation — runs just before ``check`` so
+    # its drift report lands even though bean-check exits nonzero on the
+    # same drift. Off by default (needs balance assertions to compare).
+    reconcile: ReconcileStep = Field(default_factory=ReconcileStep)
 
     # bean-check validation step — runs after every other post-step so
     # it sees the freshly-built ledger. Defaults to enabled; set

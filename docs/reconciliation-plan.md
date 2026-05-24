@@ -168,8 +168,9 @@ text; two CLI integration tests build a temp ledger and are
    every other dep) — this contradicts CLAUDE.md's "never import
    beancount" rule and the bean_check shell-out rationale. Worth
    resolving independently of this feature.
-3. **Rebuild integration.** Should `rebuild` run `reconcile` after
-   `check` as a post-step (config `[post.reconcile]`)? Standalone
-   command shipped first; revisit.
+3. **Rebuild integration.** Done — `[post.reconcile]` (off by default)
+   runs *before* `check` (bean-check exits nonzero on drift, so going
+   first guarantees the report is produced). Drift fails the rebuild;
+   coverage gaps fail under `strict` / `rebuild --strict`.
 4. **Multiple portfolios.** Currently reconciles every asserted
    account in one run (no `--portfolio` filter). Add one if needed.

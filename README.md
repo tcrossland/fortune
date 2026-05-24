@@ -155,7 +155,15 @@ iCloud paths that shouldn't land in the repo. The schema lives in
 `src/banking_pipeline/batch_config.py`: `data_dir`, a list of
 `[[sources]]` (each `label` becomes `<data_dir>/<label>.beancount`),
 and a `[post]` block toggling the `prices` / `portfolio` / `balances` /
-`check` post-processing steps.
+`reconcile` / `check` post-processing steps.
+
+`[post.reconcile]` (off by default) runs the reconciliation step just
+before `check`: because `bean-check` exits nonzero on a drifted
+assertion, reconcile goes first so its localised drift report under
+`reports/reconciliation/` is always produced. Drift fails the rebuild;
+`strict = true` also fails it on coverage gaps. Enable it alongside
+`[post] balances = true` so there's a `balances.beancount` to compare
+against.
 
 ## Output: beancount + structured sidecar
 
