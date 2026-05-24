@@ -85,7 +85,7 @@ src/banking_pipeline/
 ├── cli.py              Typer entrypoint (ingest | dump-transactions |
 │                         classify | scan | extract-text | revolut |
 │                         prices | balances | portfolio | check |
-│                         rebuild | tax-report)
+│                         reconcile | rebuild | tax-report)
 ├── pipeline.py         Top-level Pipeline orchestration
 ├── models.py           Domain models — DocumentType, BankId, Language,
 │                         RawDocument, Classification, Transaction,
@@ -93,6 +93,10 @@ src/banking_pipeline/
 ├── config.py           Pydantic settings (env_prefix=BANKPIPE_)
 ├── batch_config.py     `banking-pipeline.toml` schema for `rebuild`
 ├── bean_check.py       Shells out to the bean-check binary
+├── reconcile.py        Statement-balance reconciliation: parses
+│                         bean-check assertion failures into a drift
+│                         report (drift rows + earliest-drift +
+│                         coverage gaps)
 ├── beancount_writer.py Back-compat re-export of `writer.*`
 ├── balances_extract.py Pictet monthly-statement → balance assertions
 ├── prices_extract.py   Per-trade + monthly-statement → price directives
@@ -369,6 +373,18 @@ and reads the JSONL sidecars, not the ledger:
 - `prices`, `balances`, `portfolio` — aggregators that read the
   ingest output under `data/`.
 - `check` — standalone `bean-check` wrapper.
+- `reconcile` — statement-balance reconciliation. Runs `bean-check`
+  over the ledger, parses its balance-assertion failures, and writes a
+  full report to `<reconciliation_dir>/` (default
+  `reports/reconciliation/`): `drift.csv` (every reconciled row) and
+  `summary.txt` (drift rows with signed differences, the earliest date
+  each account diverged, and coverage gaps — statement months with no
+  assertion). Additive to `check`, not a replacement: it reports the
+  whole grid and localises each divergence instead of aborting on the
+  first failure. The drift verdict is `bean-check`'s own, so it agrees
+  with a load by construction (no tolerance re-implementation). Exits
+  nonzero on any drift; `--strict` also fails on coverage gaps.
+  Defaults: `ledger=main.beancount`, `--balances=data/balances.beancount`.
 - `rebuild` — end-to-end run driven by `banking-pipeline.toml`
   (gitignored; copy from `banking-pipeline.example.toml`). Owns the
   `clean → ingest per source → prices/portfolio/balances → check`

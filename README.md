@@ -283,6 +283,33 @@ shell out rather than import — install with `uv tool install beancount`.
 A missing binary degrades to a warning, not a failure; set
 `[post.check] enabled = false` to skip the step entirely.
 
+### Reconciliation
+
+`bean-check` enforces the balance assertions extracted from monthly
+statements (`data/balances.beancount`), but it aborts on the first
+failure and can't tell you about a statement you never ingested.
+`banking-pipeline reconcile` is the friendlier, additive view:
+
+```bash
+uv run banking-pipeline reconcile               # main.beancount vs data/balances.beancount
+uv run banking-pipeline reconcile main.beancount -b data/balances.beancount -o reports/reconciliation
+```
+
+It runs `bean-check` once, parses every balance-assertion failure, and
+writes two files under `reports/reconciliation/` (override with
+`--output` or the `reconciliation_dir` setting):
+
+- `summary.txt` — drifted assertions with expected / actual / signed
+  difference, the **earliest** date each account diverged (so a missed
+  or misclassified document is localised to one statement month), and
+  **coverage gaps** (statement months with no assertion at all).
+- `drift.csv` — every reconciled row, machine-readable.
+
+Because the drift verdict is `bean-check`'s own, `reconcile` agrees
+with a ledger load by construction — no separate tolerance to keep in
+sync. It exits nonzero on any drift (CI-friendly, like `check`);
+`--strict` also fails on coverage gaps.
+
 ## Authoring classifier rules
 
 To see what text the classifier is working from, dump it:
@@ -342,7 +369,7 @@ src/banking_pipeline/
 ├── cli.py              Typer entrypoint (classify | scan | ingest |
 │                         dump-transactions | extract-text | revolut |
 │                         prices | balances | portfolio | check |
-│                         rebuild | tax-report)
+│                         reconcile | rebuild | tax-report)
 ├── config.py           Pydantic settings
 ├── models.py           Domain models (RawDocument, Transaction, DocumentType, BankId, Language)
 ├── pipeline.py         Top-level orchestration

@@ -22,6 +22,9 @@ from banking_pipeline import (
     portfolio_aggregate,
     prices_extract,
 )
+from banking_pipeline import (
+    reconcile as reconcile_mod,
+)
 from banking_pipeline.batch_config import BatchConfig, CheckStep, Source, load_config
 from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.classifiers.bank import BANK_RULES, BankRuleClassifier
@@ -634,6 +637,110 @@ def check(
     """
 
     _run_check_or_exit(ledger, strict=strict)
+
+
+@app.command()
+def reconcile(
+    ledger: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            readable=True,
+            help="Beancount ledger to reconcile — typically the "
+            "``main.beancount`` root that includes the generated "
+            "aggregate and the balance assertions.",
+        ),
+    ] = Path("main.beancount"),
+    balances: Annotated[
+        Path,
+        typer.Option(
+            "--balances",
+            "-b",
+            exists=True,
+            readable=True,
+            help="Statement-asserted balances file (the expected side). "
+            "Defaults to ``data/balances.beancount``.",
+        ),
+    ] = Path("data/balances.beancount"),
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Directory for ``summary.txt`` / ``drift.csv``. Defaults "
+            "to ``reconciliation_dir`` (``reports/reconciliation``).",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            "-s",
+            help="Escalate coverage gaps (statement months with no "
+            "assertion) to a nonzero exit. Drift always fails regardless "
+            "of this flag.",
+        ),
+    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Reconcile statement-asserted balances against the ledger.
+
+    Runs ``bean-check`` over the ledger, parses its balance-assertion
+    failures, and writes a full report: every drifted ``balance``
+    directive with its signed difference, the earliest date each account
+    diverged, and coverage gaps (statement months with no assertion).
+    Additive to ``bean-check`` — it reports the whole grid and localises
+    each divergence instead of just listing raw failures, and surfaces
+    missing statement months a checkpoint can't.
+
+    The drift verdict is ``bean-check``'s own, so reconcile agrees with a
+    load by construction (beancount's inferred-from-decimals tolerance is
+    honoured without re-implementing it). Exits nonzero on any drift;
+    with ``--strict`` coverage gaps fail too.
+    """
+
+    _configure_logging(verbose)
+
+    assertions = reconcile_mod.parse_assertions(
+        balances.read_text(encoding="utf-8")
+    )
+    if not assertions:
+        err_console.print(
+            f"[yellow]No balance assertions found in {balances}.[/yellow] "
+            "Run `banking-pipeline balances` to generate them first."
+        )
+        raise typer.Exit(code=0)
+
+    # bean-check evaluates every assertion in one pass and prints a
+    # failure line per drift. A balance failure alone doesn't make
+    # bean-check return nonzero, so we parse its output regardless of
+    # return code; only a missing binary is fatal (we can't reconcile
+    # without it).
+    result = bean_check.run_bean_check(ledger)
+    if result.binary_missing:
+        err_console.print(f"[red]reconcile failed:[/red] {result.stderr}")
+        raise typer.Exit(code=1)
+
+    failures = reconcile_mod.parse_bean_check_failures(
+        result.stderr, balances_name=balances.name
+    )
+    report = reconcile_mod.build_report(assertions, failures)
+
+    out_dir = output or settings.reconciliation_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    summary = reconcile_mod.render_summary(
+        report, ledger=str(ledger), balances=str(balances)
+    )
+    (out_dir / "summary.txt").write_text(summary, encoding="utf-8")
+    (out_dir / "drift.csv").write_text(
+        reconcile_mod.render_csv(report), encoding="utf-8"
+    )
+
+    err_console.print(summary, markup=False, highlight=False, soft_wrap=True)
+    err_console.print(f"Wrote {out_dir}/summary.txt and {out_dir}/drift.csv")
+
+    if report.has_drift or (strict and report.coverage_gaps):
+        raise typer.Exit(code=1)
 
 
 @app.command()

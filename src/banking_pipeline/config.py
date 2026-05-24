@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # ``<year>/`` subdirectory under it.
     tax_reports_dir: Path = Path("reports/uk-tax")
 
+    # Output directory for ``reconcile`` (statement-balance vs.
+    # ledger-computed-balance diff): writes ``summary.txt`` and
+    # ``drift.csv`` here.
+    reconciliation_dir: Path = Path("reports/reconciliation")
+
     # Pre-ledger / transferred-in opening positions (ISIN → lots with a
     # GBP cost) seeded into the section 104 pool. Defaults to
     # ``data/opening-positions.toml`` when present. See
