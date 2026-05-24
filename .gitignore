@@ -17,6 +17,31 @@ data/opening-positions.toml
 # Copy from data/eri.example.toml and edit.
 data/eri.toml
 
+# Generated / personal ledger data. The pipeline writes per-year ingest
+# output, the portfolio/prices/balances aggregates, the transaction
+# sidecars, and the *.md summaries here — all derived from personal
+# statements. The committed *.example.toml and data/fx CSV are tracked
+# and unaffected by these patterns.
+data/*.beancount
+data/*.transactions.jsonl
+data/*.md
+
+# Hand-curated bean-check root — references the personal portfolio
+# structure, so kept local rather than committed.
+main.beancount
+
+# Generated reports (personal financial output). Scoped so the
+# hand-written build scripts at reports/ root stay visible.
+reports/uk-tax/
+reports/reconciliation/
+reports/*.html
+# …but keep the hand-written HTML template (source, not generated output).
+!reports/*_template.html
+reports/*.json
+
+# macOS
+.DS_Store
+
 # Python-generated files
 __pycache__/
 *.py[oc]
