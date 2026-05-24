@@ -416,6 +416,8 @@ src/banking_pipeline/
 ├── portfolio_aggregate.py Central account opens + per-year includes
 ├── commodities_metadata.py  TOML loader for data/commodities.toml
 ├── transaction_sidecar.py   JSONL *.transactions.jsonl reader/writer
+├── reconcile.py        Statement-balance reconciliation (drift report)
+├── dedup.py            Duplicate-transaction audit (dedup-check)
 ├── extractors/
 │   └── pdf_text.py     pypdfium2-based PDF → text
 ├── classifiers/

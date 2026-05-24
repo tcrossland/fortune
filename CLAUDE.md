@@ -428,8 +428,11 @@ and reads the JSONL sidecars, not the ledger:
   `eri_path` (`data/eri.toml`), `tax_reports_dir` (defaults to
   `reports/uk-tax`), and `cgt_rate_change_dates` (`{label: date}`,
   default `{"2024-25": 2024-10-30}` — the mid-year CGT rate change).
+- `reconciliation_dir` (defaults to `reports/reconciliation`) — output
+  directory for the `reconcile` command's `summary.txt` / `drift.csv`.
 - Batch config: `banking-pipeline.toml` (gitignored, schema in
-  `batch_config.py`). Carries personal Dropbox/iCloud paths.
+  `batch_config.py`). Carries personal Dropbox/iCloud paths, plus
+  `[post.reconcile]` (off by default) and `[post.check]` toggles.
 - `.env.example` lists the env vars; copy to `.env` for local work.
 
 ## When working in this repo
