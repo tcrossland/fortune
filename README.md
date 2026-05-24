@@ -318,6 +318,35 @@ with a ledger load by construction — no separate tolerance to keep in
 sync. It exits nonzero on any drift (CI-friendly, like `check`);
 `--strict` also fails on coverage gaps.
 
+### Duplicate audit
+
+Where `reconcile` catches *missing* or drifted entries, `dedup-check`
+catches the opposite — the same economic event counted twice (the same
+advice PDF matched by two source globs, a file copied into two year
+folders, a re-issued document). It's read-only and never touches the
+ledger:
+
+```bash
+uv run banking-pipeline dedup-check               # audit data/
+uv run banking-pipeline dedup-check data -o reports/duplicates.csv
+```
+
+It walks the `*.transactions.jsonl` sidecars, assigns each transaction
+a **content key** (trade date + signed amount + currency + ISIN +
+doctype + account — deliberately *not* the per-document reference, so
+the same event from two documents collides), and reports each group
+sharing a key:
+
+- **EXACT** — the members share one document reference, i.e. the same
+  advice was ingested twice. Near-certain duplicate.
+- **POSSIBLE** — same content, different/absent references. Could be a
+  genuine pair of identical events (two equal dividends same day) —
+  review these.
+
+Each sidecar line also carries the `dedup_key` so external tooling can
+group without re-deriving it. `dedup-check` exits nonzero when any
+duplicate is found.
+
 ## Authoring classifier rules
 
 To see what text the classifier is working from, dump it:
@@ -375,8 +404,8 @@ fixture it broke on.
 ```
 src/banking_pipeline/
 ├── cli.py              Typer entrypoint (classify | scan | ingest |
-│                         dump-transactions | extract-text | revolut |
-│                         prices | balances | portfolio | check |
+│                         dump-transactions | dedup-check | extract-text |
+│                         revolut | prices | balances | portfolio | check |
 │                         reconcile | rebuild | tax-report)
 ├── config.py           Pydantic settings
 ├── models.py           Domain models (RawDocument, Transaction, DocumentType, BankId, Language)

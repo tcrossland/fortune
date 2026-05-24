@@ -13,7 +13,13 @@ File format: a header line (a single JSON object with a ``_schema``
 marker and the originating ``source_document``), then one JSON object
 per transaction — :meth:`Transaction.model_dump` in ``mode="json"`` so
 ``Decimal`` round-trips as a string (never a float), ``date`` as
-``YYYY-MM-DD``, and enums as their values.
+``YYYY-MM-DD``, and enums as their values. Each transaction line also
+carries a derived ``dedup_key`` (see :func:`banking_pipeline.dedup.
+transaction_key`) so the duplicate audit and any external consumer can
+group identical events without re-deriving the hash. It's output-only:
+:func:`load_transactions` ignores it (it isn't a model field), and the
+key is recomputable from the fields, so a v1 sidecar lacking it still
+loads and audits fine.
 """
 
 from __future__ import annotations
@@ -22,11 +28,14 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
+from banking_pipeline.dedup import transaction_key
 from banking_pipeline.models import Transaction
 
 # Bump the version suffix when the on-disk shape changes incompatibly so
-# a future reader can branch on it.
-SCHEMA = "banking-pipeline/transactions/v1"
+# a future reader can branch on it. v2 adds the derived ``dedup_key`` to
+# each transaction line (additive — readers that ignore unknown keys,
+# including our own loader, stay compatible).
+SCHEMA = "banking-pipeline/transactions/v2"
 
 
 def sidecar_path(beancount_path: Path) -> Path:
@@ -55,9 +64,12 @@ def transactions_to_jsonl(
 
     header = {"_schema": SCHEMA, "source_document": source_document}
     lines = [json.dumps(header)]
-    lines.extend(
-        json.dumps(tx.model_dump(mode="json")) for tx in transactions
-    )
+    for tx in transactions:
+        obj = tx.model_dump(mode="json")
+        # Derived, output-only: lets sidecar consumers group identical
+        # events without importing the keying logic. Ignored on load.
+        obj["dedup_key"] = transaction_key(tx)
+        lines.append(json.dumps(obj))
     return "\n".join(lines) + "\n"
 
 

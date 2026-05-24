@@ -20,10 +20,13 @@ JSONL sidecars, the section-104 engine).
   Pinpoints the earliest period an account diverged so a missed or
   misclassified document is actionable. See
   [reconciliation-plan.md](reconciliation-plan.md).
-- **Idempotent re-ingest / dedup keying.** A stable transaction hash
-  (date + amount + ISIN + doctype + portfolio) in the sidecar lets
-  re-running `ingest` detect duplicates and support incremental
-  ingest as new PDFs arrive, instead of re-emitting entries.
+- **Idempotent re-ingest / dedup keying.** *(Audit shipped.)* Each
+  sidecar line now carries a stable content `dedup_key`, and
+  `dedup-check` (read-only) flags transactions sharing one as suspected
+  double-counts (`EXACT` vs `POSSIBLE`). See `dedup.py`. Still open:
+  an `ingest --append` incremental mode that merges new PDFs into an
+  existing output, skipping already-present transactions (deferred — it
+  fights the per-document/close-directive rendering grain).
 - **Confidence / audit ledger.** Persist per-document classifier
   confidence and which rule fired into a queryable index, so the
   lowest-confidence documents in a run can be surfaced for manual

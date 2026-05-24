@@ -19,6 +19,7 @@ from banking_pipeline import (
     balances_extract,
     bean_check,
     beancount_writer,
+    dedup,
     portfolio_aggregate,
     prices_extract,
 )
@@ -206,6 +207,68 @@ def dump_transactions_cmd(
         highlight=False,
         end="",
     )
+
+
+@app.command("dedup-check")
+def dedup_check(
+    source: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Directory walked recursively for *.transactions.jsonl "
+            "sidecars. Defaults to ``data``.",
+        ),
+    ] = Path("data"),
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Write the duplicate rows to this CSV file (one row per "
+            "member). Omit to only print the summary.",
+        ),
+    ] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Audit the transaction sidecars for double-counted events.
+
+    Reads every ``*.transactions.jsonl`` under ``source`` and groups
+    transactions that share a content key (date + signed amount +
+    currency + ISIN + doctype + account — deliberately *not* the
+    per-document reference, so the same event from two documents
+    collides). A group with more than one member is a suspected
+    duplicate: ``EXACT`` when the members share one document reference
+    (the same advice ingested twice), ``POSSIBLE`` otherwise (two
+    documents, or refs the extractor couldn't read — review these).
+
+    Read-only — it never touches the ledger. Exits nonzero when any
+    duplicate is found, so cron / CI can gate on a clean audit.
+    """
+
+    _configure_logging(verbose)
+
+    sidecars = sorted(source.rglob("*.transactions.jsonl"))
+    members: list[dedup.DuplicateMember] = []
+    for path in sidecars:
+        for tx in load_transactions(path):
+            members.append(dedup.DuplicateMember(transaction=tx, sidecar=path))
+
+    groups = dedup.find_duplicates(members)
+    summary = dedup.render_summary(
+        groups, scanned=len(members), sidecars=len(sidecars)
+    )
+    err_console.print(summary, markup=False, highlight=False, soft_wrap=True)
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(dedup.render_csv(groups), encoding="utf-8")
+        err_console.print(f"Wrote {output} ({len(groups)} duplicate group(s))")
+
+    if groups:
+        raise typer.Exit(code=1)
 
 
 @app.command()

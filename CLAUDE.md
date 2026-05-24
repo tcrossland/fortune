@@ -84,6 +84,7 @@ silently when `BANKPIPE_ANTHROPIC_API_KEY` is unset.
 src/banking_pipeline/
 ├── cli.py              Typer entrypoint (ingest | dump-transactions |
 │                         classify | scan | extract-text | revolut |
+│                         dedup-check |
 │                         prices | balances | portfolio | check |
 │                         reconcile | rebuild | tax-report)
 ├── pipeline.py         Top-level Pipeline orchestration
@@ -109,7 +110,11 @@ src/banking_pipeline/
 │                              — pre-ledger section-104 lots (cost basis)
 ├── transaction_sidecar.py   JSONL `*.transactions.jsonl` writer/reader
 │                              — the structured substrate `tax-report`
-│                              consumes
+│                              consumes; each line also carries a derived
+│                              `dedup_key`
+├── dedup.py            Duplicate-transaction audit: content-keys each
+│                         transaction and groups double-counted events
+│                         (read-only; feeds `dedup-check`)
 ├── extractors/
 │   └── pdf_text.py     pypdfium2-based PDF → text
 ├── classifiers/
@@ -368,6 +373,13 @@ and reads the JSONL sidecars, not the ledger:
 - `dump-transactions` — extract one or more PDFs and print the JSONL
   sidecar to stdout. Same structured form `ingest` writes, but
   without touching the ledger.
+- `dedup-check` — read-only audit. Walks `*.transactions.jsonl`
+  sidecars under a directory (default `data`), content-keys each
+  transaction (date + signed amount + currency + ISIN + doctype +
+  account, *not* the per-document ref), and reports groups that
+  collide as suspected double-counts — `EXACT` (same ref → same
+  document ingested twice) vs `POSSIBLE` (review). `--output` writes
+  a CSV; exits nonzero when any duplicate is found.
 - `classify` — just print the language/bank/doctype verdict.
 - `scan` — walk a directory; one row per PDF; `--json` for JSONL.
 - `extract-text` — dump PDF text; `--show-rules` shows which rules
