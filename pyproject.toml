@@ -36,11 +36,14 @@ dependencies = [
     # --- Logging ---
     # structlog: Apache-2.0 / MIT dual. Structured JSON/console logs.
     "structlog>=24.4",
-    "beancount>=3.2.2",
 ]
 
 [dependency-groups]
 dev = [
+    # beancount: GPL-2.0. Dev/test only — provides the ``bean-check``
+    # binary the pipeline shells out to, and the loader the goldens parse.
+    # The shipped package never imports it (see CLAUDE.md / bean_check.py).
+    "beancount>=3.2.2",
     # pytest: MIT. Test runner.
     "pytest>=8.3",
     "pytest-cov>=6.0",

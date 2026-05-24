@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import datetime
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from decimal import Decimal
 
 from banking_pipeline.models import (
@@ -227,16 +227,37 @@ def render_open_directives(
 # narrower fiat codes (3 letters) won't match.
 _ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 
+# A line that opens a directive: ``YYYY-MM-DD`` followed by anything
+# (transaction flag, ``open``, ``close``, ``price`` …). We only need the
+# date; postings that follow inherit it as their entry date.
+_DIRECTIVE_DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})\b")
+
+# A posting line: indented, an account beginning with one of beancount's
+# five root types, then a signed number and its commodity. ``format.align``
+# emits ``  <account><pad><amount> <currency><extras>`` with no thousands
+# separators (see ``format.format_amount``), so the number is a bare
+# ``-?\d+(\.\d+)?``. Posting *metadata* lines (e.g. ``    gbp-rate: "…"``)
+# never start with a root type, so they don't match — exactly what we want,
+# since metadata carries no units.
+_POSTING_RE = re.compile(
+    r"^\s+"
+    r"(?P<account>(?:Assets|Liabilities|Equity|Income|Expenses)(?::[A-Za-z0-9][A-Za-z0-9-]*)+)"
+    r"\s+(?P<number>-?\d+(?:\.\d+)?)"
+    r"\s+(?P<commodity>[A-Z][A-Z0-9]*)"
+)
+
 
 def render_close_directives(rendered: str) -> str:
     """Return ``close`` directives for ISIN asset accounts that net to zero.
 
-    Loads ``rendered`` through beancount itself so the close decision
-    rests on the same engine that will validate the ledger downstream:
-    if beancount says the account has zero units of its ISIN commodity
-    after every transaction is applied, we close it. Any other answer
-    (parse errors, leftover units, etc.) means we silently skip — better
-    to under-close than to emit a directive that would break ``bean-check``.
+    Scans ``rendered`` line by line for units-bearing postings — the
+    project's own writer is the only producer of this text, so its format
+    is fixed and a regex parse is sufficient and keeps us clear of the
+    ``beancount`` (GPL-2.0) import the rest of the pipeline avoids (see
+    ``bean_check.py`` for the rationale). If an account holds zero units of
+    its ISIN commodity once every posting is summed, we close it. Anything
+    we can't parse is simply not counted — better to under-close than to
+    emit a directive that would break ``bean-check``.
 
     The close date is the day after the last posting that touched the
     account. Beancount's ``close`` is exclusive of the asserted day, so
@@ -248,39 +269,44 @@ def render_close_directives(rendered: str) -> str:
     ``rendered``. ISIN accounts are identified by scanning **posting
     units** for ISIN-shaped commodities, so this works equally well on
     self-contained :func:`render_all` output (has opens) and on partial
-    ingest output (no opens). Beancount validation may emit "no Open
-    directive" errors during the load — those are ignored; the parser
-    still populates ``entries`` with the parsed transactions, which is
-    all we need for the units-balance calculation.
+    ingest output (no opens).
 
     Returns the empty string when no qualifying accounts exist (e.g. a
     cash-only batch, or every ISIN position still has open units).
     """
 
-    # Lazy import: keeps ``beancount`` off the import path of every caller
-    # of the writer package, even those that never call render_all.
-    try:
-        from beancount import loader
-        from beancount.core.data import (
-            Transaction as BcTransaction,
-        )
-    except ImportError:  # pragma: no cover — beancount is a hard dep
-        return ""
+    return _close_directives_from_postings(_parse_postings(rendered))
 
-    entries, _errors, _options = loader.load_string(rendered)
 
-    # Hand off to the pure-Python core so the close logic is testable
-    # without requiring beancount at import time. Filter to Transaction
-    # entries with units-bearing postings — the only postings that can
-    # affect a holding's units balance.
-    posting_stream = (
-        (entry.date, posting.account, posting.units.number, posting.units.currency)
-        for entry in entries
-        if isinstance(entry, BcTransaction)
-        for posting in entry.postings
-        if posting.units is not None
-    )
-    return _close_directives_from_postings(posting_stream)
+def _parse_postings(
+    rendered: str,
+) -> Iterator[tuple[datetime.date, str, Decimal, str]]:
+    """Yield ``(date, account, units, commodity)`` for each posting in text.
+
+    A directive-opening line (``YYYY-MM-DD …``) sets the date that the
+    indented posting lines beneath it inherit; ``open`` / ``close`` /
+    ``price`` directives set a date but carry no posting lines, so they
+    contribute nothing. See :data:`_DIRECTIVE_DATE_RE` / :data:`_POSTING_RE`.
+    """
+
+    current_date: datetime.date | None = None
+    for line in rendered.splitlines():
+        date_match = _DIRECTIVE_DATE_RE.match(line)
+        if date_match:
+            current_date = datetime.date(
+                int(date_match[1]), int(date_match[2]), int(date_match[3])
+            )
+            continue
+        if current_date is None:
+            continue
+        posting_match = _POSTING_RE.match(line)
+        if posting_match:
+            yield (
+                current_date,
+                posting_match["account"],
+                Decimal(posting_match["number"]),
+                posting_match["commodity"],
+            )
 
 
 def _close_directives_from_postings(

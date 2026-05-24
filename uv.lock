@@ -71,7 +71,6 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "babel" },
-    { name = "beancount" },
     { name = "dateparser" },
     { name = "pdfplumber" },
     { name = "pydantic" },
@@ -91,6 +90,7 @@ ocr = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "beancount" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -101,7 +101,6 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.39" },
     { name = "babel", specifier = ">=2.16" },
-    { name = "beancount", specifier = ">=3.2.2" },
     { name = "dateparser", specifier = ">=1.2" },
     { name = "ocrmypdf", marker = "extra == 'ocr'", specifier = ">=16.6" },
     { name = "pdfplumber", specifier = ">=0.11.4" },
@@ -118,6 +117,7 @@ provides-extras = ["ocr"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "beancount", specifier = ">=3.2.2" },
     { name = "mypy", specifier = ">=1.13" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-cov", specifier = ">=6.0" },
