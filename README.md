@@ -222,6 +222,12 @@ Outputs (all GBP):
   `taxable_income_gbp`, `equalisation_gbp`, `base_cost_adjustment_gbp`.
   The base-cost adjustment also uplifts the section 104 pool, so a later
   disposal isn't taxed again on income already charged.
+- `cgt-loss-carryforward.csv` — the year-by-year annual-exempt-amount and
+  allowable-loss chain (see [Capital gains allowances and
+  losses](#capital-gains-allowances-and-losses)).
+- `fig-designation.csv` — only under a FIG claim: the foreign income and
+  non-UK gains relieved that year (see [UK residence and the FIG
+  regime](#uk-residence-and-the-fig-regime)).
 - `summary.txt` — totals plus warnings for anything not on a CSV.
 
 For `sa108-disposals.csv`, the `period` column splits a year's gains
@@ -250,12 +256,18 @@ The HMRC monthly-average source reads a user-maintained CSV at
 `currency` (ISO-4217), `rate` (GBP per 1 unit of `currency`).
 HMRC publishes the rates in their "Exchange rates from HMRC in
 CSV and XML format" tables on GOV.UK; populate the CSV from
-whichever months and currencies you trade in. A missing month or
-currency yields `None` rather than failing — the missing ISINs
-are flagged in `summary.txt`. Per-date / daily rates can be
-plugged in by adding a new implementation of the
-`GbpRateSource` protocol in `banking_pipeline.fx.gbp_rates`;
-no daily source ships today.
+whichever months and currencies you trade in. Per-date / daily rates
+can be plugged in by adding a new implementation of the `GbpRateSource`
+protocol in `banking_pipeline.fx.gbp_rates`; no daily source ships today.
+
+An amount that can't be converted (no per-transaction `gbp_rate` and no
+source rate) is **excluded** from the figures rather than guessed — so a
+gap silently *understates* the report. To make that actionable, every
+unconvertible amount is recorded as a coverage gap naming the exact CSV
+row to add — e.g. `USD 2024-05 (US0378331005)` — and surfaced in
+`summary.txt` (and on the forecast/pack). Pass `--strict` to
+`tax-report` / `tax-forecast` to turn any gap into a non-zero exit, so a
+CI run can't silently under-report.
 
 ### Commodity metadata (`data/commodities.toml`)
 
@@ -276,9 +288,78 @@ file, which is the loop for keeping it in sync.
 are flagged in `summary.txt` rather than guessed. Cost basis falls back
 to zero (and the summary warns "disposed more than acquired") when a
 disposal pre-dates the ledger and no `data/opening-positions.toml` lot
-covers it. The annual exempt amount, rate arithmetic, and FIG-regime
-relief are left to the user / their software — `tax-report` produces the
-figures, not the final tax computation.
+covers it. None of this is tax advice — verify against HMRC guidance.
+
+### Capital gains allowances and losses
+
+`tax-report` threads the capital-gains **annual exempt amount** (AEA) and
+**allowable losses** across tax years, writing `cgt-loss-carryforward.csv`
+and a CGT-allowance block in `summary.txt`. It runs the section 104
+matcher over the full history, buckets disposals by tax year, and applies
+HMRC's statutory deduction order: current-year losses first (even where
+that wastes the AEA), then brought-forward losses *only down to the AEA*,
+then the AEA itself. In a year with a mid-year rate change it absorbs
+relief against the higher-rate gains first. The AEA per year is the
+statutory `cgt_annual_exempt_amount` setting; pre-ledger brought-forward
+losses are seeded from `data/cgt-losses.toml` (a single
+`brought_forward_gbp`). The 4-year loss-claim time limit is not enforced.
+
+### Forecasting the liability (`tax-forecast`)
+
+`tax-forecast --income <gbp>` turns the figures above into an estimated
+pound liability for the current (incomplete) tax year, so there are no
+April surprises:
+
+```bash
+uv run banking-pipeline tax-forecast --year 2025-26 --income 60000
+```
+
+`--income` is your expected non-savings, non-dividend income (e.g. salary
++ rent) before the personal allowance — it sets the marginal band the
+investment income and gains stack on top of. The estimate stacks income
+in UK order (non-savings → savings → dividends → capital gains on the
+remaining basic-rate band), applies the statutory rates/bands, the
+personal-allowance taper, and foreign tax credit relief on withholding
+tax, and writes `forecast-summary.txt` + `forecast.csv`. It uses
+year-to-date *actuals* only (no run-rate extrapolation), assumes
+England/Wales/NI rates and a single taxpayer, and excludes ISA-wrapped
+transactions. Statutory rates/bands live in `banking_pipeline.tax.uk.rates`
+(overridable via the `income_tax_bands` / `cgt_forecast_rates` settings).
+
+### Tax pack (`tax-pack`)
+
+`tax-pack` renders `tax-pack.md`, a single per-year filing aid that ties
+the computed SA108 / SA106 figures to the boxes on the HMRC forms — the
+CGT listed-shares boxes and allowance computation, foreign
+dividends/interest with FTCR, offshore income gains, deeply discounted
+securities, ERI, and the FIG designation under a claim. It is a filing
+aid, not tax advice; HMRC re-numbers the forms, so the box numbers are
+indicative and carry a verify-against-the-form caveat in the output.
+
+### UK residence and the FIG regime
+
+By default the tax stage assumes UK arising-basis residence across the
+whole history. Set `BANKPIPE_UK_RESIDENCE_START_DATE` (a split-year
+arrival date) to correct that: income and gains arising before it aren't
+UK-taxable, and whole tax years before it are skipped. The section 104
+pool is unaffected — acquisitions feed it whenever they happened; only
+the taxable *output* is residence-filtered.
+
+`BANKPIPE_FIG_CLAIM_YEARS` (a JSON array of tax-year labels) applies the
+**4-year Foreign Income & Gains regime** for the listed years (available
+from 2025-26, for the first four UK-resident years). A claimed year
+relieves foreign income and non-UK gains to nil but forfeits the personal
+allowance and the CGT annual exempt amount — so it's worthwhile only when
+the relieved amounts outweigh those allowances. `tax-report` moves the
+relieved items onto `fig-designation.csv`; `tax-forecast` computes the
+year with and without the claim and recommends the cheaper. Foreign-vs-UK
+situs is derived from a holding's domicile / `uk-domestic` status, or set
+explicitly with a `uk_situs` flag in `data/commodities.toml`.
+
+Out of scope (documented simplifications): the 10-prior-non-resident
+eligibility test (configuring an arrival date asserts it), temporary
+non-residence clawback, and former-remittance-basis transitional
+rebasing. Not tax advice — verify against HMRC guidance.
 
 ## Validation
 
@@ -410,7 +491,8 @@ src/banking_pipeline/
 ├── cli.py              Typer entrypoint (classify | scan | ingest |
 │                         dump-transactions | dedup-check | extract-text |
 │                         revolut | prices | balances | portfolio | check |
-│                         reconcile | rebuild | tax-report)
+│                         reconcile | rebuild | tax-report | tax-forecast |
+│                         tax-pack)
 ├── config.py           Pydantic settings
 ├── models.py           Domain models (RawDocument, Transaction, DocumentType, BankId, Language)
 ├── pipeline.py         Top-level orchestration

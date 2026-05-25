@@ -8,10 +8,14 @@ introducing a new paradigm. Not committed work — a menu to pull from.
 Most of the tax-reporting backlog has shipped: statement-balance
 reconciliation, idempotent-re-ingest dedup keying, the current-year
 tax-liability forecast, residence/FIG relief, the rate-source coverage
-check, and the tax pack. The remaining items are the broader reporting
-and planning ideas (confidence/audit ledger, FX-vs-price P&L split,
-period reports, asset-allocation snapshot, income/expense run-rate),
-all unstarted.
+check, and the tax pack. What's left splits two ways: a cluster of **FIG
+follow-ups surfaced by running the 2025-26 pack** (multi-year/loss-aware
+claim advice, clearer designation, unclassified-holding warnings — see
+the Tax reporting section), and the broader **reporting and planning**
+ideas that remain unstarted (confidence/audit ledger, FX-vs-price P&L
+split, period reports, asset-allocation snapshot, income/expense
+run-rate). The FIG multi-year claim advice is the highest-value next
+step given an actively-claimed FIG window.
 
 ## Bookkeeping (ingest quality)
 
@@ -116,3 +120,25 @@ cautiously.
   `tax-report` / `tax-forecast` warn with the exact HMRC CSV row to add,
   and `--strict` turns any gap into a non-zero exit. See
   `tax/uk/currency.py`.
+
+### FIG follow-ups (surfaced running the 2025-26 pack)
+
+- **FIG claim is a multi-year, loss-aware decision.** `tax-forecast`
+  compares with/without claim on a *single year's* liability. But claiming
+  forfeits allowable foreign losses (a real disposal loss was
+  disallowed in the 2025-26 pack) as well as the PA/AEA, and the value of
+  a carried-forward loss plays out across the 4-year window. A proper FIG
+  optimiser would evaluate the eligible window jointly — valuing carried
+  losses and projected future gains — and recommend the claim *pattern*,
+  not just each year in isolation.
+- **Separate disallowed losses in the FIG designation.** The designation
+  table mixes relieved income, relieved gains, and disallowed foreign
+  losses, and nets them in the total — which can understate the true cost
+  of the claim. Split them out (relieved income / relieved gains /
+  disallowed losses) and surface the foregone loss relief explicitly.
+- **Flag unclassified holdings that escape FIG relief.** A disposal with
+  no `commodities.toml` entry defaults to UK-situs, so under a claim it
+  stays taxable (and a genuinely foreign one wrongly lands on SA108).
+  `tax-report` already emits `WARN_UNCLASSIFIED`, but the pack / FIG path
+  should call out that an unclassified holding may be missing relief, to
+  prompt a metadata fix before filing.
