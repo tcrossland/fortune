@@ -51,7 +51,13 @@ from banking_pipeline.tax.uk.cgt_allowance import (
 )
 from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.tax.uk.eri import EriResult, compute_eri, load_eri
+from banking_pipeline.tax.uk.fig_advice import (
+    FigPattern,
+    FigYearInputs,
+    evaluate_fig_window,
+)
 from banking_pipeline.tax.uk.liability import LiabilityResult, compute_liability
+from banking_pipeline.tax.uk.rates import CgtRateSchedule, IncomeTaxBands
 from banking_pipeline.tax.uk.residence import (
     fig_eligible_years,
     ineligible_claims,
@@ -2276,6 +2282,62 @@ def _positive_gains(rows: list[Sa108Row]) -> Decimal:
     return sum((r.gain_gbp for r in rows if r.gain_gbp > 0), Decimal(0))
 
 
+def _resolve_year_rates(year: str) -> tuple[IncomeTaxBands, CgtRateSchedule]:
+    """The statutory income bands + CGT rates for ``year``, or exit with a
+    clear message if either is unconfigured (rather than guessing)."""
+
+    bands = settings.income_tax_bands.get(year)
+    if bands is None:
+        err_console.print(
+            f"No income-tax bands configured for {year}; add it to "
+            "income_tax_bands (see tax/uk/rates.py)."
+        )
+        raise typer.Exit(code=1)
+    cgt_rates = settings.cgt_forecast_rates.get(year)
+    if cgt_rates is None:
+        err_console.print(
+            f"No CGT rates configured for {year}; add it to "
+            "cgt_forecast_rates (see tax/uk/rates.py)."
+        )
+        raise typer.Exit(code=1)
+    return bands, cgt_rates
+
+
+def _fig_year_inputs(
+    comp: _TaxComputation, *, year: str, other_income: Decimal
+) -> FigYearInputs:
+    """Build the liability inputs for ``year`` from its computed reports:
+    the income-charged gains split by situs (foreign relievable under a
+    FIG claim, UK always taxed) and the SA106 + ERI dividend/interest."""
+
+    bands, cgt_rates = _resolve_year_rates(year)
+    income_gain_rows = [
+        r for r in comp.sa108.rows if r.reporting_status == "non-reporting"
+    ] + comp.sa108.dds_disposals
+    eri_div = sum(
+        (r.gross_gbp for r in comp.eri_result.rows if r.income_type == "dividend"),
+        Decimal(0),
+    )
+    eri_int = sum(
+        (r.gross_gbp for r in comp.eri_result.rows if r.income_type == "interest"),
+        Decimal(0),
+    )
+    return FigYearInputs(
+        year=year,
+        other_income=other_income,
+        uk_other=_positive_gains([r for r in income_gain_rows if not r.is_foreign]),
+        foreign_other=_positive_gains([r for r in income_gain_rows if r.is_foreign]),
+        dividend_income=sum((r.gross_gbp for r in comp.sa106.dividends), Decimal(0))
+        + eri_div,
+        dividend_wht=sum((r.wht_gbp for r in comp.sa106.dividends), Decimal(0)),
+        interest_income=sum((r.gross_gbp for r in comp.sa106.interest), Decimal(0))
+        + eri_int,
+        interest_wht=sum((r.wht_gbp for r in comp.sa106.interest), Decimal(0)),
+        bands=bands,
+        cgt_rates=cgt_rates,
+    )
+
+
 def _write_forecast_csv(path: Path, liab: LiabilityResult) -> None:
     """One row per liability component, plus a TOTAL row."""
 
@@ -2486,47 +2548,12 @@ def tax_forecast(
         err_console.print(f"--income must be a number, got {income!r}.")
         raise typer.Exit(code=1) from None
 
-    bands = settings.income_tax_bands.get(year)
-    if bands is None:
-        err_console.print(
-            f"No income-tax bands configured for {year}; add it to "
-            "income_tax_bands (see tax/uk/rates.py)."
-        )
-        raise typer.Exit(code=1)
-    cgt_rates = settings.cgt_forecast_rates.get(year)
-    if cgt_rates is None:
-        err_console.print(
-            f"No CGT rates configured for {year}; add it to "
-            "cgt_forecast_rates (see tax/uk/rates.py)."
-        )
-        raise typer.Exit(code=1)
-
     out_dir = out if out is not None else settings.tax_reports_dir / year
     comp = _compute_tax_year(
         year=year, source=source, commodities=commodities,
         rate_source=rate_source, opening_positions=opening_positions, eri=eri,
     )
-    sa108, sa106, eri_result = comp.sa108, comp.sa106, comp.eri_result
-
-    # Income-charged investment profit (offshore income gains + deeply
-    # discounted securities), split by situs: the foreign portion is
-    # relieved under a FIG claim, the UK portion is always taxed.
-    offshore = [r for r in sa108.rows if r.reporting_status == "non-reporting"]
-    income_gain_rows = offshore + sa108.dds_disposals
-    foreign_other = _positive_gains([r for r in income_gain_rows if r.is_foreign])
-    uk_other = _positive_gains([r for r in income_gain_rows if not r.is_foreign])
-    eri_div = sum(
-        (r.gross_gbp for r in eri_result.rows if r.income_type == "dividend"),
-        Decimal(0),
-    )
-    eri_int = sum(
-        (r.gross_gbp for r in eri_result.rows if r.income_type == "interest"),
-        Decimal(0),
-    )
-    dividend_income = sum((r.gross_gbp for r in sa106.dividends), Decimal(0)) + eri_div
-    dividend_wht = sum((r.wht_gbp for r in sa106.dividends), Decimal(0))
-    interest_income = sum((r.gross_gbp for r in sa106.interest), Decimal(0)) + eri_int
-    interest_wht = sum((r.wht_gbp for r in sa106.interest), Decimal(0))
+    inp = _fig_year_inputs(comp, year=year, other_income=expected_income)
 
     def _run_scenario(claim_this_year: bool) -> LiabilityResult:
         years = (
@@ -2544,17 +2571,17 @@ def tax_forecast(
         allowance = chain[year]
         return compute_liability(
             tax_year=year,
-            other_income=expected_income,
-            other_taxable_income=uk_other,
-            foreign_other_income=foreign_other,
-            interest_income=interest_income,
-            interest_wht=interest_wht,
-            dividend_income=dividend_income,
-            dividend_wht=dividend_wht,
+            other_income=inp.other_income,
+            other_taxable_income=inp.uk_other,
+            foreign_other_income=inp.foreign_other,
+            interest_income=inp.interest_income,
+            interest_wht=inp.interest_wht,
+            dividend_income=inp.dividend_income,
+            dividend_wht=inp.dividend_wht,
             cgt_taxable_pre=allowance.taxable_pre,
             cgt_taxable_post=allowance.taxable_post,
-            bands=bands,
-            cgt_rates=cgt_rates,
+            bands=inp.bands,
+            cgt_rates=inp.cgt_rates,
             fig_claimed=claim_this_year,
         )
 
@@ -2574,7 +2601,7 @@ def tax_forecast(
     else:
         liab = _run_scenario(year in settings.fig_claim_years)
 
-    gaps = sa108.missing_rates + sa106.missing_rates + eri_result.missing_rates
+    gaps = comp.rate_gaps
 
     out_dir.mkdir(parents=True, exist_ok=True)
     as_of = today if date_to_tax_year(today) == year else tax_year_bounds(year)[1]
@@ -2702,6 +2729,226 @@ def tax_pack(
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "tax-pack.md").write_text(markdown, encoding="utf-8")
     err_console.print(f"Wrote tax pack for {year} to {out_dir / 'tax-pack.md'}")
+
+
+# --- fig-advice -------------------------------------------------------------
+
+def _fmt_claim(claimed: frozenset[str]) -> str:
+    return ", ".join(sorted(claimed)) if claimed else "none"
+
+
+def _write_fig_advice(
+    path: Path,
+    patterns: list[FigPattern],
+    *,
+    window: list[str],
+    year_inputs: dict[str, FigYearInputs],
+    as_of: date,
+    rate_gaps: list[RateGap],
+) -> None:
+    m = _money
+    recommended = patterns[0]
+    by_claim = {p.claimed: p for p in patterns}
+    none = by_claim[frozenset()]
+    all_years = by_claim[frozenset(window)]
+    income = year_inputs[window[0]].other_income
+
+    lines = [
+        "UK FIG claim advice",
+        f"(year-to-date actuals as of {as_of.isoformat()}; an estimate, "
+        "not tax advice)",
+        "",
+        f"Eligible FIG window: {', '.join(window)}",
+        f"Assumed non-savings income each year: {m(income)} GBP",
+        "",
+        "A claim relieves that year's foreign income and non-UK gains, but "
+        "forfeits its personal allowance and CGT annual exempt amount AND "
+        "disallows that year's foreign losses (which would otherwise carry "
+        "forward). Foreign income relievable per year:",
+        "",
+    ]
+    for y in window:
+        inp = year_inputs[y]
+        foreign_income = inp.dividend_income + inp.interest_income + inp.foreign_other
+        lines.append(
+            f"  {y}: foreign income {m(foreign_income)} GBP "
+            f"(+ that year's foreign capital gains)"
+        )
+    lines += [
+        "",
+        "Total liability across the window by claim pattern "
+        "(cheapest first):",
+        "",
+    ]
+    for p in patterns:
+        marker = "  → " if p.claimed == recommended.claimed else "    "
+        lines.append(
+            f"{marker}claim [{_fmt_claim(p.claimed)}]: "
+            f"{m(p.total_liability)} GBP"
+        )
+    lines += [
+        "",
+        f"RECOMMENDED: claim [{_fmt_claim(recommended.claimed)}] "
+        f"— {m(recommended.total_liability)} GBP across the window.",
+        f"  vs claim none: saves {m(none.total_liability - recommended.total_liability)} GBP",
+        f"  vs claim all:  saves {m(all_years.total_liability - recommended.total_liability)} GBP",
+        "",
+        "Per-year liability under the recommended pattern:",
+    ]
+    for y in window:
+        claimed = "claimed" if y in recommended.claimed else "not claimed"
+        lines.append(f"  {y} ({claimed}): {m(recommended.per_year[y])} GBP")
+
+    gap_lines = _rate_gap_lines(rate_gaps)
+    if gap_lines:
+        lines += ["", *gap_lines]
+    lines += [
+        "",
+        "Caveats: incomplete years use year-to-date actuals, so any "
+        "recommendation touching the current year is provisional — re-run "
+        "as statements land. Assumes the same income each year, "
+        "England/Wales/NI rates, a single taxpayer. Not tax advice; the "
+        "4-year-window eligibility (10 prior non-resident years) is "
+        "asserted by your configured arrival date.",
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+@app.command("fig-advice")
+def fig_advice(
+    income: Annotated[
+        str,
+        typer.Option(
+            "--income",
+            help="Expected non-savings income each window year (before the "
+            "personal allowance). Applied to every eligible year.",
+        ),
+    ],
+    source: Annotated[
+        Path,
+        typer.Option("--source", help="Sidecar directory. Defaults to ``data``."),
+    ] = Path("data"),
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to ``tax_reports_dir`` (the "
+            "advice spans the whole window, not a single year).",
+        ),
+    ] = None,
+    commodities: Annotated[
+        Path | None,
+        typer.Option("--commodities", help="Commodity-metadata TOML."),
+    ] = None,
+    rate_source: Annotated[
+        str | None,
+        typer.Option("--rate-source", help="GBP rate source override."),
+    ] = None,
+    opening_positions: Annotated[
+        Path | None,
+        typer.Option("--opening-positions", help="Opening-positions TOML."),
+    ] = None,
+    eri: Annotated[
+        Path | None,
+        typer.Option("--eri", help="Excess reportable income TOML."),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="Exit non-zero if any amount lacked a GBP rate.",
+        ),
+    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Recommend which FIG years to claim, optimised across the window.
+
+    A FIG claim is decided per year but the years interact through the
+    loss-carry-forward chain — claiming forfeits a year's allowable
+    foreign losses as well as its allowances. This evaluates every claim
+    combination over the eligible window jointly (year-to-date actuals)
+    and recommends the cheapest, writing ``fig-advice.txt``. A planning
+    aid, not tax advice; the current year's figures are provisional.
+    """
+
+    _configure_logging(verbose)
+    today = date.today()
+    arrival = settings.uk_residence_start_date
+    eligible = sorted(fig_eligible_years(arrival))
+    if not eligible:
+        err_console.print(
+            "No FIG window — set BANKPIPE_UK_RESIDENCE_START_DATE to a date "
+            "in or after the 2021-22 tax year (the regime runs for the first "
+            "four UK-resident years, from 2025-26)."
+        )
+        raise typer.Exit(code=1)
+    # Later eligible years may not have statutory rates published yet; omit
+    # them (they have no data anyway) rather than failing the whole run.
+    window = [
+        y for y in eligible
+        if y in settings.income_tax_bands and y in settings.cgt_forecast_rates
+    ]
+    omitted = [y for y in eligible if y not in window]
+    if omitted:
+        err_console.print(
+            f"Note: eligible year(s) {', '.join(omitted)} omitted — no "
+            "statutory rates configured yet (add them to tax/uk/rates.py as "
+            "HMRC sets them)."
+        )
+    if not window:
+        err_console.print(
+            "No eligible FIG year has configured rates yet — add the years to "
+            "tax/uk/rates.py."
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        expected_income = Decimal(income)
+    except (ArithmeticError, ValueError):
+        err_console.print(f"--income must be a number, got {income!r}.")
+        raise typer.Exit(code=1) from None
+
+    out_dir = out if out is not None else settings.tax_reports_dir
+    year_inputs: dict[str, FigYearInputs] = {}
+    rate_gaps: list[RateGap] = []
+    history_rows: list[Sa108Row] = []
+    pre_ledger_losses = Decimal(0)
+    for y in window:
+        comp = _compute_tax_year(
+            year=y, source=source, commodities=commodities,
+            rate_source=rate_source, opening_positions=opening_positions, eri=eri,
+        )
+        year_inputs[y] = _fig_year_inputs(comp, year=y, other_income=expected_income)
+        rate_gaps += comp.rate_gaps
+        # The matched history + brought-forward losses are year-independent.
+        history_rows = comp.history.rows
+        pre_ledger_losses = comp.pre_ledger_losses
+
+    patterns = evaluate_fig_window(
+        window=window,
+        year_inputs=year_inputs,
+        history_rows=history_rows,
+        aea_by_year=settings.cgt_annual_exempt_amount,
+        rate_change_dates=settings.cgt_rate_change_dates,
+        pre_ledger_losses=pre_ledger_losses,
+        arrival=arrival,
+    )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    _write_fig_advice(
+        out_dir / "fig-advice.txt", patterns,
+        window=window, year_inputs=year_inputs, as_of=today, rate_gaps=rate_gaps,
+    )
+    recommended = patterns[0]
+    err_console.print(
+        f"Wrote FIG claim advice to {out_dir / 'fig-advice.txt'} "
+        f"(recommended: claim [{_fmt_claim(recommended.claimed)}])"
+    )
+    if rate_gaps:
+        for line in _rate_gap_lines(rate_gaps):
+            err_console.print(line)
+        if strict:
+            raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

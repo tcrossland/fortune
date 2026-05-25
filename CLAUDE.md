@@ -95,7 +95,7 @@ src/banking_pipeline/
 │                         dedup-check |
 │                         prices | balances | portfolio | check |
 │                         reconcile | rebuild | tax-report | tax-forecast |
-│                         tax-pack)
+│                         tax-pack | fig-advice)
 ├── pipeline.py         Top-level Pipeline orchestration
 ├── models.py           Domain models — DocumentType, BankId, Language,
 │                         RawDocument, Classification, Transaction,
@@ -192,9 +192,13 @@ src/banking_pipeline/
 │       │                    amounts into an estimated £ liability
 │       │                    (non-savings → savings → dividends → CGT,
 │       │                    with PA taper + foreign tax credit relief)
-│       └── tax_pack.py    Pure Markdown renderer: ties the computed
-│                            SA108/SA106 figures to HMRC form boxes (the
-│                            `tax-pack` filing aid; box numbers caveated)
+│       ├── tax_pack.py    Pure Markdown renderer: ties the computed
+│       │                    SA108/SA106 figures to HMRC form boxes (the
+│       │                    `tax-pack` filing aid; box numbers caveated)
+│       └── fig_advice.py  Multi-year FIG claim optimiser: brute-forces
+│                            the 2^k claim subsets over the eligible
+│                            window, loss-chain-aware, ranks by total
+│                            window liability (the `fig-advice` command)
 ├── templates/
 │   ├── __init__.py       TEMPLATE_REGISTRY (populated at import)
 │   ├── pictet/           ~40 per-doctype templates (EN + ES locales)
@@ -561,6 +565,16 @@ and reads the JSONL sidecars, not the ledger:
   tax advice; box numbers are indicative and caveated in the output. Same
   `--source/--out/--commodities/--rate-source/--opening-positions/--eri`
   options.
+- `fig-advice --income <gbp>` — recommends *which* FIG years to claim,
+  optimised jointly across the eligible window rather than per year.
+  Because claiming forfeits a year's allowable foreign losses (not just
+  its PA/AEA), and those losses would otherwise carry forward, the
+  cheapest claim set isn't the per-year answer. Brute-forces the `2^k`
+  claim subsets (k ≤ 4), threading the loss chain per subset, and writes
+  `fig-advice.txt` (ranked patterns + recommendation + per-year
+  breakdown). Year-to-date actuals, same income assumed each year; later
+  eligible years with no configured rates are omitted with a note. Core
+  in `tax/uk/fig_advice.py`. A planning aid, not tax advice.
 
 ## UK residence and the FIG regime
 

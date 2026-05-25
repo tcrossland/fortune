@@ -5,17 +5,15 @@ reporting, planning, budgeting, and tax. Biased toward changes that
 fit the existing data-driven, sidecar-based architecture rather than
 introducing a new paradigm. Not committed work — a menu to pull from.
 
-Most of the tax-reporting backlog has shipped: statement-balance
+The tax-reporting backlog is essentially complete: statement-balance
 reconciliation, idempotent-re-ingest dedup keying, the current-year
 tax-liability forecast, residence/FIG relief, the rate-source coverage
-check, and the tax pack. What's left splits two ways: a cluster of **FIG
-follow-ups surfaced by running the 2025-26 pack** (multi-year/loss-aware
-claim advice, clearer designation, unclassified-holding warnings — see
-the Tax reporting section), and the broader **reporting and planning**
-ideas that remain unstarted (confidence/audit ledger, FX-vs-price P&L
-split, period reports, asset-allocation snapshot, income/expense
-run-rate). The FIG multi-year claim advice is the highest-value next
-step given an actively-claimed FIG window.
+check, the tax pack, and the multi-year FIG claim optimiser
+(`fig-advice`). The remaining tax items are smaller FIG-presentation
+polish (clearer designation split, unclassified-holding warnings; see the
+Tax reporting section). The broader **reporting and planning** ideas are
+still unstarted: confidence/audit ledger, FX-vs-price P&L split, period
+reports, asset-allocation snapshot, income/expense run-rate.
 
 ## Bookkeeping (ingest quality)
 
@@ -123,14 +121,15 @@ cautiously.
 
 ### FIG follow-ups (surfaced running the 2025-26 pack)
 
-- **FIG claim is a multi-year, loss-aware decision.** `tax-forecast`
-  compares with/without claim on a *single year's* liability. But claiming
-  forfeits allowable foreign losses (a real disposal loss was
-  disallowed in the 2025-26 pack) as well as the PA/AEA, and the value of
-  a carried-forward loss plays out across the 4-year window. A proper FIG
-  optimiser would evaluate the eligible window jointly — valuing carried
-  losses and projected future gains — and recommend the claim *pattern*,
-  not just each year in isolation.
+- **FIG claim is a multi-year, loss-aware decision.** *(Shipped.)*
+  `fig-advice --income <gbp>` brute-forces every claim subset across the
+  eligible window, threading the loss chain per subset so a year's
+  disallowed foreign losses (and the knock-on to later years' carried
+  losses) are reflected, and recommends the cheapest pattern. See
+  `tax/uk/fig_advice.py`. Still open: per-year income (one `--income` is
+  assumed across the window) and run-rate projection of incomplete years
+  (year-to-date actuals only, so a current-year recommendation is
+  provisional).
 - **Separate disallowed losses in the FIG designation.** The designation
   table mixes relieved income, relieved gains, and disallowed foreign
   losses, and nets them in the total — which can understate the true cost

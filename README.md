@@ -356,6 +356,14 @@ year with and without the claim and recommends the cheaper. Foreign-vs-UK
 situs is derived from a holding's domicile / `uk-domestic` status, or set
 explicitly with a `uk_situs` flag in `data/commodities.toml`.
 
+Because claiming a year also *disallows* that year's foreign losses —
+which would otherwise carry forward and shelter later gains — the
+cheapest set of years to claim isn't the per-year answer.
+`fig-advice --income <gbp>` evaluates every claim combination across the
+eligible window jointly (threading the loss chain) and recommends the
+cheapest, writing `fig-advice.txt`. It uses year-to-date actuals, so a
+recommendation touching the current year is provisional.
+
 Out of scope (documented simplifications): the 10-prior-non-resident
 eligibility test (configuring an arrival date asserts it), temporary
 non-residence clawback, and former-remittance-basis transitional
