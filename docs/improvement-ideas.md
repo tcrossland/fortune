@@ -5,13 +5,13 @@ reporting, planning, budgeting, and tax. Biased toward changes that
 fit the existing data-driven, sidecar-based architecture rather than
 introducing a new paradigm. Not committed work — a menu to pull from.
 
-Statement-balance reconciliation, idempotent-re-ingest dedup keying, the
-current-year tax-liability forecast, residence/FIG relief, and the
-rate-source coverage check have all since shipped. The natural next
-reporting deliverable is the **tax pack** (a per-year summary tying the
-SA108/SA106 CSVs to actual HMRC box numbers); the remaining lower-level
-items (confidence/audit ledger, FX-vs-price P&L split, period reports,
-asset-allocation snapshot, income/expense run-rate) are unstarted.
+Most of the tax-reporting backlog has shipped: statement-balance
+reconciliation, idempotent-re-ingest dedup keying, the current-year
+tax-liability forecast, residence/FIG relief, the rate-source coverage
+check, and the tax pack. The remaining items are the broader reporting
+and planning ideas (confidence/audit ledger, FX-vs-price P&L split,
+period reports, asset-allocation snapshot, income/expense run-rate),
+all unstarted.
 
 ## Bookkeeping (ingest quality)
 
@@ -102,8 +102,13 @@ cautiously.
   See `tax/uk/residence.py`. Out of scope: the 10-prior-non-resident
   eligibility test, temporary-non-residence clawback, and former
   remittance-basis transitional rebasing/TRF.
-- **Tax pack** — a single per-year Markdown/PDF summary tying the
-  SA108/SA106 CSVs to actual HMRC box numbers.
+- **Tax pack.** *(Shipped.)* `tax-pack` renders `tax-pack.md`, a per-year
+  filing aid tying the computed SA108/SA106 figures to HMRC form boxes
+  (CGT listed-shares boxes + allowance computation, foreign
+  dividends/interest with FTCR, offshore income gains, deeply-discounted,
+  ERI, and the FIG designation). Pure renderer in `tax/uk/tax_pack.py`;
+  box numbers are caveated (HMRC re-numbers the forms). Still open: a PDF
+  rendering (Markdown only for now, to stay dependency-light).
 - **Rate-source coverage check.** *(Shipped.)* An unconvertible amount
   (no per-tx `gbp_rate`, no source rate) is excluded from the figures, so
   it silently understates. `to_gbp` returning `None` is now captured as a

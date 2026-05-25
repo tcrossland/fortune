@@ -6,6 +6,7 @@ import csv
 import json
 import sys
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -58,11 +59,13 @@ from banking_pipeline.tax.uk.residence import (
 )
 from banking_pipeline.tax.uk.sa106 import Sa106Report, compute_sa106_dividends
 from banking_pipeline.tax.uk.sa108 import (
+    MatchedHistory,
     Sa108Report,
     Sa108Row,
     compute_sa108,
     match_history,
 )
+from banking_pipeline.tax.uk.tax_pack import render_tax_pack
 from banking_pipeline.tax.uk.tax_year import date_to_tax_year, tax_year_bounds
 from banking_pipeline.transaction_sidecar import (
     dump_transactions,
@@ -1552,6 +1555,107 @@ def _load_sidecar_transactions(source: Path) -> list[Transaction]:
     return txns
 
 
+@dataclass
+class _TaxComputation:
+    """The year's base tax figures, shared by tax-report / -forecast / -pack.
+
+    Holds the raw (un-FIG-partitioned) reports plus the inputs each command
+    needs for its own downstream: the loss chain (run once here with the
+    configured claims for report/pack; re-run per scenario by the
+    forecast), the FIG context, and the GBP rate-coverage gaps.
+    """
+
+    eri_result: EriResult
+    sa108: Sa108Report
+    sa106: Sa106Report
+    history: MatchedHistory
+    pre_ledger_losses: Decimal
+    arrival: date | None
+    fig_claim_years: frozenset[str]
+    fig_claimed: bool
+    rate_gaps: list[RateGap]
+
+
+def _compute_tax_year(
+    *,
+    year: str,
+    source: Path,
+    commodities: Path | None,
+    rate_source: str | None,
+    opening_positions: Path | None,
+    eri: Path | None,
+) -> _TaxComputation:
+    """Load the sidecars and compute the base SA108 / SA106 / ERI figures.
+
+    Centralises the load-and-compute the three tax commands share (ISA
+    exclusion, GBP rate sourcing, section 104 matching, residence-aware
+    income/disposal filtering). The loss chain and any FIG partition are
+    left to the caller, since the forecast runs the chain per claim
+    scenario while report/pack run it once.
+    """
+
+    cpath = commodities or settings.commodities_metadata_path
+    commodities_map = (
+        load_commodities(cpath) if cpath is not None and cpath.is_file() else {}
+    )
+    eff_settings = (
+        settings.model_copy(update={"gbp_rate_source": rate_source})
+        if rate_source is not None
+        else settings
+    )
+    rates = build_rate_source(eff_settings)
+    opening_path = opening_positions or settings.opening_positions_path
+    opening = (
+        load_opening_positions(opening_path)
+        if opening_path is not None and opening_path.is_file()
+        else {}
+    )
+    eri_path = eri or settings.eri_path
+    eri_entries = (
+        load_eri(eri_path) if eri_path is not None and eri_path.is_file() else {}
+    )
+    arrival = settings.uk_residence_start_date
+
+    # Single tax-exemption choke point: ISA-wrapped transactions are
+    # tax-free and never reach any computation.
+    txns = [tx for tx in _load_sidecar_transactions(source) if not tx.is_tax_exempt]
+    eri_result = compute_eri(
+        txns, tax_year_label=year, eri_entries=eri_entries,
+        commodities=commodities_map, opening_positions=opening, source=rates,
+    )
+    sa108 = compute_sa108(
+        txns, tax_year_label=year, commodities=commodities_map, source=rates,
+        rate_change_date=settings.cgt_rate_change_dates.get(year),
+        opening_positions=opening, cost_adjustments=eri_result.base_cost_adjustments,
+        arrival=arrival,
+    )
+    sa106 = compute_sa106_dividends(
+        txns, tax_year_label=year, commodities=commodities_map, source=rates,
+        arrival=arrival,
+    )
+    history = match_history(
+        txns, commodities=commodities_map, source=rates,
+        opening_positions=opening, cost_adjustments=eri_result.base_cost_adjustments,
+    )
+    losses_path = settings.cgt_losses_path
+    pre_ledger_losses = (
+        load_cgt_brought_forward_losses(losses_path)
+        if losses_path is not None and losses_path.is_file()
+        else Decimal(0)
+    )
+    return _TaxComputation(
+        eri_result=eri_result,
+        sa108=sa108,
+        sa106=sa106,
+        history=history,
+        pre_ledger_losses=pre_ledger_losses,
+        arrival=arrival,
+        fig_claim_years=settings.fig_claim_years,
+        fig_claimed=year in settings.fig_claim_years,
+        rate_gaps=sa108.missing_rates + sa106.missing_rates + eri_result.missing_rates,
+    )
+
+
 def _money(value: Decimal) -> str:
     """Format a GBP amount as a plain 2-dp string (no scientific notation).
 
@@ -2075,100 +2179,38 @@ def tax_report(
     tax_year_bounds(year)  # validate the label early
 
     arrival = settings.uk_residence_start_date
-    fig_claim_years = settings.fig_claim_years
     if is_pre_residence_year(year, arrival):
         err_console.print(
             f"{year} is before UK residence began ({arrival}); foreign income "
             "and gains aren't UK-taxable while non-resident — nothing to report."
         )
         return
-    for bad in ineligible_claims(fig_claim_years, arrival):
+    for bad in ineligible_claims(settings.fig_claim_years, arrival):
         err_console.print(
             f"WARN FIG claim for {bad} is outside the eligible window "
             f"{sorted(fig_eligible_years(arrival))}; relief still applied as "
             "configured."
         )
-    fig_claimed = year in fig_claim_years
 
     out_dir = out if out is not None else settings.tax_reports_dir / year
-    cpath = commodities or settings.commodities_metadata_path
-    commodities_map = (
-        load_commodities(cpath) if cpath is not None and cpath.is_file() else {}
+    comp = _compute_tax_year(
+        year=year, source=source, commodities=commodities,
+        rate_source=rate_source, opening_positions=opening_positions, eri=eri,
     )
-    eff_settings = (
-        settings.model_copy(update={"gbp_rate_source": rate_source})
-        if rate_source is not None
-        else settings
-    )
-    rates = build_rate_source(eff_settings)
+    sa108, sa106, eri_result = comp.sa108, comp.sa106, comp.eri_result
+    fig_claimed = comp.fig_claimed
 
-    opening_path = opening_positions or settings.opening_positions_path
-    opening = (
-        load_opening_positions(opening_path)
-        if opening_path is not None and opening_path.is_file()
-        else {}
-    )
-
-    eri_path = eri or settings.eri_path
-    eri_entries = (
-        load_eri(eri_path)
-        if eri_path is not None and eri_path.is_file()
-        else {}
-    )
-
-    # Single choke point for tax exemption: drop every transaction sitting
-    # in a tax-sheltered wrapper (an ISA today — see TAX_EXEMPT_WRAPPERS)
-    # before any CGT / dividend / interest / ERI computation. An ISA's
-    # disposals and income are tax-free, so they must never reach SA108 /
-    # SA106 or the loss-carry-forward chain.
-    txns = [tx for tx in _load_sidecar_transactions(source) if not tx.is_tax_exempt]
-    eri_result = compute_eri(
-        txns,
-        tax_year_label=year,
-        eri_entries=eri_entries,
-        commodities=commodities_map,
-        opening_positions=opening,
-        source=rates,
-    )
-    sa108 = compute_sa108(
-        txns,
-        tax_year_label=year,
-        commodities=commodities_map,
-        source=rates,
-        rate_change_date=settings.cgt_rate_change_dates.get(year),
-        opening_positions=opening,
-        cost_adjustments=eri_result.base_cost_adjustments,
-        arrival=arrival,
-    )
-    sa106 = compute_sa106_dividends(
-        txns, tax_year_label=year, commodities=commodities_map, source=rates,
-        arrival=arrival,
-    )
-
-    # CGT annual exempt amount + loss carry-forward: run the matcher over
-    # the full history and thread allowable losses across tax years up to
-    # the requested one, seeded by any pre-ledger brought-forward losses.
-    losses_path = settings.cgt_losses_path
-    pre_ledger_losses = (
-        load_cgt_brought_forward_losses(losses_path)
-        if losses_path is not None and losses_path.is_file()
-        else Decimal(0)
-    )
-    history = match_history(
-        txns,
-        commodities=commodities_map,
-        source=rates,
-        opening_positions=opening,
-        cost_adjustments=eri_result.base_cost_adjustments,
-    )
+    # CGT annual exempt amount + loss carry-forward: thread allowable
+    # losses across tax years to the requested one (residence- and
+    # FIG-aware), seeded by any pre-ledger brought-forward losses.
     chain = loss_carryforward_chain(
-        history.rows,
+        comp.history.rows,
         through_year=year,
         aea_by_year=settings.cgt_annual_exempt_amount,
         rate_change_dates=settings.cgt_rate_change_dates,
-        pre_ledger_losses=pre_ledger_losses,
+        pre_ledger_losses=comp.pre_ledger_losses,
         arrival=arrival,
-        fig_claim_years=fig_claim_years,
+        fig_claim_years=comp.fig_claim_years,
     )
     allowance = chain[year]
     aea_missing = year not in settings.cgt_annual_exempt_amount
@@ -2460,54 +2502,11 @@ def tax_forecast(
         raise typer.Exit(code=1)
 
     out_dir = out if out is not None else settings.tax_reports_dir / year
-    cpath = commodities or settings.commodities_metadata_path
-    commodities_map = (
-        load_commodities(cpath) if cpath is not None and cpath.is_file() else {}
+    comp = _compute_tax_year(
+        year=year, source=source, commodities=commodities,
+        rate_source=rate_source, opening_positions=opening_positions, eri=eri,
     )
-    eff_settings = (
-        settings.model_copy(update={"gbp_rate_source": rate_source})
-        if rate_source is not None
-        else settings
-    )
-    rates = build_rate_source(eff_settings)
-    opening_path = opening_positions or settings.opening_positions_path
-    opening = (
-        load_opening_positions(opening_path)
-        if opening_path is not None and opening_path.is_file()
-        else {}
-    )
-    eri_path = eri or settings.eri_path
-    eri_entries = (
-        load_eri(eri_path) if eri_path is not None and eri_path.is_file() else {}
-    )
-
-    # Single tax-exemption choke point, mirroring tax-report: ISA-wrapped
-    # transactions are tax-free and never enter the liability estimate.
-    txns = [tx for tx in _load_sidecar_transactions(source) if not tx.is_tax_exempt]
-    eri_result = compute_eri(
-        txns, tax_year_label=year, eri_entries=eri_entries,
-        commodities=commodities_map, opening_positions=opening, source=rates,
-    )
-    sa108 = compute_sa108(
-        txns, tax_year_label=year, commodities=commodities_map, source=rates,
-        rate_change_date=settings.cgt_rate_change_dates.get(year),
-        opening_positions=opening, cost_adjustments=eri_result.base_cost_adjustments,
-        arrival=arrival,
-    )
-    sa106 = compute_sa106_dividends(
-        txns, tax_year_label=year, commodities=commodities_map, source=rates,
-        arrival=arrival,
-    )
-    history = match_history(
-        txns, commodities=commodities_map, source=rates,
-        opening_positions=opening, cost_adjustments=eri_result.base_cost_adjustments,
-    )
-    losses_path = settings.cgt_losses_path
-    pre_ledger_losses = (
-        load_cgt_brought_forward_losses(losses_path)
-        if losses_path is not None and losses_path.is_file()
-        else Decimal(0)
-    )
+    sa108, sa106, eri_result = comp.sa108, comp.sa106, comp.eri_result
 
     # Income-charged investment profit (offshore income gains + deeply
     # discounted securities), split by situs: the foreign portion is
@@ -2536,10 +2535,10 @@ def tax_forecast(
             else settings.fig_claim_years - {year}
         )
         chain = loss_carryforward_chain(
-            history.rows, through_year=year,
+            comp.history.rows, through_year=year,
             aea_by_year=settings.cgt_annual_exempt_amount,
             rate_change_dates=settings.cgt_rate_change_dates,
-            pre_ledger_losses=pre_ledger_losses,
+            pre_ledger_losses=comp.pre_ledger_losses,
             arrival=arrival, fig_claim_years=years,
         )
         allowance = chain[year]
@@ -2595,6 +2594,114 @@ def tax_forecast(
             err_console.print(line)
         if strict:
             raise typer.Exit(code=1)
+
+
+# --- tax-pack ---------------------------------------------------------------
+
+@app.command("tax-pack")
+def tax_pack(
+    year: Annotated[
+        str | None,
+        typer.Option(
+            "--year",
+            help="UK tax year, e.g. 2025-26. Defaults to the current "
+            "(in-progress) tax year.",
+        ),
+    ] = None,
+    source: Annotated[
+        Path,
+        typer.Option(
+            "--source",
+            help="Directory walked (recursively) for *.transactions.jsonl "
+            "sidecars. Defaults to ``data``.",
+        ),
+    ] = Path("data"),
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to ``<tax_reports_dir>/<year>``.",
+        ),
+    ] = None,
+    commodities: Annotated[
+        Path | None,
+        typer.Option("--commodities", help="Commodity-metadata TOML."),
+    ] = None,
+    rate_source: Annotated[
+        str | None,
+        typer.Option("--rate-source", help="GBP rate source override."),
+    ] = None,
+    opening_positions: Annotated[
+        Path | None,
+        typer.Option("--opening-positions", help="Opening-positions TOML."),
+    ] = None,
+    eri: Annotated[
+        Path | None,
+        typer.Option("--eri", help="Excess reportable income TOML."),
+    ] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Render a per-year 'tax pack' — one Markdown filing aid that ties the
+    computed SA108 / SA106 figures to the boxes on the HMRC forms.
+
+    Computes the same year-to-date figures as ``tax-report`` (section 104
+    matching, foreign income, the CGT allowance chain, residence + FIG
+    treatment) and writes ``tax-pack.md``. A filing aid, not tax advice;
+    box numbers are indicative and must be verified against the year's
+    form. ISA-wrapped transactions are excluded.
+    """
+
+    _configure_logging(verbose)
+    today = date.today()
+    year = year or date_to_tax_year(today)
+    tax_year_bounds(year)  # validate the label early
+
+    arrival = settings.uk_residence_start_date
+    if is_pre_residence_year(year, arrival):
+        err_console.print(
+            f"{year} is before UK residence began ({arrival}); foreign income "
+            "and gains aren't UK-taxable while non-resident — nothing to pack."
+        )
+        return
+
+    out_dir = out if out is not None else settings.tax_reports_dir / year
+    comp = _compute_tax_year(
+        year=year, source=source, commodities=commodities,
+        rate_source=rate_source, opening_positions=opening_positions, eri=eri,
+    )
+    sa108, sa106, eri_result = comp.sa108, comp.sa106, comp.eri_result
+    fig_claimed = comp.fig_claimed
+
+    chain = loss_carryforward_chain(
+        comp.history.rows, through_year=year,
+        aea_by_year=settings.cgt_annual_exempt_amount,
+        rate_change_dates=settings.cgt_rate_change_dates,
+        pre_ledger_losses=comp.pre_ledger_losses,
+        arrival=arrival, fig_claim_years=comp.fig_claim_years,
+    )
+    allowance = chain[year]
+
+    gaps = comp.rate_gaps
+    designation: list[tuple[str, str, str, str, Decimal]] = []
+    if fig_claimed:
+        sa108, sa106, eri_result, designation = _partition_fig_relief(
+            sa108, sa106, eri_result
+        )
+
+    markdown = render_tax_pack(
+        year=year,
+        sa108=sa108,
+        sa106=sa106,
+        eri=eri_result,
+        allowance=allowance,
+        designation=designation,
+        fig_claimed=fig_claimed,
+        rate_change_date=settings.cgt_rate_change_dates.get(year),
+        rate_gaps=gaps,
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "tax-pack.md").write_text(markdown, encoding="utf-8")
+    err_console.print(f"Wrote tax pack for {year} to {out_dir / 'tax-pack.md'}")
 
 
 if __name__ == "__main__":

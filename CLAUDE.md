@@ -94,7 +94,8 @@ src/banking_pipeline/
 │                         classify | scan | extract-text | revolut |
 │                         dedup-check |
 │                         prices | balances | portfolio | check |
-│                         reconcile | rebuild | tax-report | tax-forecast)
+│                         reconcile | rebuild | tax-report | tax-forecast |
+│                         tax-pack)
 ├── pipeline.py         Top-level Pipeline orchestration
 ├── models.py           Domain models — DocumentType, BankId, Language,
 │                         RawDocument, Classification, Transaction,
@@ -187,10 +188,13 @@ src/banking_pipeline/
 │       ├── rates.py       Statutory income-tax bands/rates + CGT rate
 │       │                    percentages by tax year (the `tax-forecast`
 │       │                    inputs; Settings exposes both as overridable)
-│       └── liability.py   UK stacking engine: turns the SA108/SA106
-│                            amounts into an estimated £ liability
-│                            (non-savings → savings → dividends → CGT,
-│                            with PA taper + foreign tax credit relief)
+│       ├── liability.py   UK stacking engine: turns the SA108/SA106
+│       │                    amounts into an estimated £ liability
+│       │                    (non-savings → savings → dividends → CGT,
+│       │                    with PA taper + foreign tax credit relief)
+│       └── tax_pack.py    Pure Markdown renderer: ties the computed
+│                            SA108/SA106 figures to HMRC form boxes (the
+│                            `tax-pack` filing aid; box numbers caveated)
 ├── templates/
 │   ├── __init__.py       TEMPLATE_REGISTRY (populated at import)
 │   ├── pictet/           ~40 per-doctype templates (EN + ES locales)
@@ -547,6 +551,16 @@ and reads the JSONL sidecars, not the ledger:
   often outweighs the relief for small foreign amounts). Surfaces missing
   GBP-rate gaps (which silently understate the estimate); `--strict`
   exits non-zero on any gap.
+- `tax-pack [--year 2025-26]` — renders `tax-pack.md`, a single per-year
+  filing aid that ties the computed SA108/SA106 figures to the boxes on
+  the HMRC forms (CGT listed-shares boxes + allowance computation,
+  foreign dividends/interest with FTCR, offshore income gains,
+  deeply-discounted, ERI, and the FIG designation under a claim).
+  Recomputes from the sidecars on the same residence/FIG path as
+  `tax-report` (pure renderer in `tax/uk/tax_pack.py`). A filing aid, not
+  tax advice; box numbers are indicative and caveated in the output. Same
+  `--source/--out/--commodities/--rate-source/--opening-positions/--eri`
+  options.
 
 ## UK residence and the FIG regime
 
