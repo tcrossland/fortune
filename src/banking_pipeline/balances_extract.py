@@ -47,6 +47,9 @@ from datetime import timedelta
 from pathlib import Path
 
 from banking_pipeline.prices_extract import _parse_statement_date
+from banking_pipeline.vanguard_statement import parse_isa_valuation
+from banking_pipeline.writer.format import portfolio_segment
+from banking_pipeline.writer.profile import VANGUARD_PROFILE
 
 _AS_AT_RE = re.compile(r"\b(?:As\s+at|al)\s+(\d{1,2}\s+\w+\s+\d{4})", re.I)
 _ACCOUNT_NO_RE = re.compile(
@@ -87,17 +90,77 @@ def _normalise_amount(s: str) -> str:
 def extract_balances_from_statement(
     text: str,
 ) -> list[tuple[str, str, str, str]]:
-    """Parse a monthly-statement text dump for per-holding /
-    per-currency balances.
+    """Parse a statement text dump for per-holding / per-currency balances.
 
-    Returns ``(date, account, quantity, commodity)`` 4-tuples ready
-    to format as ``<date> balance <account> <quantity> <commodity>``
-    directives. The date is one day after the statement's ``As at``
+    Returns ``(date, account, quantity, commodity)`` 4-tuples ready to
+    format as ``<date> balance <account> <quantity> <commodity>``
+    directives. The date is one day after the statement's valuation
     anchor (beancount's beginning-of-day evaluation convention).
 
-    Returns ``[]`` when the statement's date or account header can't
-    be parsed (e.g. the fixture's anonymised ``99 Enero 9999`` /
-    ``K-999999.999`` forms).
+    Dispatches by bank: the Pictet monthly-statement parser and the
+    Vanguard ISA regular-statement parser each run and no-op on the
+    other issuer's text (Pictet keys on its ``As at`` / ``K-NNNNNN.NNN``
+    markers; Vanguard on its ``Your ISA investments at`` table), so the
+    union is safe to return without sniffing the issuer first.
+
+    Returns ``[]`` when neither parser recognises the document (e.g. the
+    fixture's anonymised ``99 Enero 9999`` form, or a drained Vanguard
+    statement with no valuation table).
+    """
+
+    return _pictet_balances(text) + _vanguard_balances(text)
+
+
+def _vanguard_balances(text: str) -> list[tuple[str, str, str, str]]:
+    """Vanguard ISA balance assertions from the valuation snapshot.
+
+    Emits a cash-balance assertion (when the statement prints a ``Cash
+    account`` row) and one assertion per **non-zero** holding. Wound-down
+    positions (movement-pair rows netting to zero) are skipped — asserting
+    a 0-unit balance is noise, and the ticker accounts are never closed
+    (the writer only closes ISIN-shaped commodities), so there's nothing
+    to confirm. Accounts mirror the writer's ``Assets:Vgd:ISA:<acct>:…``
+    layout exactly so the assertions line up with the ingested postings.
+    """
+
+    valuation = parse_isa_valuation(text)
+    if valuation is None:
+        return []
+
+    assertion_date = (valuation.statement_date + timedelta(days=1)).isoformat()
+    prefix = VANGUARD_PROFILE.account_prefix
+    portfolio = portfolio_segment(valuation.account_number)
+    rows: list[tuple[str, str, str, str]] = []
+
+    if valuation.cash_balance is not None:
+        rows.append(
+            (
+                assertion_date,
+                f"Assets:{prefix}:{portfolio}:GBP",
+                str(valuation.cash_balance),
+                "GBP",
+            )
+        )
+    for holding in valuation.holdings:
+        if holding.quantity == 0:
+            continue
+        rows.append(
+            (
+                assertion_date,
+                f"Assets:{prefix}:{portfolio}:{holding.ticker}",
+                str(holding.quantity),
+                holding.ticker,
+            )
+        )
+    return rows
+
+
+def _pictet_balances(text: str) -> list[tuple[str, str, str, str]]:
+    """Per-holding / per-currency balances from a Pictet monthly statement.
+
+    Returns ``[]`` when the statement's date or account header can't be
+    parsed (e.g. the fixture's anonymised ``99 Enero 9999`` /
+    ``K-999999.999`` forms, or a non-Pictet document).
     """
 
     date_match = _AS_AT_RE.search(text)

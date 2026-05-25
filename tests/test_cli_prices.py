@@ -80,14 +80,16 @@ def statements_tree(tmp_path: Path, fixtures_dir: Path) -> Path:
 # --- PRICED_STATEMENT_DOCTYPES constant ------------------------------------
 
 
-def test_priced_statement_doctypes_is_monthly_only() -> None:
-    """User clarified that only monthly statements carry per-asset
-    prices; the constant must encode that exactly so the directory
-    walker doesn't waste time parsing annual / quarterly PDFs."""
+def test_priced_statement_doctypes_carry_per_asset_prices() -> None:
+    """Only statements with a per-asset valuation table belong here, so
+    the directory walker doesn't waste time parsing the Pictet annual /
+    quarterly PDFs (regulatory / ESG pages only). Pictet's monthly
+    statements (EN + ES) and Vanguard's ISA regular statement qualify."""
 
     assert frozenset({
         DocumentType.MONTHLY_STATEMENT,
         DocumentType.ESTADO_MENSUAL,
+        DocumentType.VANGUARD_REGULAR_STATEMENT,
     }) == prices_extract.PRICED_STATEMENT_DOCTYPES
 
 

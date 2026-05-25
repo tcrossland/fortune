@@ -42,6 +42,7 @@ from typing import NamedTuple
 import structlog
 
 from banking_pipeline.models import DocumentType
+from banking_pipeline.vanguard_statement import parse_isa_valuation
 
 _log = structlog.get_logger(__name__)
 
@@ -55,6 +56,9 @@ _log = structlog.get_logger(__name__)
 PRICED_STATEMENT_DOCTYPES: frozenset[DocumentType] = frozenset({
     DocumentType.MONTHLY_STATEMENT,
     DocumentType.ESTADO_MENSUAL,
+    # Vanguard's regular statement carries a "Your ISA investments at
+    # <date>" valuation table with per-holding mark prices.
+    DocumentType.VANGUARD_REGULAR_STATEMENT,
 })
 
 
@@ -128,12 +132,14 @@ def _parse_statement_date(s: str) -> date | None:
 #   - ``{<price> <ccy>}`` — buys (literal cost basis)
 #   - ``{} @ <price> <ccy>`` — sells (reduce-from-inventory + market price)
 #
-# Anchored to a posting line (leading whitespace + ``Assets:`` family);
-# the commodity is asserted ISIN-shaped to skip cash-leg postings
-# (which carry a 3-letter currency rather than a 12-char ISIN).
+# Anchored to a posting line (leading whitespace + ``Assets:`` family).
+# The commodity is any uppercase symbol — a 12-char ISIN (Pictet) or a
+# short ticker (Vanguard, e.g. ``VMIG``). Cash legs can't false-match
+# because the trailing ``{...}`` cost-basis / ``@`` price annotation that
+# the regex requires only appears on security legs, never on cash legs.
 _PRICED_POSTING_RE = re.compile(
     r"^\s+Assets:[^\s]+\s+-?[\d.']+\s+"
-    r"([A-Z]{2}[A-Z0-9]{8}[A-Z0-9]{0,2})"
+    r"([A-Z][A-Z0-9]+)"
     r"\s+(?:"
     r"\{(?:\s*([\d.']+)\s+([A-Z]{3})\s*)?\}(?:\s*@\s*([\d.']+)\s+([A-Z]{3}))?"
     r")"
@@ -397,15 +403,59 @@ def extract_prices_from_statement(
     ``source`` is the originating filename, threaded onto every
     emitted :class:`PriceRow` so the rendered prices file points
     back at the statement that produced the number.
+
+    Dispatches by bank: the Pictet portfolio-valuation parser and the
+    Vanguard ISA valuation-snapshot parser each run and no-op on the
+    other issuer's text, so the union is returned without sniffing the
+    issuer first.
     """
 
     if doctype is not None and doctype not in PRICED_STATEMENT_DOCTYPES:
         _log.info(
-            "prices_extract.skip_non_monthly_statement",
+            "prices_extract.skip_non_priced_statement",
             doctype=doctype.value,
             source=source,
         )
         return []
+
+    return _pictet_statement_prices(text, source) + _vanguard_statement_prices(
+        text, source
+    )
+
+
+def _vanguard_statement_prices(
+    text: str, source: str | None
+) -> list[PriceRow]:
+    """Per-ticker mark prices from a Vanguard ISA valuation snapshot.
+
+    One :class:`PriceRow` per holding in the ``Your ISA investments at
+    <date>`` table, priced in GBP at the statement date. Returns ``[]``
+    when the document carries no valuation table (a non-Vanguard
+    statement, or a drained ISA whose statement omits the table).
+    """
+
+    valuation = parse_isa_valuation(text)
+    if valuation is None:
+        return []
+    date_str = valuation.statement_date.isoformat()
+    return [
+        PriceRow(
+            date=date_str,
+            commodity=h.ticker,
+            price=str(h.price),
+            currency="GBP",
+            source=source,
+        )
+        for h in valuation.holdings
+    ]
+
+
+def _pictet_statement_prices(
+    text: str, source: str | None
+) -> list[PriceRow]:
+    """Per-ISIN market prices from a Pictet monthly-statement valuation
+    page. Returns ``[]`` when the ``As at`` anchor is absent / unparseable
+    (a non-Pictet or anonymised document)."""
 
     date_match = _AS_AT_RE.search(text)
     if date_match is None:

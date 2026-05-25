@@ -109,8 +109,20 @@ src/banking_pipeline/
 │                         report (drift rows + earliest-drift +
 │                         coverage gaps)
 ├── beancount_writer.py Back-compat re-export of `writer.*`
-├── balances_extract.py Pictet monthly-statement → balance assertions
-├── prices_extract.py   Per-trade + monthly-statement → price directives
+├── balances_extract.py Statement → balance assertions. Dispatches by
+│                         bank: Pictet monthly statement + Vanguard ISA
+│                         regular statement (each no-ops on the other's
+│                         text). Vanguard emits a cash assertion + one per
+│                         non-zero holding.
+├── prices_extract.py   Per-trade + statement → price directives. Trade
+│                         prices read the ledger's cost-basis / `@` marks
+│                         (ISIN *or* ticker commodities); statement marks
+│                         come from Pictet valuation pages + the Vanguard
+│                         ISA valuation snapshot.
+├── vanguard_statement.py  Shared Vanguard ISA "Your ISA investments at
+│                            <date>" valuation parser (date, account,
+│                            net-per-ticker holdings, cash) consumed by
+│                            balances_extract + prices_extract
 ├── portfolio_aggregate.py Central account opens + per-year includes
 ├── commodities_metadata.py  TOML loader for `data/commodities.toml`
 │                              (ISIN → domicile, reporting status,
@@ -445,7 +457,10 @@ and reads the JSONL sidecars, not the ledger:
 - `extract-text` — dump PDF text; `--show-rules` shows which rules
   fired at each stage (the rule-authoring workhorse).
 - `prices`, `balances`, `portfolio` — aggregators that read the
-  ingest output under `data/`.
+  ingest output under `data/`. `prices` / `balances` also parse
+  statement PDFs passed via `--statement` / discovered by glob; both
+  handle Pictet monthly statements and the Vanguard ISA regular
+  statement (the parsers self-select on the document's text).
 - `check` — standalone `bean-check` wrapper.
 - `reconcile` — statement-balance reconciliation. Runs `bean-check`
   over the ledger, parses its balance-assertion failures, and writes a
