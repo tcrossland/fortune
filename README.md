@@ -44,8 +44,12 @@ rule, and the first rule to reach the highest score wins.
 
 ## Libraries and licenses
 
+This project is released under the **MIT License** (see [`LICENSE`](LICENSE)).
+
 Every runtime dependency is MIT, BSD, or Apache-2.0 except `python-stdnum`
-(LGPL-2.1+, which is fine for dynamic linking like we do here).
+(LGPL-2.1+, which is fine for dynamic linking like we do here). MIT is
+compatible with all of these — including `python-stdnum`'s LGPL, since we
+link it dynamically.
 
 | Area | Library | License | Why |
 |---|---|---|---|
