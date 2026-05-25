@@ -44,6 +44,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from datetime import timedelta
+from decimal import Decimal
 from pathlib import Path
 
 from banking_pipeline.prices_extract import _parse_statement_date
@@ -196,14 +197,21 @@ def _pictet_balances(text: str) -> list[tuple[str, str, str, str]]:
             if _normalise_amount(bal1) == _normalise_amount(bal2):
                 if ccy not in seen_currencies:
                     seen_currencies.add(ccy)
-                    rows.append(
-                        (
-                            assertion_date,
-                            f"Assets:Pic:{portfolio}:{ccy}",
-                            _normalise_amount(bal1),
-                            ccy,
+                    # Skip zero-balance currencies. A statement lists a
+                    # residual ``0.00`` line for currencies the account
+                    # briefly held; the ledger never opens that
+                    # sub-account, so asserting ``0`` against it trips
+                    # bean-check's "Invalid reference to inactive
+                    # account". A zero assertion is low-value anyway.
+                    if Decimal(_normalise_amount(bal1)) != 0:
+                        rows.append(
+                            (
+                                assertion_date,
+                                f"Assets:Pic:{portfolio}:{ccy}",
+                                _normalise_amount(bal1),
+                                ccy,
+                            )
                         )
-                    )
                 continue
 
         # --- Security row ---
@@ -214,6 +222,16 @@ def _pictet_balances(text: str) -> list[tuple[str, str, str, str]]:
         m_qty = _QUANTITY_ROW_RE.match(stripped)
         if m_qty is not None:
             for j in range(i + 1, min(i + 4, len(lines))):
+                # A later quantity-led row means a *new* holding has
+                # started before we found an ISIN — so the ISIN that
+                # follows belongs to it, not to this row. Stop scanning
+                # so a non-holding numeric line that merely precedes a
+                # real holding (e.g. a ``2'400'000.00 C/A Limit Gbp …``
+                # lombard credit-limit row on the P portfolio's
+                # valuation page) can't annex the next holding's ISIN
+                # and assert a bogus quantity against it.
+                if _QUANTITY_ROW_RE.match(lines[j].strip()):
+                    break
                 m_isin = _ISIN_LINE_RE.search(lines[j])
                 if m_isin is None:
                     continue
