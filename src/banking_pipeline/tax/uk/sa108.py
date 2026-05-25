@@ -23,7 +23,7 @@ from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.models import Transaction
 from banking_pipeline.opening_positions import OpeningLot
-from banking_pipeline.tax.uk.currency import to_gbp
+from banking_pipeline.tax.uk.currency import RateGap, to_gbp
 from banking_pipeline.tax.uk.residence import gain_is_foreign, is_pre_residence
 from banking_pipeline.tax.uk.section_104 import (
     Acquisition,
@@ -75,6 +75,8 @@ class Sa108Report:
     # per-transaction rate and none from the rate source) — emitting a
     # half-converted pool would be worse than flagging the gap.
     missing_rate_isins: list[str] = field(default_factory=list)
+    # The same gaps with currency/month detail (which HMRC CSV row to add).
+    missing_rates: list[RateGap] = field(default_factory=list)
     # ISINs disposed of more than were acquired (ledger + opening lots) —
     # the shortfall was matched at zero cost, so a pre-ledger acquisition
     # is almost certainly missing from data/opening-positions.toml.
@@ -96,6 +98,7 @@ class MatchedHistory:
     # Deeply discounted disposals (taxed as income, not CGT).
     dds_rows: list[Sa108Row] = field(default_factory=list)
     missing_rate_isins: list[str] = field(default_factory=list)
+    missing_rates: list[RateGap] = field(default_factory=list)
     unmatched_isins: list[str] = field(default_factory=list)
 
 
@@ -142,6 +145,7 @@ def match_history(
     rows: list[Sa108Row] = []
     dds: list[Sa108Row] = []
     missing: list[str] = []
+    gaps: list[RateGap] = []
     unmatched: list[str] = []
 
     # Include ISINs that only appear in opening positions (e.g. a holding
@@ -167,6 +171,7 @@ def match_history(
             )
             if gbp is None:
                 unconverted = True
+                gaps.append(RateGap.at(isin, tx.currency, tx.trade_date))
                 break
             qty = abs(tx.quantity)
             if tx.document_type in SECURITY_BUY_TYPES:
@@ -226,6 +231,7 @@ def match_history(
         rows=rows,
         dds_rows=dds,
         missing_rate_isins=missing,
+        missing_rates=sorted(set(gaps), key=lambda g: (g.isin, g.month)),
         unmatched_isins=unmatched,
     )
 
@@ -275,5 +281,6 @@ def compute_sa108(
         rows=_in_year(history.rows),
         dds_disposals=_in_year(history.dds_rows),
         missing_rate_isins=history.missing_rate_isins,
+        missing_rates=history.missing_rates,
         unmatched_isins=history.unmatched_isins,
     )

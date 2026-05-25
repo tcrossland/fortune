@@ -26,7 +26,7 @@ from decimal import Decimal
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.models import Transaction
-from banking_pipeline.tax.uk.currency import to_gbp
+from banking_pipeline.tax.uk.currency import RateGap, to_gbp
 from banking_pipeline.tax.uk.residence import is_pre_residence
 from banking_pipeline.tax.uk.tax_year import tax_year_bounds
 from banking_pipeline.writer.builders.dividend import DIVIDEND_TYPES
@@ -62,6 +62,7 @@ class Sa106Report:
     dividends: list[Sa106DividendRow]
     interest: list[Sa106InterestRow] = field(default_factory=list)
     missing_rate_isins: list[str] = field(default_factory=list)
+    missing_rates: list[RateGap] = field(default_factory=list)
 
 
 def _income_date(tx: Transaction) -> date:
@@ -97,6 +98,7 @@ def compute_sa106_dividends(
     dividend_groups: dict[tuple[str, str], _Acc] = defaultdict(_Acc)
     interest_groups: dict[tuple[str, str], _Acc] = defaultdict(_Acc)
     missing: set[str] = set()
+    gaps: set[RateGap] = set()
 
     for tx in transactions:
         if tx.document_type not in DIVIDEND_TYPES or not tx.isin:
@@ -126,6 +128,7 @@ def compute_sa106_dividends(
         )
         if gross is None or wht is None or net is None:
             missing.add(tx.isin)
+            gaps.add(RateGap.at(tx.isin, tx.currency, on))
             continue
 
         meta = commodities.get(tx.isin)
@@ -162,4 +165,5 @@ def compute_sa106_dividends(
         dividends=dividend_rows,
         interest=interest_rows,
         missing_rate_isins=sorted(missing),
+        missing_rates=sorted(gaps, key=lambda g: (g.isin, g.month)),
     )

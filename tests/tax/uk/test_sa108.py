@@ -300,3 +300,8 @@ def test_missing_rate_excludes_isin() -> None:
     report = compute_sa108(txs, tax_year_label="2025-26", commodities={})
     assert report.rows == []
     assert report.missing_rate_isins == [isin]
+    # The gap names the currency + month to add to the HMRC CSV. The
+    # matcher breaks on the first unconverted trade (the 2024-05 buy).
+    assert len(report.missing_rates) == 1
+    gap = report.missing_rates[0]
+    assert (gap.isin, gap.currency, gap.month) == (isin, "USD", "2024-05")

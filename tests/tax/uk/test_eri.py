@@ -177,6 +177,10 @@ def test_missing_rate_flags_isin() -> None:
     )
     assert result.rows == []
     assert result.missing_rate_isins == [isin]
+    # The gap carries the currency + the distribution month (2024-12).
+    assert len(result.missing_rates) == 1
+    gap = result.missing_rates[0]
+    assert (gap.isin, gap.currency, gap.month) == (isin, "EUR", "2024-12")
 
 
 def test_foreign_currency_uses_rate_source() -> None:

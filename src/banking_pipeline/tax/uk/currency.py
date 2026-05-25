@@ -9,10 +9,29 @@ transactions that predate that enrichment.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
 from banking_pipeline.fx.gbp_rates import GbpRateSource
+
+
+@dataclass(frozen=True)
+class RateGap:
+    """A GBP-rate that couldn't be resolved for a tax amount.
+
+    Records the security plus the ``currency`` and ``month`` (``YYYY-MM``)
+    the conversion needed, so a coverage warning can name the exact HMRC
+    monthly-average CSV row to add — rather than just flagging the ISIN.
+    """
+
+    isin: str
+    currency: str
+    month: str
+
+    @classmethod
+    def at(cls, isin: str, currency: str, on_date: date) -> RateGap:
+        return cls(isin=isin, currency=currency.upper(), month=f"{on_date:%Y-%m}")
 
 
 def to_gbp(

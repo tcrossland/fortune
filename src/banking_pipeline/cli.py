@@ -48,6 +48,7 @@ from banking_pipeline.tax.uk.cgt_allowance import (
     CgtAllowanceResult,
     loss_carryforward_chain,
 )
+from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.tax.uk.eri import EriResult, compute_eri, load_eri
 from banking_pipeline.tax.uk.liability import LiabilityResult, compute_liability
 from banking_pipeline.tax.uk.residence import (
@@ -1718,6 +1719,25 @@ def _write_cgt_carryforward_csv(
     return len(chain)
 
 
+def _rate_gap_lines(gaps: list[RateGap]) -> list[str]:
+    """Actionable missing-GBP-rate warnings: name the (currency, month)
+    rows to add to the HMRC monthly-average CSV. Empty when there are no
+    gaps. Amounts with no rate are excluded from the figures, so a gap
+    means the report/forecast understates until the rate is supplied."""
+
+    if not gaps:
+        return []
+    uniq = sorted(set(gaps), key=lambda g: (g.currency, g.month, g.isin))
+    lines = [
+        "WARN missing GBP rate — excluded from the figures above, so these "
+        "understate until you add the month/currency to "
+        "data/fx/hmrc-monthly-average.csv (or stamp the transaction's "
+        "gbp-rate):"
+    ]
+    lines += [f"  {g.currency} {g.month} ({g.isin})" for g in uniq]
+    return lines
+
+
 def _partition_fig_relief(
     sa108: Sa108Report, sa106: Sa106Report, eri: EriResult
 ) -> tuple[
@@ -1741,15 +1761,18 @@ def _partition_fig_relief(
         rows=uk_rows,
         dds_disposals=uk_dds,
         missing_rate_isins=sa108.missing_rate_isins,
+        missing_rates=sa108.missing_rates,
         unmatched_isins=sa108.unmatched_isins,
     )
     sa106_uk = Sa106Report(
-        dividends=[], interest=[], missing_rate_isins=sa106.missing_rate_isins
+        dividends=[], interest=[], missing_rate_isins=sa106.missing_rate_isins,
+        missing_rates=sa106.missing_rates,
     )
     eri_uk = EriResult(
         rows=[r for r in eri.rows if r.country == "GB"],
         base_cost_adjustments=eri.base_cost_adjustments,
         missing_rate_isins=eri.missing_rate_isins,
+        missing_rates=eri.missing_rates,
     )
 
     designation: list[tuple[str, str, str, str, Decimal]] = []
@@ -1944,15 +1967,11 @@ def _write_tax_summary(
         for isin in sa108.unmatched_isins:
             lines.append(f"  {isin}")
         lines.append("")
-    missing = sorted(
-        set(sa108.missing_rate_isins)
-        | set(sa106.missing_rate_isins)
-        | set(eri.missing_rate_isins)
+    gap_lines = _rate_gap_lines(
+        sa108.missing_rates + sa106.missing_rates + eri.missing_rates
     )
-    if missing:
-        lines.append("WARN missing GBP rate — excluded from the report:")
-        for isin in missing:
-            lines.append(f"  {isin}")
+    if gap_lines:
+        lines += gap_lines
         lines.append("")
     if fig_claimed:
         total = fig_relieved_total if fig_relieved_total is not None else Decimal(0)
@@ -2025,6 +2044,14 @@ def tax_report(
             "reporting funds. Defaults to the configured ``eri_path``.",
         ),
     ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="Exit non-zero if any amount couldn't be converted to GBP "
+            "(a missing rate silently excludes it). Turn on for a CI gate.",
+        ),
+    ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
     """Produce UK SA106 / SA108 CSV inputs from the JSONL sidecars.
@@ -2189,6 +2216,13 @@ def tax_report(
         f"{n_eri} ERI group(s){fig_note})"
     )
 
+    gaps = sa108.missing_rates + sa106.missing_rates + eri_result.missing_rates
+    if gaps:
+        for line in _rate_gap_lines(gaps):
+            err_console.print(line)
+        if strict:
+            raise typer.Exit(code=1)
+
 
 # --- tax-forecast -----------------------------------------------------------
 
@@ -2236,6 +2270,7 @@ def _write_forecast_summary(
     as_of: date,
     alt: LiabilityResult | None = None,
     recommendation: str | None = None,
+    rate_gaps: list[RateGap] | None = None,
 ) -> None:
     m = _money
     lines = [
@@ -2298,6 +2333,10 @@ def _write_forecast_summary(
             f"  RECOMMENDED: {recommendation} (saves {m(saving)} GBP) — the "
             "claim is elective; set fig_claim_years to apply it.",
         ]
+    gap_lines = _rate_gap_lines(rate_gaps or [])
+    if gap_lines:
+        lines.append("")
+        lines += gap_lines
     lines += [
         "",
         "Assumes England/Wales/NI rates and a single taxpayer; excludes "
@@ -2357,6 +2396,14 @@ def tax_forecast(
         Path | None,
         typer.Option("--eri", help="Excess reportable income TOML."),
     ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="Exit non-zero if any amount couldn't be converted to GBP "
+            "(a missing rate silently understates the estimate).",
+        ),
+    ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
     """Estimate this tax year's UK liability so April holds no surprises.
@@ -2528,11 +2575,13 @@ def tax_forecast(
     else:
         liab = _run_scenario(year in settings.fig_claim_years)
 
+    gaps = sa108.missing_rates + sa106.missing_rates + eri_result.missing_rates
+
     out_dir.mkdir(parents=True, exist_ok=True)
     as_of = today if date_to_tax_year(today) == year else tax_year_bounds(year)[1]
     _write_forecast_summary(
         out_dir / "forecast-summary.txt", liab, as_of=as_of,
-        alt=alt, recommendation=recommendation,
+        alt=alt, recommendation=recommendation, rate_gaps=gaps,
     )
     _write_forecast_csv(out_dir / "forecast.csv", liab)
 
@@ -2541,6 +2590,11 @@ def tax_forecast(
         f"Wrote tax-liability forecast for {year} to {out_dir} "
         f"(estimated total {_money(liab.total_liability)} GBP{rec})"
     )
+    if gaps:
+        for line in _rate_gap_lines(gaps):
+            err_console.print(line)
+        if strict:
+            raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

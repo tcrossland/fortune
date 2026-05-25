@@ -421,6 +421,13 @@ and reads the JSONL sidecars, not the ledger:
   columns `month` `YYYY-MM`, `currency`, `rate`) and `NullSource`
   (default — no rate, the rest of the pipeline behaves exactly as
   before). `BANKPIPE_GBP_RATE_SOURCE=hmrc-monthly` opts in.
+- Rate-coverage check: when an amount can't be converted to GBP (no
+  per-tx `gbp_rate` and no source rate) it's *excluded* from the
+  figures, so it would silently understate. `to_gbp` returning `None`
+  is recorded as a `RateGap(isin, currency, month)` (`tax/uk/currency.py`)
+  on each report's `missing_rates`; `tax-report` and `tax-forecast`
+  surface these as actionable warnings naming the exact HMRC CSV row to
+  add, and `--strict` makes any gap a non-zero exit (CI gate).
 - Reporting status (`reporting` / `non-reporting` / `uk-domestic` /
   `unknown`) lives in `data/commodities.toml` keyed by ISIN and is
   loaded by `commodities_metadata.py`. The `tax-report` command
@@ -520,9 +527,10 @@ and reads the JSONL sidecars, not the ledger:
   104 matching, and write the SA108 / SA106 CSVs plus the CGT
   AEA/loss-carry-forward chain (`cgt-loss-carryforward.csv`) to
   `<tax_reports_dir>/<year>/` (default `reports/uk-tax/<year>/`).
-  `--rate-source` overrides `gbp_rate_source` for the run. Residence-aware
-  (see below): a pre-residence year is skipped; under a FIG claim the
-  foreign items move off SA108/SA106 onto `fig-designation.csv`.
+  `--rate-source` overrides `gbp_rate_source` for the run; `--strict`
+  exits non-zero if any amount lacked a GBP rate. Residence-aware (see
+  below): a pre-residence year is skipped; under a FIG claim the foreign
+  items move off SA108/SA106 onto `fig-designation.csv`.
 - `tax-forecast --income <gbp> [--year 2026-27]` — current-year
   liability estimate (defaults to the in-progress tax year). Reuses the
   `tax-report` machinery to compute year-to-date taxable amounts, then
@@ -536,7 +544,9 @@ and reads the JSONL sidecars, not the ledger:
   choke point as `tax-report`. England/Wales/NI rates, single taxpayer.
   When the year is FIG-eligible it computes the liability with and
   without the claim and recommends the cheaper (the PA/AEA forfeiture
-  often outweighs the relief for small foreign amounts).
+  often outweighs the relief for small foreign amounts). Surfaces missing
+  GBP-rate gaps (which silently understate the estimate); `--strict`
+  exits non-zero on any gap.
 
 ## UK residence and the FIG regime
 

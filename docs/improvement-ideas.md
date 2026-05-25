@@ -5,13 +5,13 @@ reporting, planning, budgeting, and tax. Biased toward changes that
 fit the existing data-driven, sidecar-based architecture rather than
 introducing a new paradigm. Not committed work — a menu to pull from.
 
-Statement-balance reconciliation, idempotent-re-ingest dedup keying, and
-the current-year tax-liability forecast have since shipped. The standout
-remaining low-effort item is the **rate-source coverage check** — warn
-when a disposal/dividend has no `gbp_rate` and no HMRC monthly rate,
-rather than silently producing `None` (which also quietly understates the
-new forecast). After that, the **tax pack** (HMRC box-number mapping) is
-the natural next reporting deliverable.
+Statement-balance reconciliation, idempotent-re-ingest dedup keying, the
+current-year tax-liability forecast, residence/FIG relief, and the
+rate-source coverage check have all since shipped. The natural next
+reporting deliverable is the **tax pack** (a per-year summary tying the
+SA108/SA106 CSVs to actual HMRC box numbers); the remaining lower-level
+items (confidence/audit ledger, FX-vs-price P&L split, period reports,
+asset-allocation snapshot, income/expense run-rate) are unstarted.
 
 ## Bookkeeping (ingest quality)
 
@@ -104,6 +104,10 @@ cautiously.
   remittance-basis transitional rebasing/TRF.
 - **Tax pack** — a single per-year Markdown/PDF summary tying the
   SA108/SA106 CSVs to actual HMRC box numbers.
-- **Rate-source coverage check** — warn when a disposal/dividend has
-  no `gbp_rate` and no HMRC monthly rate available, rather than
-  silently producing `None`.
+- **Rate-source coverage check.** *(Shipped.)* An unconvertible amount
+  (no per-tx `gbp_rate`, no source rate) is excluded from the figures, so
+  it silently understates. `to_gbp` returning `None` is now captured as a
+  `RateGap(isin, currency, month)` on each report's `missing_rates`;
+  `tax-report` / `tax-forecast` warn with the exact HMRC CSV row to add,
+  and `--strict` turns any gap into a non-zero exit. See
+  `tax/uk/currency.py`.

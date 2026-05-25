@@ -184,6 +184,44 @@ def test_tax_forecast_pre_residence_year_skipped(
     assert "before UK residence began" in result.output
 
 
+def test_tax_forecast_warns_on_missing_rate_and_strict_fails(
+    tmp_path: Path,
+) -> None:
+    # A USD disposal with no per-tx gbp_rate and no rate source can't be
+    # converted → it's excluded (understating the estimate), so it must be
+    # warned about, and --strict must fail.
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    rep = "IE00B3VWN518"
+    txns = [
+        _tx(document_type=DocumentType.BUY_ETF, isin=rep, quantity=Decimal("100"),
+            amount=Decimal("-1000"), currency="USD", trade_date=date(2024, 5, 1)),
+        _tx(document_type=DocumentType.SELL_ETF, isin=rep, quantity=Decimal("-100"),
+            amount=Decimal("1500"), currency="USD", trade_date=date(2025, 6, 1)),
+    ]
+    dump_transactions(txns, data_dir / "2025.transactions.jsonl")
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text(_COMMODITIES, encoding="utf-8")
+    out_dir = tmp_path / "report"
+
+    runner = CliRunner()
+    # Force the null rate source so the USD trade can't be converted,
+    # regardless of any local .env HMRC configuration.
+    args = [
+        "tax-forecast", "--year", "2025-26", "--income", "60000",
+        "--source", str(data_dir), "--out", str(out_dir),
+        "--commodities", str(commodities), "--rate-source", "null",
+    ]
+    result = runner.invoke(cli.app, args)
+    assert result.exit_code == 0, result.output
+    summary = (out_dir / "forecast-summary.txt").read_text(encoding="utf-8")
+    assert "missing GBP rate" in summary
+    assert "USD 2024-05" in summary
+
+    strict = runner.invoke(cli.app, [*args, "--strict"])
+    assert strict.exit_code == 1
+
+
 def test_tax_forecast_unknown_year_errors(tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     data_dir.mkdir()

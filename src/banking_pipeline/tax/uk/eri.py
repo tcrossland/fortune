@@ -54,7 +54,7 @@ from banking_pipeline.commodities_metadata import (
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.models import Transaction
 from banking_pipeline.opening_positions import OpeningLot
-from banking_pipeline.tax.uk.currency import to_gbp
+from banking_pipeline.tax.uk.currency import RateGap, to_gbp
 from banking_pipeline.tax.uk.section_104 import PoolCostAdjustment
 from banking_pipeline.tax.uk.tax_year import reporting_period_end, tax_year_bounds
 from banking_pipeline.writer.builders.security_trade import (
@@ -147,6 +147,8 @@ class EriResult:
     # ISINs whose ERI couldn't be converted to GBP (no rate at the
     # distribution date) — excluded so figures aren't silently wrong.
     missing_rate_isins: list[str] = field(default_factory=list)
+    # The same gaps with currency/month detail (which HMRC CSV row to add).
+    missing_rates: list[RateGap] = field(default_factory=list)
 
 
 def _position_as_of(
@@ -188,6 +190,7 @@ def compute_eri(
     acc: dict[tuple[str, str, str], list] = {}  # type: ignore[type-arg]
     adjustments: dict[str, list[PoolCostAdjustment]] = defaultdict(list)
     missing: set[str] = set()
+    gaps: set[RateGap] = set()
 
     for isin, entries in eri_entries.items():
         for entry in entries:
@@ -209,6 +212,7 @@ def compute_eri(
             )
             if gross is None or equalisation is None:
                 missing.add(isin)
+                gaps.add(RateGap.at(isin, entry.currency, on))
                 continue
             # Taxable income is the gross; the pool uplift is net of
             # equalisation (return of capital).
@@ -245,4 +249,5 @@ def compute_eri(
         rows=rows,
         base_cost_adjustments=dict(adjustments),
         missing_rate_isins=sorted(missing),
+        missing_rates=sorted(gaps, key=lambda g: (g.isin, g.month)),
     )
