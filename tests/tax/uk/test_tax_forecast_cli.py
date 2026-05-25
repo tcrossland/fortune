@@ -129,6 +129,61 @@ def test_tax_forecast_excludes_isa(tmp_path: Path) -> None:
     assert rows["foreign dividends"]["taxable_gbp"] == "0.00"
 
 
+def test_tax_forecast_fig_recommends_cheaper(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    # FIG-eligible year: a tiny foreign gain doesn't justify forfeiting the
+    # personal allowance, so "no claim" should be recommended.
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _build_ledger(data_dir)
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text(_COMMODITIES, encoding="utf-8")
+    out_dir = tmp_path / "report"
+
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        cli.settings, "uk_residence_start_date", date(2025, 4, 6)
+    )
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        cli.settings, "fig_claim_years", frozenset()
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.app,
+        [
+            "tax-forecast", "--year", "2025-26", "--income", "60000",
+            "--source", str(data_dir), "--out", str(out_dir),
+            "--commodities", str(commodities),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    summary = (out_dir / "forecast-summary.txt").read_text(encoding="utf-8")
+    assert "FIG claim decision" in summary
+    assert "with claim:" in summary
+    assert "without claim:" in summary
+    assert "RECOMMENDED: no claim" in summary
+
+
+def test_tax_forecast_pre_residence_year_skipped(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _build_ledger(data_dir)
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        cli.settings, "uk_residence_start_date", date(2025, 4, 6)
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.app,
+        ["tax-forecast", "--year", "2024-25", "--income", "60000",
+         "--source", str(data_dir)],
+    )
+    assert result.exit_code == 0, result.output
+    assert "before UK residence began" in result.output
+
+
 def test_tax_forecast_unknown_year_errors(tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     data_dir.mkdir()

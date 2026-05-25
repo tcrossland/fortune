@@ -89,6 +89,21 @@ class CommodityMetadata(BaseModel):
     # so they belong in the SA106 interest box. User-asserted; it depends
     # on the fund's underlying asset mix, not derivable from the advice.
     distributions_as_interest: bool = False
+    # UK situs for the 4-year FIG regime: a non-UK asset's gain is
+    # relievable under a FIG claim, a UK asset's never is. ``None`` (the
+    # default) derives it — UK iff GB-domiciled or ``reporting_status``
+    # is ``"uk-domestic"``. Set explicitly only to override a misleading
+    # domicile (e.g. a GB-listed depositary receipt over a foreign asset).
+    uk_situs: bool | None = None
+
+    @property
+    def resolved_uk_situs(self) -> bool:
+        """Effective UK-situs verdict: the explicit flag if set, else
+        derived from domicile / reporting status."""
+
+        if self.uk_situs is not None:
+            return self.uk_situs
+        return self.domicile.upper() == "GB" or self.reporting_status == "uk-domestic"
 
     @field_validator("isin")
     @classmethod

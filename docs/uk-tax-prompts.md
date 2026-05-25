@@ -730,3 +730,28 @@ Validate: `uv run ruff check .`, `uv run mypy src`,
 `uv run pytest tests/tax/uk/`, then run
 `uv run banking-pipeline tax-report --year 2025-26` against the
 local rebuild output and sanity-check the CSVs by eye.
+
+## Residence basis and the FIG regime
+
+Every computation here assumes UK arising-basis residence for the whole
+ledger history *unless* `uk_residence_start_date` is configured. Two
+corrections then apply, both in `tax/uk/residence.py` and both leaving
+the section 104 pool untouched (acquisitions always feed it — only the
+taxable output is residence-filtered):
+
+- Pre-residence income/gains (before the split-year arrival date) are not
+  UK-taxable and drop out; whole pre-arrival tax years are skipped.
+- A 4-year FIG claim (`fig_claim_years`, available 2025-26 onward for the
+  first four UK-resident years) relieves foreign income and non-UK gains
+  to nil but forfeits the personal allowance and the CGT annual exempt
+  amount. UK-vs-foreign situs comes from `CommodityMetadata.uk_situs`
+  (else derived from domicile / `uk-domestic`). `tax-report` partitions
+  relieved foreign items onto `fig-designation.csv`; `tax-forecast`
+  reports the year with and without the claim and recommends the cheaper.
+
+Known simplifications: the 10-prior-non-resident eligibility test is
+asserted by configuring an arrival date (not derivable from the ledger);
+ERI income is attributed to the whole arrival year rather than split;
+temporary-non-residence clawback and former-remittance-basis transitional
+rebasing/TRF are out of scope. None of this is tax advice — verify
+against HMRC guidance before relying on the figures.

@@ -27,6 +27,7 @@ from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.models import Transaction
 from banking_pipeline.tax.uk.currency import to_gbp
+from banking_pipeline.tax.uk.residence import is_pre_residence
 from banking_pipeline.tax.uk.tax_year import tax_year_bounds
 from banking_pipeline.writer.builders.dividend import DIVIDEND_TYPES
 
@@ -76,9 +77,12 @@ def compute_sa106_dividends(
     tax_year_label: str,
     commodities: dict[str, CommodityMetadata],
     source: GbpRateSource | None = None,
+    arrival: date | None = None,
 ) -> Sa106Report:
     """Aggregate foreign distributions settling within ``tax_year_label``,
-    split into dividends and (bond-fund) interest."""
+    split into dividends and (bond-fund) interest. ``arrival`` (the UK
+    residence start date) drops distributions arising in the non-resident
+    part of a split arrival year — they're not UK-taxable."""
 
     start, end = tax_year_bounds(tax_year_label)
 
@@ -99,6 +103,8 @@ def compute_sa106_dividends(
             continue
         if not (start <= _income_date(tx) <= end):
             continue
+        if is_pre_residence(_income_date(tx), arrival):
+            continue  # non-resident part of a split arrival year
         country = (tx.withholding_country or tx.isin[:2]).upper()
         if country == "GB":
             continue  # UK income → SA100, not SA106

@@ -124,3 +124,24 @@ def test_offshore_and_deep_discounted_taxed_as_income() -> None:
     # 45,000 − 12,570 = 32,430 taxable, all within basic band → 20%.
     assert r.nonsavings_taxable == D(32430)
     assert r.nonsavings_tax == D("6486.00")
+
+
+def test_fig_claim_relieves_foreign_income_and_forfeits_pa() -> None:
+    # Foreign interest, dividends and foreign income-charged gains are all
+    # relieved; the personal allowance is forfeited; only salary is taxed.
+    r = _liab(
+        other_income=D(60000),
+        interest_income=D(2000),
+        dividend_income=D(3000),
+        foreign_other_income=D(5000),
+        fig_claimed=True,
+    )
+    assert r.fig_claimed is True
+    assert r.personal_allowance == D(0)
+    assert r.relieved_income == D(10000)  # 2,000 + 3,000 + 5,000
+    assert r.interest_tax == D(0)
+    assert r.dividend_tax == D(0)
+    # PA forfeited: whole 60,000 taxed — 37,700@20% + 22,300@40%.
+    assert r.nonsavings_taxable == D(60000)
+    assert r.nonsavings_tax == D("16460.00")
+    assert r.total_liability == D("16460.00")

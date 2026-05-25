@@ -150,6 +150,53 @@ def test_tax_report_end_to_end(tmp_path: Path) -> None:
     assert cf[0]["losses_carried_forward"] == "0.00"
 
 
+def test_tax_report_fig_claim_relieves_foreign_to_designation(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    """Under a FIG claim, foreign disposals/income move off SA108/SA106
+    onto fig-designation.csv; UK-situs items stay."""
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _build_ledger(data_dir)
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text(_COMMODITIES, encoding="utf-8")
+    out_dir = tmp_path / "report"
+
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        cli.settings, "uk_residence_start_date", date(2025, 4, 6)
+    )
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        cli.settings, "fig_claim_years", frozenset({"2025-26"})
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.app,
+        [
+            "tax-report", "--year", "2025-26", "--source", str(data_dir),
+            "--out", str(out_dir), "--commodities", str(commodities),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    # The foreign reporting disposal (IE) is relieved → SA108 is empty.
+    assert _read_csv(out_dir / "sa108-disposals.csv") == []
+    # The non-reporting offshore gain (LU) is relieved → OIG is empty.
+    assert _read_csv(out_dir / "sa106-offshore-income-gains.csv") == []
+
+    designation = _read_csv(out_dir / "fig-designation.csv")
+    by_isin = {r["isin"]: r for r in designation}
+    assert by_isin["IE00B3VWN518"]["category"] == "capital gain"
+    assert by_isin["IE00B3VWN518"]["amount_gbp"] == "500.00"
+    assert by_isin["LU1287023185"]["category"] == "offshore income gain"
+    assert by_isin["LU1287023185"]["amount_gbp"] == "150.00"
+    assert by_isin["US0378331005"]["category"] == "foreign dividend"
+
+    summary = (out_dir / "summary.txt").read_text(encoding="utf-8")
+    assert "Foreign Income & Gains (FIG) claim" in summary
+
+
 def test_isa_wrapped_transactions_excluded_from_tax_report(tmp_path: Path) -> None:
     """An ISA (``account_wrapper="isa"``) is tax-free: its disposals must
     not reach SA108 and its dividends must not reach SA106. Same ledger as

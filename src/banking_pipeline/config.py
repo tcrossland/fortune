@@ -134,6 +134,23 @@ class Settings(BaseSettings):
         default_factory=default_cgt_rates
     )
 
+    # Date the user became UK tax resident (a split-year arrival date).
+    # Income and gains arising *before* this date are not UK-taxable (the
+    # non-resident / overseas part of a split year), and tax years wholly
+    # before it are dropped from the UK reports entirely. ``None`` (the
+    # default) assumes UK residence throughout — today's behaviour,
+    # unchanged. The 10-prior-non-resident-years FIG eligibility test
+    # can't be derived from the ledger; configuring this asserts it.
+    uk_residence_start_date: date | None = None
+
+    # Tax years for which the 4-year Foreign Income & Gains (FIG) regime
+    # is claimed (e.g. ``{"2025-26"}``). A claim relieves foreign income
+    # and non-UK gains to nil but forfeits the personal allowance and the
+    # CGT annual exempt amount for that year. Elective and annual — only
+    # the first four UK-resident tax years (and none before 2025-26) are
+    # eligible; a claim outside that window is flagged.
+    fig_claim_years: frozenset[str] = Field(default_factory=frozenset)
+
     # Pre-ledger allowable capital losses carried into the earliest ledger
     # tax year (the loss-carry-forward chain seeds its pool with this).
     # Defaults to ``data/cgt-losses.toml`` when present; the real file is

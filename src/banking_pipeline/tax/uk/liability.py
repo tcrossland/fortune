@@ -44,10 +44,15 @@ class LiabilityResult:
 
     tax_year: str
 
+    # Whether a 4-year FIG claim was applied (foreign income relieved,
+    # personal allowance forfeited) and the foreign income so relieved.
+    fig_claimed: bool
+    relieved_income: Decimal
+
     # --- inputs / allowances ---
     other_income: Decimal
-    other_taxable_income: Decimal  # offshore income gains + deeply discounted
-    personal_allowance: Decimal  # after the £100k taper
+    other_taxable_income: Decimal  # UK-situs income-charged gains (taxed)
+    personal_allowance: Decimal  # after the £100k taper (0 if FIG claimed)
 
     # --- non-savings income tax ---
     nonsavings_taxable: Decimal
@@ -150,6 +155,7 @@ def compute_liability(
     tax_year: str,
     other_income: Decimal,
     other_taxable_income: Decimal,
+    foreign_other_income: Decimal = _ZERO,
     interest_income: Decimal,
     interest_wht: Decimal,
     dividend_income: Decimal,
@@ -158,27 +164,47 @@ def compute_liability(
     cgt_taxable_post: Decimal,
     bands: IncomeTaxBands,
     cgt_rates: CgtRateSchedule,
+    fig_claimed: bool = False,
 ) -> LiabilityResult:
     """Estimate the UK liability for one tax year from its taxable amounts.
 
     ``other_income`` is the taxpayer's expected non-savings, non-dividend
     taxable income (e.g. salary + rent) *before* the personal allowance;
-    ``other_taxable_income`` is income-charged investment profit (offshore
-    income gains + deeply discounted securities). ``cgt_taxable_pre`` /
-    ``cgt_taxable_post`` are the CGT figures already net of the AEA and
-    losses, split by the year's rate-change date.
+    ``other_taxable_income`` is UK-situs income-charged investment profit
+    (offshore income gains + deeply discounted securities that aren't
+    relievable); ``foreign_other_income`` is the foreign-situs equivalent.
+    ``cgt_taxable_pre`` / ``cgt_taxable_post`` are the CGT figures already
+    net of the AEA and losses (and already FIG-adjusted by the chain),
+    split by the year's rate-change date.
+
+    When ``fig_claimed`` is true the foreign income (interest, dividends,
+    ``foreign_other_income``) is relieved to nil and the personal
+    allowance is forfeited — the cost of the claim.
     """
 
-    total_income = (
-        other_income + other_taxable_income + interest_income + dividend_income
+    # A FIG claim relieves foreign income (it drops out of the taxable
+    # stacks) and forfeits the personal allowance.
+    eff_interest = _ZERO if fig_claimed else interest_income
+    eff_dividend = _ZERO if fig_claimed else dividend_income
+    eff_foreign_other = _ZERO if fig_claimed else foreign_other_income
+    relieved_income = (
+        interest_income + dividend_income + foreign_other_income
+        if fig_claimed
+        else _ZERO
     )
 
-    # Personal allowance, tapered £1-for-£2 over £100k, gone by £125,140.
+    total_income = (
+        other_income + other_taxable_income + eff_foreign_other
+        + eff_interest + eff_dividend
+    )
+
+    # Personal allowance, tapered £1-for-£2 over £100k, gone by £125,140;
+    # forfeited entirely under a FIG claim.
     taper = max(_ZERO, total_income - bands.pa_taper_threshold) / _TWO
-    pa = max(_ZERO, bands.personal_allowance - taper)
+    pa = _ZERO if fig_claimed else max(_ZERO, bands.personal_allowance - taper)
 
     # 1. Non-savings income (expected income + income-charged gains).
-    nonsavings = other_income + other_taxable_income
+    nonsavings = other_income + other_taxable_income + eff_foreign_other
     pa_used_ns = min(pa, nonsavings)
     ns_taxable = nonsavings - pa_used_ns
     pa_left = pa - pa_used_ns
@@ -186,9 +212,9 @@ def compute_liability(
         ns_taxable, _ZERO, bands=bands, personal_allowance=pa, dividend=False
     )
 
-    # 2. Savings income (foreign interest).
-    pa_used_int = min(pa_left, interest_income)
-    int_after_pa = interest_income - pa_used_int
+    # 2. Savings income (foreign interest; nil if relieved under FIG).
+    pa_used_int = min(pa_left, eff_interest)
+    int_after_pa = eff_interest - pa_used_int
     pa_left -= pa_used_int
     # Starting-rate band: reduced £1-for-£1 by non-savings taxable income.
     ssr_band = max(_ZERO, bands.starting_savings_band - ns_taxable)
@@ -203,9 +229,9 @@ def compute_liability(
         int_taxable, used, bands=bands, personal_allowance=pa, dividend=False
     )
 
-    # 3. Dividend income (foreign dividends).
-    pa_used_div = min(pa_left, dividend_income)
-    div_after_pa = dividend_income - pa_used_div
+    # 3. Dividend income (foreign dividends; nil if relieved under FIG).
+    pa_used_div = min(pa_left, eff_dividend)
+    div_after_pa = eff_dividend - pa_used_div
     da_used = min(div_after_pa, bands.dividend_allowance)
     used += da_used  # 0%-rate, occupies band space
     div_taxable = div_after_pa - da_used
@@ -250,6 +276,8 @@ def compute_liability(
 
     return LiabilityResult(
         tax_year=tax_year,
+        fig_claimed=fig_claimed,
+        relieved_income=relieved_income,
         other_income=other_income,
         other_taxable_income=other_taxable_income,
         personal_allowance=pa,

@@ -24,3 +24,8 @@ first_acquired = 2018-03-15
                                  # offshore fund ("bond fund" rule) — its
                                  # distributions/ERI are foreign interest,
                                  # not dividends (SA106 interest box)
+# uk_situs = false               # optional: override UK-situs for the
+                                 # 4-year FIG regime (whether a gain is
+                                 # relievable under a FIG claim). Omitted
+                                 # → derived: UK iff GB-domiciled or
+                                 # reporting_status = "uk-domestic"

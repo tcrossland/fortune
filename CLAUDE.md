@@ -180,6 +180,10 @@ src/banking_pipeline/
 │       ├── sa106.py       SA106 foreign dividend + interest aggregation
 │       ├── eri.py         Excess reportable income + equalisation
 │       │                    (data/eri.toml → income + base-cost uplift)
+│       ├── residence.py   Split-year arrival filtering + 4-year FIG
+│       │                    window/eligibility + UK-vs-foreign situs
+│       │                    (the residence/FIG corrections to the
+│       │                    arising-basis default)
 │       ├── rates.py       Statutory income-tax bands/rates + CGT rate
 │       │                    percentages by tax year (the `tax-forecast`
 │       │                    inputs; Settings exposes both as overridable)
@@ -516,7 +520,9 @@ and reads the JSONL sidecars, not the ledger:
   104 matching, and write the SA108 / SA106 CSVs plus the CGT
   AEA/loss-carry-forward chain (`cgt-loss-carryforward.csv`) to
   `<tax_reports_dir>/<year>/` (default `reports/uk-tax/<year>/`).
-  `--rate-source` overrides `gbp_rate_source` for the run.
+  `--rate-source` overrides `gbp_rate_source` for the run. Residence-aware
+  (see below): a pre-residence year is skipped; under a FIG claim the
+  foreign items move off SA108/SA106 onto `fig-designation.csv`.
 - `tax-forecast --income <gbp> [--year 2026-27]` — current-year
   liability estimate (defaults to the in-progress tax year). Reuses the
   `tax-report` machinery to compute year-to-date taxable amounts, then
@@ -528,6 +534,37 @@ and reads the JSONL sidecars, not the ledger:
   `forecast.csv`. Year-to-date *actuals* only (no run-rate
   extrapolation); ISA-wrapped transactions are excluded at the same
   choke point as `tax-report`. England/Wales/NI rates, single taxpayer.
+  When the year is FIG-eligible it computes the liability with and
+  without the claim and recommends the cheaper (the PA/AEA forfeiture
+  often outweighs the relief for small foreign amounts).
+
+## UK residence and the FIG regime
+
+The tax pipeline assumes UK arising-basis residence across the whole
+history unless `uk_residence_start_date` is set. `tax/uk/residence.py`
+applies two corrections, both config-driven and both leaving the section
+104 pool untouched (acquisitions feed it whenever they happened — only
+the taxable *output* is residence-filtered):
+
+- **Pre-residence (split-year):** income/gains arising before the arrival
+  date drop out (non-resident / overseas part of a split year); whole tax
+  years before arrival are skipped entirely. SA106 and SA108 take an
+  `arrival` parameter for the in-year split; the loss chain starts at the
+  residence-start year.
+- **4-year FIG claim (`fig_claim_years`, from 2025-26):** for an eligible
+  year, foreign income and non-UK gains are relieved to nil but the
+  personal allowance and CGT AEA are forfeited. Foreign-vs-UK situs is
+  `CommodityMetadata.resolved_uk_situs` (the optional `uk_situs` flag,
+  else derived from domicile / `uk-domestic` status). The chain relieves
+  foreign gains + zeroes the AEA; the liability engine zeroes the PA +
+  drops foreign income; the CLI partitions foreign items onto
+  `fig-designation.csv`.
+
+Out of scope (documented simplifications): the 10-prior-non-resident
+eligibility test (configuring an arrival date asserts it), ERI income is
+attributed to the whole arrival year (not split), temporary-non-residence
+clawback, and former-remittance-basis transitional rebasing/TRF. Not tax
+advice — verify against HMRC guidance.
 
 ## Configuration
 
@@ -555,6 +592,12 @@ and reads the JSONL sidecars, not the ledger:
   forecast year missing from `income_tax_bands` aborts with a clear
   error rather than guessing; add new years to `rates.py` as HMRC sets
   them.
+- Residence / FIG knobs: `uk_residence_start_date` (`date | None`,
+  default `None` = resident throughout — the split-year arrival date) and
+  `fig_claim_years` (`frozenset[str]`, default empty — the years a FIG
+  claim is applied). A per-ISIN `uk_situs` override lives in
+  `data/commodities.toml` (else situs is derived). See the UK residence
+  section above.
 - `reconciliation_dir` (defaults to `reports/reconciliation`) — output
   directory for the `reconcile` command's `summary.txt` / `drift.csv`.
 - Batch config: `banking-pipeline.toml` (gitignored, schema in

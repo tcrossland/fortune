@@ -28,6 +28,10 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from banking_pipeline.tax.uk.residence import (
+    is_pre_residence,
+    residence_start_year,
+)
 from banking_pipeline.tax.uk.sa108 import Sa108Row
 from banking_pipeline.tax.uk.tax_year import date_to_tax_year
 
@@ -145,24 +149,40 @@ def loss_carryforward_chain(
     aea_by_year: dict[str, Decimal],
     rate_change_dates: dict[str, date],
     pre_ledger_losses: Decimal = _ZERO,
+    arrival: date | None = None,
+    fig_claim_years: frozenset[str] = frozenset(),
 ) -> dict[str, CgtAllowanceResult]:
     """Thread allowable losses forward across tax years.
 
     ``rows`` is the full-history set of matched disposals (period unset);
     only CGT-eligible statuses participate. The chain runs from the
-    earliest year with a disposal through ``through_year`` inclusive
-    (materialising empty years so a year with only carried losses still
-    appears), seeding the loss pool with ``pre_ledger_losses`` in the
-    first year. Returns one :class:`CgtAllowanceResult` per year, keyed by
-    label.
+    earliest year with a disposal (or the UK residence-start year, when
+    ``arrival`` is given) through ``through_year`` inclusive (materialising
+    empty years so a year with only carried losses still appears), seeding
+    the loss pool with ``pre_ledger_losses`` in the first year. Returns one
+    :class:`CgtAllowanceResult` per year, keyed by label.
+
+    Residence: disposals before ``arrival`` (the non-resident part of a
+    split year) are not UK-taxable and are dropped. FIG: in a year in
+    ``fig_claim_years`` the foreign (non-UK-situs) gains are relieved and
+    their losses disallowed — only UK-situs disposals participate — and
+    the annual exempt amount is forfeited (forced to nil).
     """
 
-    cgt_rows = [r for r in rows if r.reporting_status in CGT_STATUSES]
+    cgt_rows = [
+        r
+        for r in rows
+        if r.reporting_status in CGT_STATUSES
+        and not is_pre_residence(r.disposal_date, arrival)
+    ]
     by_year: dict[str, list[Sa108Row]] = {}
     for r in cgt_rows:
         by_year.setdefault(date_to_tax_year(r.disposal_date), []).append(r)
 
-    start_label = min(by_year) if by_year else through_year
+    if arrival is not None:
+        start_label = residence_start_year(arrival)
+    else:
+        start_label = min(by_year) if by_year else through_year
     if int(through_year[:4]) < int(start_label[:4]):
         start_label = through_year
 
@@ -170,7 +190,14 @@ def loss_carryforward_chain(
     carried = pre_ledger_losses
     label = start_label
     while True:
-        year_rows = by_year.get(label, [])
+        fig_claimed = label in fig_claim_years
+        # In a FIG-claim year only UK-situs disposals are chargeable; the
+        # foreign ones are relieved (gains) / disallowed (losses).
+        year_rows = [
+            r
+            for r in by_year.get(label, [])
+            if not (fig_claimed and r.is_foreign)
+        ]
         rcd = rate_change_dates.get(label)
         rate_split = rcd is not None
         gains_pre = _ZERO
@@ -184,13 +211,15 @@ def loss_carryforward_chain(
             else:
                 gains_pre += r.gain_gbp
 
+        # A FIG claim forfeits the annual exempt amount for the year.
+        aea = _ZERO if fig_claimed else aea_by_year.get(label, _ZERO)
         result = apply_cgt_allowances(
             tax_year=label,
             gains_pre=gains_pre,
             gains_post=gains_post,
             current_year_losses=losses,
             brought_forward=carried,
-            annual_exempt_amount=aea_by_year.get(label, _ZERO),
+            annual_exempt_amount=aea,
             rate_split=rate_split,
         )
         results[label] = result

@@ -93,6 +93,15 @@ cautiously.
   disposals and income never reach SA108 / SA106 / the loss chain. See
   `TAX_EXEMPT_WRAPPERS` in `models.py`. Still open: a pension (SIPP)
   wrapper if one is ever added.
+- **Residence + 4-year FIG relief.** *(Shipped.)* `uk_residence_start_date`
+  drops pre-residence years (and the non-resident part of a split arrival
+  year); `fig_claim_years` relieves foreign income + non-UK gains for a
+  FIG-eligible year while forfeiting the PA + AEA. `tax-report` partitions
+  relieved foreign items onto `fig-designation.csv`; `tax-forecast`
+  computes the year with and without the claim and recommends the cheaper.
+  See `tax/uk/residence.py`. Out of scope: the 10-prior-non-resident
+  eligibility test, temporary-non-residence clawback, and former
+  remittance-basis transitional rebasing/TRF.
 - **Tax pack** — a single per-year Markdown/PDF summary tying the
   SA108/SA106 CSVs to actual HMRC box numbers.
 - **Rate-source coverage check** — warn when a disposal/dividend has

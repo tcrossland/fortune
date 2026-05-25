@@ -50,6 +50,11 @@ from banking_pipeline.tax.uk.cgt_allowance import (
 )
 from banking_pipeline.tax.uk.eri import EriResult, compute_eri, load_eri
 from banking_pipeline.tax.uk.liability import LiabilityResult, compute_liability
+from banking_pipeline.tax.uk.residence import (
+    fig_eligible_years,
+    ineligible_claims,
+    is_pre_residence_year,
+)
 from banking_pipeline.tax.uk.sa106 import Sa106Report, compute_sa106_dividends
 from banking_pipeline.tax.uk.sa108 import (
     Sa108Report,
@@ -1713,6 +1718,87 @@ def _write_cgt_carryforward_csv(
     return len(chain)
 
 
+def _partition_fig_relief(
+    sa108: Sa108Report, sa106: Sa106Report, eri: EriResult
+) -> tuple[
+    Sa108Report,
+    Sa106Report,
+    EriResult,
+    list[tuple[str, str, str, str, Decimal]],
+]:
+    """Split foreign (FIG-relievable) items out of the SA schedules.
+
+    Under a FIG claim, foreign income and non-UK gains move off SA108 /
+    SA106 onto the FIG designation pages. Returns the UK-only schedules to
+    file plus the relieved items as ``(category, country, isin, name,
+    gbp)`` rows for the designation CSV. SA106 income is foreign by
+    construction (UK income goes to SA100), so it's relieved in full.
+    """
+
+    uk_rows = [r for r in sa108.rows if not r.is_foreign]
+    uk_dds = [r for r in sa108.dds_disposals if not r.is_foreign]
+    sa108_uk = Sa108Report(
+        rows=uk_rows,
+        dds_disposals=uk_dds,
+        missing_rate_isins=sa108.missing_rate_isins,
+        unmatched_isins=sa108.unmatched_isins,
+    )
+    sa106_uk = Sa106Report(
+        dividends=[], interest=[], missing_rate_isins=sa106.missing_rate_isins
+    )
+    eri_uk = EriResult(
+        rows=[r for r in eri.rows if r.country == "GB"],
+        base_cost_adjustments=eri.base_cost_adjustments,
+        missing_rate_isins=eri.missing_rate_isins,
+    )
+
+    designation: list[tuple[str, str, str, str, Decimal]] = []
+    for d in sa106.dividends:
+        designation.append(
+            ("foreign dividend", d.country, d.isin, d.commodity_name, d.gross_gbp)
+        )
+    for i in sa106.interest:
+        designation.append(
+            ("foreign interest", i.country, i.isin, i.commodity_name, i.gross_gbp)
+        )
+    for e in eri.rows:
+        if e.country != "GB":
+            designation.append(
+                (f"ERI ({e.income_type})", e.country, e.isin,
+                 e.commodity_name, e.gross_gbp)
+            )
+    for r in sa108.rows:
+        if r.is_foreign:
+            category = (
+                "offshore income gain"
+                if r.reporting_status == "non-reporting"
+                else "capital gain"
+            )
+            designation.append(
+                (category, r.isin[:2], r.isin, r.commodity_name, r.gain_gbp)
+            )
+    for r in sa108.dds_disposals:
+        if r.is_foreign:
+            designation.append(
+                ("deep-discounted", r.isin[:2], r.isin, r.commodity_name, r.gain_gbp)
+            )
+    return sa108_uk, sa106_uk, eri_uk, designation
+
+
+def _write_fig_designation_csv(
+    path: Path, rows: list[tuple[str, str, str, str, Decimal]]
+) -> int:
+    """Write the foreign income / gains relieved under a FIG claim (the
+    amounts to declare on the FIG pages). Returns the row count."""
+
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["category", "country", "isin", "name", "amount_gbp"])
+        for category, country, isin, name, gbp in rows:
+            writer.writerow([category, country, isin, name, _money(gbp)])
+    return len(rows)
+
+
 def _write_tax_summary(
     path: Path,
     year: str,
@@ -1722,6 +1808,8 @@ def _write_tax_summary(
     allowance: CgtAllowanceResult,
     rate_change_date: date | None = None,
     aea_missing: bool = False,
+    fig_claimed: bool = False,
+    fig_relieved_total: Decimal | None = None,
 ) -> None:
     cgt = [r for r in sa108.rows if r.reporting_status in CGT_STATUSES]
     offshore = [r for r in sa108.rows if r.reporting_status == "non-reporting"]
@@ -1866,6 +1954,18 @@ def _write_tax_summary(
         for isin in missing:
             lines.append(f"  {isin}")
         lines.append("")
+    if fig_claimed:
+        total = fig_relieved_total if fig_relieved_total is not None else Decimal(0)
+        lines.append("Foreign Income & Gains (FIG) claim:")
+        lines.append(
+            f"  foreign income + non-UK gains relieved: {_money(total)} GBP "
+            "(see fig-designation.csv)"
+        )
+        lines.append(
+            "  the SA108 / SA106 figures above are UK-situs only; the "
+            "personal allowance and CGT annual exempt amount are forfeited."
+        )
+        lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -1947,6 +2047,22 @@ def tax_report(
     _configure_logging(verbose)
     tax_year_bounds(year)  # validate the label early
 
+    arrival = settings.uk_residence_start_date
+    fig_claim_years = settings.fig_claim_years
+    if is_pre_residence_year(year, arrival):
+        err_console.print(
+            f"{year} is before UK residence began ({arrival}); foreign income "
+            "and gains aren't UK-taxable while non-resident — nothing to report."
+        )
+        return
+    for bad in ineligible_claims(fig_claim_years, arrival):
+        err_console.print(
+            f"WARN FIG claim for {bad} is outside the eligible window "
+            f"{sorted(fig_eligible_years(arrival))}; relief still applied as "
+            "configured."
+        )
+    fig_claimed = year in fig_claim_years
+
     out_dir = out if out is not None else settings.tax_reports_dir / year
     cpath = commodities or settings.commodities_metadata_path
     commodities_map = (
@@ -1995,9 +2111,11 @@ def tax_report(
         rate_change_date=settings.cgt_rate_change_dates.get(year),
         opening_positions=opening,
         cost_adjustments=eri_result.base_cost_adjustments,
+        arrival=arrival,
     )
     sa106 = compute_sa106_dividends(
-        txns, tax_year_label=year, commodities=commodities_map, source=rates
+        txns, tax_year_label=year, commodities=commodities_map, source=rates,
+        arrival=arrival,
     )
 
     # CGT annual exempt amount + loss carry-forward: run the matcher over
@@ -2022,9 +2140,21 @@ def tax_report(
         aea_by_year=settings.cgt_annual_exempt_amount,
         rate_change_dates=settings.cgt_rate_change_dates,
         pre_ledger_losses=pre_ledger_losses,
+        arrival=arrival,
+        fig_claim_years=fig_claim_years,
     )
     allowance = chain[year]
     aea_missing = year not in settings.cgt_annual_exempt_amount
+
+    # Under a FIG claim, foreign income and non-UK gains move off the SA
+    # schedules onto the FIG designation pages; only UK-situs items remain.
+    designation: list[tuple[str, str, str, str, Decimal]] = []
+    fig_relieved_total: Decimal | None = None
+    if fig_claimed:
+        sa108, sa106, eri_result, designation = _partition_fig_relief(
+            sa108, sa106, eri_result
+        )
+        fig_relieved_total = sum((row[4] for row in designation), Decimal(0))
 
     out_dir.mkdir(parents=True, exist_ok=True)
     n_cgt = _write_sa108_csv(out_dir / "sa108-disposals.csv", sa108)
@@ -2038,18 +2168,25 @@ def tax_report(
     )
     n_eri = _write_eri_csv(out_dir / "sa106-eri.csv", eri_result)
     _write_cgt_carryforward_csv(out_dir / "cgt-loss-carryforward.csv", chain)
+    if fig_claimed:
+        _write_fig_designation_csv(out_dir / "fig-designation.csv", designation)
     _write_tax_summary(
         out_dir / "summary.txt", year, sa108, sa106, eri_result, allowance,
         rate_change_date=settings.cgt_rate_change_dates.get(year),
         aea_missing=aea_missing,
+        fig_claimed=fig_claimed,
+        fig_relieved_total=fig_relieved_total,
     )
 
+    fig_note = (
+        f", {len(designation)} FIG-relieved item(s)" if fig_claimed else ""
+    )
     err_console.print(
         f"Wrote tax report for {year} to {out_dir} "
         f"({n_cgt} SA108 disposal(s), {n_div} SA106 dividend group(s), "
         f"{n_int} SA106 interest group(s), "
         f"{n_oig} offshore income gain(s), {n_dds} deep-discounted disposal(s), "
-        f"{n_eri} ERI group(s))"
+        f"{n_eri} ERI group(s){fig_note})"
     )
 
 
@@ -2093,7 +2230,12 @@ def _write_forecast_csv(path: Path, liab: LiabilityResult) -> None:
 
 
 def _write_forecast_summary(
-    path: Path, liab: LiabilityResult, *, as_of: date
+    path: Path,
+    liab: LiabilityResult,
+    *,
+    as_of: date,
+    alt: LiabilityResult | None = None,
+    recommendation: str | None = None,
 ) -> None:
     m = _money
     lines = [
@@ -2108,6 +2250,12 @@ def _write_forecast_summary(
         lines.append(
             "  income-charged investment profit (offshore / deep-discounted): "
             f"{m(liab.other_taxable_income)} GBP"
+        )
+    if liab.fig_claimed:
+        lines.append(
+            "  FIG claim: foreign income + non-UK gains relieved "
+            f"({m(liab.relieved_income)} GBP income relieved; personal "
+            "allowance and CGT annual exempt amount forfeited)"
         )
     lines += [
         f"  personal allowance (after taper): {m(liab.personal_allowance)} GBP",
@@ -2137,6 +2285,20 @@ def _write_forecast_summary(
         f"  capital gains tax: {m(liab.cgt_tax)} GBP",
         "",
         f"ESTIMATED TOTAL LIABILITY: {m(liab.total_liability)} GBP",
+    ]
+    if alt is not None and recommendation is not None:
+        claim = liab if liab.fig_claimed else alt
+        noclaim = alt if liab.fig_claimed else liab
+        saving = abs(claim.total_liability - noclaim.total_liability)
+        lines += [
+            "",
+            "FIG claim decision (this year is FIG-eligible):",
+            f"  with claim:    {m(claim.total_liability)} GBP",
+            f"  without claim: {m(noclaim.total_liability)} GBP",
+            f"  RECOMMENDED: {recommendation} (saves {m(saving)} GBP) — the "
+            "claim is elective; set fig_claim_years to apply it.",
+        ]
+    lines += [
         "",
         "Assumes England/Wales/NI rates and a single taxpayer; excludes "
         "PAYE/payments already made, pension/gift-aid relief, and the "
@@ -2215,6 +2377,20 @@ def tax_forecast(
     year = year or date_to_tax_year(today)
     tax_year_bounds(year)  # validate the label early
 
+    arrival = settings.uk_residence_start_date
+    if is_pre_residence_year(year, arrival):
+        err_console.print(
+            f"{year} is before UK residence began ({arrival}); no UK liability "
+            "while non-resident — nothing to forecast."
+        )
+        return
+    for bad in ineligible_claims(settings.fig_claim_years, arrival):
+        err_console.print(
+            f"WARN FIG claim for {bad} is outside the eligible window "
+            f"{sorted(fig_eligible_years(arrival))}; relief still applied as "
+            "configured."
+        )
+
     try:
         expected_income = Decimal(income)
     except (ArithmeticError, ValueError):
@@ -2269,9 +2445,11 @@ def tax_forecast(
         txns, tax_year_label=year, commodities=commodities_map, source=rates,
         rate_change_date=settings.cgt_rate_change_dates.get(year),
         opening_positions=opening, cost_adjustments=eri_result.base_cost_adjustments,
+        arrival=arrival,
     )
     sa106 = compute_sa106_dividends(
-        txns, tax_year_label=year, commodities=commodities_map, source=rates
+        txns, tax_year_label=year, commodities=commodities_map, source=rates,
+        arrival=arrival,
     )
     history = match_history(
         txns, commodities=commodities_map, source=rates,
@@ -2283,20 +2461,14 @@ def tax_forecast(
         if losses_path is not None and losses_path.is_file()
         else Decimal(0)
     )
-    chain = loss_carryforward_chain(
-        history.rows, through_year=year,
-        aea_by_year=settings.cgt_annual_exempt_amount,
-        rate_change_dates=settings.cgt_rate_change_dates,
-        pre_ledger_losses=pre_ledger_losses,
-    )
-    allowance = chain[year]
 
-    # Income-charged investment profit: offshore income gains + deeply
-    # discounted securities, both taxed as income alongside ``--income``.
+    # Income-charged investment profit (offshore income gains + deeply
+    # discounted securities), split by situs: the foreign portion is
+    # relieved under a FIG claim, the UK portion is always taxed.
     offshore = [r for r in sa108.rows if r.reporting_status == "non-reporting"]
-    other_taxable_income = _positive_gains(offshore) + _positive_gains(
-        sa108.dds_disposals
-    )
+    income_gain_rows = offshore + sa108.dds_disposals
+    foreign_other = _positive_gains([r for r in income_gain_rows if r.is_foreign])
+    uk_other = _positive_gains([r for r in income_gain_rows if not r.is_foreign])
     eri_div = sum(
         (r.gross_gbp for r in eri_result.rows if r.income_type == "dividend"),
         Decimal(0),
@@ -2310,28 +2482,64 @@ def tax_forecast(
     interest_income = sum((r.gross_gbp for r in sa106.interest), Decimal(0)) + eri_int
     interest_wht = sum((r.wht_gbp for r in sa106.interest), Decimal(0))
 
-    liab = compute_liability(
-        tax_year=year,
-        other_income=expected_income,
-        other_taxable_income=other_taxable_income,
-        interest_income=interest_income,
-        interest_wht=interest_wht,
-        dividend_income=dividend_income,
-        dividend_wht=dividend_wht,
-        cgt_taxable_pre=allowance.taxable_pre,
-        cgt_taxable_post=allowance.taxable_post,
-        bands=bands,
-        cgt_rates=cgt_rates,
-    )
+    def _run_scenario(claim_this_year: bool) -> LiabilityResult:
+        years = (
+            settings.fig_claim_years | {year}
+            if claim_this_year
+            else settings.fig_claim_years - {year}
+        )
+        chain = loss_carryforward_chain(
+            history.rows, through_year=year,
+            aea_by_year=settings.cgt_annual_exempt_amount,
+            rate_change_dates=settings.cgt_rate_change_dates,
+            pre_ledger_losses=pre_ledger_losses,
+            arrival=arrival, fig_claim_years=years,
+        )
+        allowance = chain[year]
+        return compute_liability(
+            tax_year=year,
+            other_income=expected_income,
+            other_taxable_income=uk_other,
+            foreign_other_income=foreign_other,
+            interest_income=interest_income,
+            interest_wht=interest_wht,
+            dividend_income=dividend_income,
+            dividend_wht=dividend_wht,
+            cgt_taxable_pre=allowance.taxable_pre,
+            cgt_taxable_post=allowance.taxable_post,
+            bands=bands,
+            cgt_rates=cgt_rates,
+            fig_claimed=claim_this_year,
+        )
+
+    # When the year is FIG-eligible, the claim is elective — compute both
+    # ways and recommend the cheaper. Otherwise honour the configured
+    # claim set (normally no claim).
+    eligible = year in fig_eligible_years(arrival)
+    alt: LiabilityResult | None = None
+    recommendation: str | None = None
+    if eligible:
+        no_claim = _run_scenario(False)
+        with_claim = _run_scenario(True)
+        if with_claim.total_liability < no_claim.total_liability:
+            liab, alt, recommendation = with_claim, no_claim, "claim"
+        else:
+            liab, alt, recommendation = no_claim, with_claim, "no claim"
+    else:
+        liab = _run_scenario(year in settings.fig_claim_years)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     as_of = today if date_to_tax_year(today) == year else tax_year_bounds(year)[1]
-    _write_forecast_summary(out_dir / "forecast-summary.txt", liab, as_of=as_of)
+    _write_forecast_summary(
+        out_dir / "forecast-summary.txt", liab, as_of=as_of,
+        alt=alt, recommendation=recommendation,
+    )
     _write_forecast_csv(out_dir / "forecast.csv", liab)
 
+    rec = f"; recommended: {recommendation}" if recommendation else ""
     err_console.print(
         f"Wrote tax-liability forecast for {year} to {out_dir} "
-        f"(estimated total {_money(liab.total_liability)} GBP)"
+        f"(estimated total {_money(liab.total_liability)} GBP{rec})"
     )
 
 

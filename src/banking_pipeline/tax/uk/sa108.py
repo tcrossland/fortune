@@ -24,6 +24,7 @@ from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.models import Transaction
 from banking_pipeline.opening_positions import OpeningLot
 from banking_pipeline.tax.uk.currency import to_gbp
+from banking_pipeline.tax.uk.residence import gain_is_foreign, is_pre_residence
 from banking_pipeline.tax.uk.section_104 import (
     Acquisition,
     Disposal,
@@ -58,6 +59,10 @@ class Sa108Row:
     # CGT rate-change bucket: ``"pre"`` / ``"post"`` relative to the tax
     # year's rate-change date, or ``""`` when the year has no split.
     period: str = ""
+    # Whether the disposed asset is non-UK-situs, hence its gain is
+    # relievable under a 4-year FIG claim. Derived from the commodity's
+    # ``resolved_uk_situs``; ``False`` (UK / unknown) means no relief.
+    is_foreign: bool = False
 
 
 @dataclass
@@ -184,6 +189,7 @@ def match_history(
         meta = commodities.get(isin)
         status = meta.reporting_status if meta is not None else "unknown"
         name = meta.name if meta is not None else ""
+        foreign = gain_is_foreign(meta)
         # Deeply discounted securities are taxed as income, not CGT, so
         # their disposals leave the CGT rows entirely.
         target = dds if (meta is not None and meta.deeply_discounted) else rows
@@ -208,6 +214,7 @@ def match_history(
                     gain_gbp=m.gain_gbp,
                     match_type=m.matched_against,
                     acquisition_dates=acq_dates,
+                    is_foreign=foreign,
                 )
             )
 
@@ -232,6 +239,7 @@ def compute_sa108(
     rate_change_date: date | None = None,
     opening_positions: dict[str, list[OpeningLot]] | None = None,
     cost_adjustments: dict[str, list[PoolCostAdjustment]] | None = None,
+    arrival: date | None = None,
 ) -> Sa108Report:
     """Compute SA108 disposal rows for ``tax_year_label``.
 
@@ -241,7 +249,9 @@ def compute_sa108(
     extractor didn't already stamp with ``gbp_rate``. ``rate_change_date``
     (the year's mid-year CGT rate change, e.g. 2024-10-30 for 2024-25)
     tags each row's ``period`` so disposals can be split before / on-or-
-    after it; ``None`` leaves ``period`` empty.
+    after it; ``None`` leaves ``period`` empty. ``arrival`` (the UK
+    residence start date) drops disposals in the non-resident part of a
+    split arrival year — they're not UK-taxable.
     """
 
     start, end = tax_year_bounds(tax_year_label)
@@ -258,6 +268,7 @@ def compute_sa108(
             replace(r, period=_period(r.disposal_date, rate_change_date))
             for r in rows
             if start <= r.disposal_date <= end
+            and not is_pre_residence(r.disposal_date, arrival)
         ]
 
     return Sa108Report(
