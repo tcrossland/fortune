@@ -101,6 +101,7 @@ from banking_pipeline.templates.pictet.reembolso_final import (
 )
 from banking_pipeline.templates.pictet.sell_bonds import PictetSellBondsTemplate
 from banking_pipeline.templates.pictet.sell_etf import PictetSellEtfTemplate
+from banking_pipeline.templates.pictet.sell_shares import PictetSellSharesTemplate
 from banking_pipeline.templates.pictet.sell_structured_products import (
     PictetSellStructuredProductsTemplate,
 )
@@ -164,6 +165,7 @@ PICTET_TEMPLATES: tuple[Template, ...] = (
     PictetReembolsoFinalTemplate(),
     PictetSellBondsTemplate(),
     PictetSellEtfTemplate(),
+    PictetSellSharesTemplate(),
     PictetSellStructuredProductsTemplate(),
     PictetSettleFxForwardTemplate(),
     PictetSpotTemplate(),
@@ -209,6 +211,7 @@ __all__ = [
     "PictetReembolsoFinalTemplate",
     "PictetSellBondsTemplate",
     "PictetSellEtfTemplate",
+    "PictetSellSharesTemplate",
     "PictetSellStructuredProductsTemplate",
     "PictetSettleFxForwardTemplate",
     "PictetSpotTemplate",

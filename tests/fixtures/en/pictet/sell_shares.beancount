@@ -1,0 +1,6 @@
+2025-11-28 * "Sell Shares" "Sell 1'195 NOVO NORDISK 'B' at DKK 317.5877825"
+  Assets:Pic:P123456002:DKK                       375728.30 DKK
+  Expenses:Pic:P123456002:Fees:DKK                  3789.10 DKK
+  Assets:Pic:P123456002:DK0062498333                  -1195 DK0062498333 {} @ 317.5877825 DKK
+  Income:Pic:P123456002:DK0062498333:Realized
+  no: 1141960481

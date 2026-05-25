@@ -58,6 +58,15 @@ class DocumentType(StrEnum):
     # quantity and price are unit-count and trade-currency, so the
     # shared trade-advice helper handles parsing.
     SELL_ETF = "sell_etf"
+    # Direct equity sale advice — the sell counterpart to ``BUY_SHARES``.
+    # Pictet emits it under ``SECURITY / Sell Shares`` with ``Asset type
+    # Equities`` and ``Operation type Sell`` (note: ``Sell``, not the
+    # fund-redemption ``Sale``). Same single-CASH-EFFECT skeleton as the
+    # buy advice — ``Executed quantity`` printed negative, proceeds in —
+    # so the shared trade-advice helper parses it. Without this value
+    # equity sells mis-route to ``REDEMPTION_NOTICE``, whose template
+    # rejects the ``Sell`` operation type and drops the transaction.
+    SELL_SHARES = "sell_shares"
     # Bond sale advice — Pictet emits this under ``SECURITY / Sell bonds``
     # when a held bond is sold before maturity. Distinct from
     # ``REDEMPTION_NOTICE`` (fund redemption) and ``FINAL_REDEMPTION`` (bond

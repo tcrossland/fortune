@@ -46,6 +46,7 @@ SECURITY_SELL_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.REEMBOLSO_FINAL,
     DocumentType.SELL_BONDS,
     DocumentType.SELL_ETF,
+    DocumentType.SELL_SHARES,
     DocumentType.SELL_STRUCTURED_PRODUCTS,
     DocumentType.SWITCH_SALIDA,
     DocumentType.VENTA,

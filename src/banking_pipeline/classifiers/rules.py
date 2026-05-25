@@ -252,6 +252,27 @@ PICTET_EN_RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
+        doc_type=DocumentType.SELL_SHARES,
+        template_id="pictet.sell_shares.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Title — "Sell Shares". Sell counterpart to "Buy Shares";
+            # unique to direct-equity sales among the sell family.
+            re.compile(r"\bSell\s+Shares\b", re.I),
+            # Asset classification — the load-bearing discriminator from
+            # SELL_ETF / SELL_STRUCTURED_PRODUCTS (own asset-type banners)
+            # and from REDEMPTION_NOTICE (fund-shaped asset type). Without
+            # it an equity sell scores highest on REDEMPTION_NOTICE, whose
+            # template then rejects the ``Sell`` operation type.
+            re.compile(r"\bAsset\s+type\s+Equities\b", re.I),
+            # ``Sell`` (not the fund-redemption ``Sale``) is the equity
+            # operation vocabulary, shared with SELL_ETF.
+            re.compile(r"\bOperation\s+type\s+Sell\b", re.I),
+            re.compile(r"\bExecuted\s+quantity\b", re.I),
+            re.compile(r"\bExecution\s+price\b", re.I),
+        ),
+    ),
+    Rule(
         doc_type=DocumentType.SELL_STRUCTURED_PRODUCTS,
         template_id="pictet.sell_structured_products.v1",
         bank=BankId.PICTET,
