@@ -1,0 +1,4 @@
+#!/bin/sh
+# PII guard — see scripts/check_pii.py. Install once with:
+#   git config core.hooksPath scripts/git-hooks
+exec python3 "$(git rev-parse --show-toplevel)/scripts/check_pii.py"

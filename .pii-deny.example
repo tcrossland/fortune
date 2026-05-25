@@ -1,0 +1,13 @@
+# Optional hard-block list for the pre-commit PII guard (scripts/check_pii.py).
+#
+# Copy to ``.pii-deny`` (git-ignored) and add one Python regex per line for
+# exact literals you never want committed — a real surname, a specific NI
+# number, a real IBAN, a real balance. Keeping them here (not in the
+# committed guard) means the secrets themselves never enter the repo.
+#
+# Blank lines and lines starting with # are ignored. Examples (replace with
+# your own real values in the git-ignored copy):
+#
+#   (?i)\bsmith\b
+#   \bGB00[A-Z0-9]{8}\b
+#   \b57909\.10\b

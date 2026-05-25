@@ -290,6 +290,29 @@ suites in `test_pictet_fixtures.py` and `test_language.py` pick up
 the new fixture automatically and assert each stage clears
 `rule_confidence_threshold`.
 
+## Anonymisation and the PII guard
+
+Fixtures are scrubbed of **personal identifiers** before they're
+committed — the name, NI number, DOB, home address, and IBANs are
+replaced; security names and trade amounts are kept (they're needed
+for meaningful goldens and aren't identity PII). Account numbers use a
+**dummy placeholder**: the Pictet portfolio body is `999999` (most EN
+fixtures), `123456` (ES fixtures + buy/sell-shares), or `000000`
+(numbers-only test inputs) — never the real account number; the
+Vanguard ISA account is `VG0000000`, never the real value; the NI
+placeholder is `AB123456C`. When you add a fixture from a real PDF, scrub it to one of
+these forms (mirror an existing sibling).
+
+`scripts/check_pii.py` enforces this as a **pre-commit guard** (install
+once: `git config core.hooksPath scripts/git-hooks`). It blocks a commit
+whose staged content carries a Pictet/Vanguard account that isn't an
+allow-listed placeholder, a UK-NI-shaped string, or any regex in a
+local git-ignored `.pii-deny` (template: `.pii-deny.example`). The guard
+allow-lists placeholders rather than embedding real values, so it never
+leaks anything itself; `python3 scripts/check_pii.py --all` audits the
+whole tracked tree. Don't put real account numbers in docstrings or test
+inputs — use a placeholder, or the guard will (correctly) reject them.
+
 ## Strict-mode dispatch (the failure-mode worth knowing)
 
 `HybridExtractor` has a non-obvious dispatch when a registered

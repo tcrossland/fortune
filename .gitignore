@@ -58,3 +58,6 @@ wheels/
 .venv
 
 .claude
+
+# Local PII hard-block list for the pre-commit guard (scripts/check_pii.py)
+.pii-deny
