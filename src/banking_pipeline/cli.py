@@ -1967,7 +1967,12 @@ def tax_report(
         else {}
     )
 
-    txns = _load_sidecar_transactions(source)
+    # Single choke point for tax exemption: drop every transaction sitting
+    # in a tax-sheltered wrapper (an ISA today — see TAX_EXEMPT_WRAPPERS)
+    # before any CGT / dividend / interest / ERI computation. An ISA's
+    # disposals and income are tax-free, so they must never reach SA108 /
+    # SA106 or the loss-carry-forward chain.
+    txns = [tx for tx in _load_sidecar_transactions(source) if not tx.is_tax_exempt]
     eri_result = compute_eri(
         txns,
         tax_year_label=year,

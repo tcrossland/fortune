@@ -62,6 +62,15 @@ _BESPOKE_FIXTURES: frozenset[str] = frozenset({
     # rejects). The dedicated test substitutes ``30.06.2026`` before
     # extraction — see tests/templates/test_pictet_pago_interna_golden.py.
     "es/pictet/pago_interna",
+    # Vanguard contract notes and the regular statement each extract
+    # several transactions (a note buys/sells more than one fund; a
+    # statement carries a deposit plus monthly interest), so the
+    # one-transaction collector can't render them. Covered by
+    # tests/templates/test_vanguard_golden.py, which renders every
+    # extracted entry and diffs the multi-entry golden.
+    "en/vanguard_uk/vanguard_contract_note_buy",
+    "en/vanguard_uk/vanguard_contract_note_sell",
+    "en/vanguard_uk/vanguard_regular_statement",
 })
 
 

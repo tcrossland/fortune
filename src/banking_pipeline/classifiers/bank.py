@@ -94,6 +94,32 @@ BANK_RULES: tuple[BankRule, ...] = (
             re.compile(r"\b[A-Z]-\d{6}\.\d{3}\b"),
         ),
     ),
+    # Vanguard UK (personal-investor / ISA platform). Like the Pictet
+    # ruleset above, the patterns are independent signatures —
+    # letterhead, legal entity, FCA registration number, registered
+    # office, web domain, sign-off, and the ``VG\d{7}`` account format —
+    # so a single document picks up several and the hit-count scoring
+    # clears the threshold without the LLM.
+    BankRule(
+        bank=BankId.VANGUARD_UK,
+        patterns=(
+            # --- Name / legal-entity identity -----------------------------
+            re.compile(r"\bVanguard\s+Asset\s+Management\b", re.I),
+            re.compile(r"\bThe\s+Vanguard\s+Team\b", re.I),
+            # --- FCA registration number (stable across every advice) -----
+            re.compile(r"\bReg\s+No\.?\s+07243412\b"),
+            # --- Registered office / Edinburgh correspondence address -----
+            re.compile(r"\b25\s+Walbrook\b", re.I),
+            re.compile(r"\b1\s+Tanfield\b", re.I),
+            # --- Web / contact domain -------------------------------------
+            re.compile(r"\bvanguardinvestor\.co\.uk\b", re.I),
+            re.compile(r"\bpersonalinvestors@vanguard\.co\.uk\b", re.I),
+            # --- Account format -------------------------------------------
+            # Vanguard prints the platform account as ``VG`` + 7 digits
+            # (``VG0000000``) on every advice header.
+            re.compile(r"\bVG\d{7}\b"),
+        ),
+    ),
 )
 
 

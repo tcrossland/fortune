@@ -11,9 +11,17 @@ the README for every session.
 correspondence (PDFs and one Revolut-CSV side path), classifies each
 document by language → bank → doctype, extracts the fields that matter
 for accounting, and emits [beancount](https://beancount.github.io/)
-entries. It is single-user, designed around Pictet's Luxembourg and
-Madrid templates today, but structured so adding a new bank is a
-data-only change (new fixtures + new ruleset + new template package).
+entries. It is single-user, built around Pictet's Luxembourg and Madrid
+templates plus a Vanguard UK Stocks & Shares ISA, and structured so
+adding a new bank is a data-only change (new fixtures + new ruleset +
+new template package).
+
+The Vanguard ISA is a **tax-free wrapper**: its holdings carry
+`account_wrapper="isa"` on each `Transaction`, the `tax-report` stage
+drops every wrapped transaction before any CGT / dividend / interest
+computation (see the UK-tax section), and its beancount accounts live
+under a dedicated `…:Vgd:ISA:…` subtree (the Vanguard writer profile's
+`account_prefix` is the two-segment `Vgd:ISA`).
 
 The pipeline never imports `beancount` itself (GPL-2.0) — output is
 plain text. Validation shells out to the `bean-check` binary.
@@ -90,7 +98,9 @@ src/banking_pipeline/
 ├── pipeline.py         Top-level Pipeline orchestration
 ├── models.py           Domain models — DocumentType, BankId, Language,
 │                         RawDocument, Classification, Transaction,
-│                         FeeItem, ExtractionResult, NO_OUTPUT_DOCTYPES
+│                         FeeItem, ExtractionResult, NO_OUTPUT_DOCTYPES,
+│                         TAX_EXEMPT_WRAPPERS (+ Transaction.account_wrapper
+│                         / .is_tax_exempt — the ISA tax-shelter flag)
 ├── config.py           Pydantic settings (env_prefix=BANKPIPE_)
 ├── batch_config.py     `banking-pipeline.toml` schema for `rebuild`
 ├── bean_check.py       Shells out to the bean-check binary
@@ -160,12 +170,20 @@ src/banking_pipeline/
 │                            (data/eri.toml → income + base-cost uplift)
 ├── templates/
 │   ├── __init__.py       TEMPLATE_REGISTRY (populated at import)
-│   └── pictet/           ~40 per-doctype templates (EN + ES locales)
+│   ├── pictet/           ~40 per-doctype templates (EN + ES locales)
+│   └── vanguard_uk/      ISA templates — contract_note_buy/sell,
+│                           regular_statement (deposit + interest only),
+│                           direct_debit_details (account fee); NoOpTemplate
+│                           for the paper-only doctypes. Ticker is the
+│                           commodity (resolve_ticker maps fund name →
+│                           ticker since sell notes omit it inconsistently)
 ├── writer/
 │   ├── dispatch.py       Doctype → builder routing, render()/render_all()
 │   ├── format.py         Amount/posting/account-name primitives
-│   ├── profile.py        Per-bank writer config (account_prefix, …)
-│   └── builders/         One module per render shape
+│   ├── profile.py        Per-bank writer config (account_prefix, …;
+│   │                       Pictet → `Pic`, Vanguard → `Vgd:ISA`)
+│   └── builders/         One module per render shape (incl. vanguard.py:
+│                           ISA deposit/interest + account fee)
 └── revolut/              CSV import side path (separate from PDF flow)
 ```
 
@@ -287,7 +305,14 @@ of `[post.reconcile] strict`.
 
 - Account paths are `Assets:<prefix>:<portfolio>:<currency>` for cash
   legs and `Assets:<prefix>:<portfolio>:<ISIN>` for security holdings.
-  `<prefix>` comes from `writer/profile.py` (Pictet → `Pic`).
+  `<prefix>` comes from `writer/profile.py` (Pictet → `Pic`). Vanguard's
+  prefix is the **two-segment** `Vgd:ISA`, which is what puts every ISA
+  account under the dedicated `…:Vgd:ISA:…` subtree — the prefix is a
+  plain string, so a multi-segment value just works everywhere it's
+  interpolated. Vanguard ISA holdings key on the fund **ticker**
+  (`VMIG`, `VGVA`) as the commodity, not an ISIN (the buy contract notes
+  print no ISIN); contributions post against `Equity:Vgd:ISA:Contributions`
+  and the account fee against `Expenses:Vgd:ISA:Fees`.
 - Portfolio identifiers are sanitised through `portfolio_segment` —
   Pictet prints `K-123456.001`; beancount segments don't allow `-` or
   `.`, so it becomes `K123456001`.
@@ -327,6 +352,16 @@ and reads the JSONL sidecars, not the ledger:
   is the **load-bearing** substrate `tax-report` consumes — never
   re-parse beancount text for tax math. `dump-transactions <pdf>`
   prints the same JSONL to stdout for ad-hoc inspection.
+- **Tax-free wrappers (ISA):** every `Transaction` carries an optional
+  `account_wrapper` (`"isa"` for the Vanguard ISA, set by the template);
+  `Transaction.is_tax_exempt` is true when it's in `TAX_EXEMPT_WRAPPERS`.
+  The `tax-report` CLI filters `[tx for tx … if not tx.is_tax_exempt]`
+  immediately after loading the sidecars, **before** any `compute_*` /
+  `match_history` call — a single choke point, so an ISA's disposals
+  and income never reach SA108 / SA106 / the loss-carry-forward chain.
+  Don't add per-report wrapper filters; keep the one choke point. (The
+  sidecar schema is `…/v3` for this additive field; a v2 sidecar still
+  loads, `account_wrapper` defaulting to `None`.)
 - GBP cost basis is carried as posting **metadata** (`gbp-rate`,
   `trade-date`) and as the structured `Transaction.gbp_rate` in
   the sidecar. All section 104 / same-day / 30-day matching

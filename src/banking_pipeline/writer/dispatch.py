@@ -40,6 +40,8 @@ from banking_pipeline.writer.builders import (
     render_switch_trade,
     render_third_party_payment,
     render_transfer_in,
+    render_vanguard_account_fee,
+    render_vanguard_statement,
 )
 from banking_pipeline.writer.builders.bond_trade import BOND_TRADE_TYPES
 from banking_pipeline.writer.builders.dividend import DIVIDEND_TYPES
@@ -58,6 +60,10 @@ from banking_pipeline.writer.builders.security_trade import (
 )
 from banking_pipeline.writer.builders.switch_trade import SWITCH_TYPES
 from banking_pipeline.writer.builders.transfer_in import TRANSFER_IN_TYPES
+from banking_pipeline.writer.builders.vanguard import (
+    VANGUARD_FEE_TYPES,
+    VANGUARD_STATEMENT_TYPES,
+)
 from banking_pipeline.writer.format import (
     bank_prefix,
     portfolio_segment,
@@ -402,6 +408,8 @@ _DISPATCH_TABLE: tuple[tuple[frozenset[DocumentType], Builder], ...] = (
     (INTEREST_TYPES, render_interest),
     (_DISPATCH_SECURITY_TRADE_TYPES, render_security_trade),
     (LIMIT_EXTENSION_TYPES, render_limit_extension),
+    (VANGUARD_STATEMENT_TYPES, render_vanguard_statement),
+    (VANGUARD_FEE_TYPES, render_vanguard_account_fee),
 )
 
 

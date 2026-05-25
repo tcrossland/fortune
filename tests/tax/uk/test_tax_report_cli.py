@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 
 from banking_pipeline import cli
 from banking_pipeline.models import DocumentType, Transaction
-from banking_pipeline.transaction_sidecar import dump_transactions
+from banking_pipeline.transaction_sidecar import dump_transactions, load_transactions
 
 
 def _tx(**kw: object) -> Transaction:
@@ -148,3 +148,43 @@ def test_tax_report_end_to_end(tmp_path: Path) -> None:
     assert cf[0]["taxable_total"] == "0.00"
     assert cf[0]["annual_exempt_amount"] == "3000.00"
     assert cf[0]["losses_carried_forward"] == "0.00"
+
+
+def test_isa_wrapped_transactions_excluded_from_tax_report(tmp_path: Path) -> None:
+    """An ISA (``account_wrapper="isa"``) is tax-free: its disposals must
+    not reach SA108 and its dividends must not reach SA106. Same ledger as
+    the end-to-end test, but every transaction is ISA-wrapped, so every
+    report comes back empty."""
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _build_ledger(data_dir)
+
+    # Re-stamp the synthetic ledger as ISA-held and rewrite the sidecar.
+    isa_txns = [
+        tx.model_copy(update={"account_wrapper": "isa"})
+        for tx in load_transactions(data_dir / "2025.transactions.jsonl")
+    ]
+    dump_transactions(isa_txns, data_dir / "2025.transactions.jsonl")
+
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text(_COMMODITIES, encoding="utf-8")
+    out_dir = tmp_path / "report"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.app,
+        [
+            "tax-report",
+            "--year", "2025-26",
+            "--source", str(data_dir),
+            "--out", str(out_dir),
+            "--commodities", str(commodities),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    # Nothing sheltered should surface on any schedule.
+    assert _read_csv(out_dir / "sa108-disposals.csv") == []
+    assert _read_csv(out_dir / "sa106-dividends.csv") == []
+    assert _read_csv(out_dir / "sa106-offshore-income-gains.csv") == []

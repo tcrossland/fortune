@@ -1,0 +1,15 @@
+2025-02-13 * "Regular statement" "Deposit for Investment Purchases"
+  Assets:Vgd:ISA:VG0000000:GBP                      1000.00 GBP
+  Equity:Vgd:ISA:Contributions                     -1000.00 GBP
+
+2025-03-01 * "Regular statement" "Cash Account Interest"
+  Assets:Vgd:ISA:VG0000000:GBP                         0.19 GBP
+  Income:Vgd:ISA:VG0000000:Interest:GBP               -0.19 GBP
+
+2025-04-01 * "Regular statement" "Cash Account Interest"
+  Assets:Vgd:ISA:VG0000000:GBP                         0.03 GBP
+  Income:Vgd:ISA:VG0000000:Interest:GBP               -0.03 GBP
+
+2025-05-01 * "Regular statement" "Cash Account Interest"
+  Assets:Vgd:ISA:VG0000000:GBP                         0.03 GBP
+  Income:Vgd:ISA:VG0000000:Interest:GBP               -0.03 GBP

@@ -46,8 +46,9 @@ def _populate_registry() -> None:
     """
 
     from banking_pipeline.templates.pictet import PICTET_TEMPLATES
+    from banking_pipeline.templates.vanguard_uk import VANGUARD_UK_TEMPLATES
 
-    for template in PICTET_TEMPLATES:
+    for template in (*PICTET_TEMPLATES, *VANGUARD_UK_TEMPLATES):
         TEMPLATE_REGISTRY[template.template_id] = template
 
 

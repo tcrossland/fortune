@@ -1,0 +1,76 @@
+How to contact us
+w: www.vanguardinvestor.co.uk
+e: personalinvestors@vanguard.co.uk
+✉ Vanguard
+PO Box 24095
+1 Tanfield
+EDINBURGH
+EH3 1FS
+You can also contact us via
+the secure messaging facility
+available within your online
+account.
+11 August 2025
+Contract note
+Mr T User
+1 Example Street
+Anytown
+Exampleshire
+Exampletown
+EX1 1AA
+Issued by Vanguard Asset Management, Limited (Reg No. 07243412). Vanguard Asset Management, Limited is authorised and regulated
+in the UK by the Financial Conduct Authority. The company is registered in England and Wales, registered office: 4th Floor, The Walbrook
+Building, 25 Walbrook, London, EC4N 8AF.
+Client name: Test User
+Account number: VG0000000
+Dear Mr User
+This document is a confirmation of the investment transaction(s) we processed on
+your behalf.
+If you have questions about any of the details, please get in touch with personal
+investor services.
+Yours sincerely,
+The Vanguard Team
+
+Test User
+Account number: VG0000000
+Page 2 of 3
+ISA - sell transaction details
+We have sold these shares following your instruction.
+Shares - FTSE 250 UCITS ETF - Accumulating
+(VMIG)
+Securities trader name: Winterfloods
+Security identification number
+(ISIN): IE00BFMXVQ44
+Exchange Rate: £1.00
+Currency: GBP
+Deal venue:
+Type of order: Market Order
+Deal reference: EVANG25HF5097553
+Order date and time: 9 Aug 2025 13:38:16
+Transaction date and time: 11 Aug 2025 10:18:26.857
+Shares price: £39.943800
+Number of shares sold: 13.00
+Gross proceeds
+(before transaction charges): £519.27
+Net proceeds: £519.27
+We have sold these shares following your instruction.
+Shares - U.K. Gilt UCITS ETF - Accumulating
+Securities trader name: Winterfloods
+Security identification number
+(ISIN): IE00BH04GW44
+Exchange Rate: £1.00
+Currency: GBP
+Deal venue:
+Type of order: Market Order
+Deal reference: EVANG25HF5102321
+Order date and time: 9 Aug 2025 13:38:16
+Transaction date and time: 11 Aug 2025 10:20:19.220
+Shares price: £20.166600
+Number of shares sold: 25.00
+Gross proceeds £504.17
+
+Test User
+Account number: VG0000000
+Page 3 of 3
+(before transaction charges):
+Net proceeds: £504.17

@@ -1137,16 +1137,118 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
 PICTET_RULES: tuple[Rule, ...] = PICTET_EN_RULES + PICTET_ES_RULES
 
 
+# Vanguard UK (Stocks & Shares ISA). English-only. Each rule carries three
+# stable, mutually-distinguishing phrases so a full match scores 1.0 — well
+# clear of the generic ``TRADE_CONFIRMATION`` rule that fires weakly on the
+# contract notes' ``buy`` / ``sold`` / ISIN tokens. The buy vs. sell notes
+# share the ``Contract note`` banner and are split on ``buy``/``sell
+# transaction details``; the two direct-debit advices share the guarantee
+# boilerplate and are split on their unique mandate-setup vs. fee-notice
+# phrasing.
+VANGUARD_UK_RULES: tuple[Rule, ...] = (
+    Rule(
+        doc_type=DocumentType.VANGUARD_CONTRACT_NOTE_BUY,
+        template_id="vanguard_uk.vanguard_contract_note_buy.v1",
+        bank=BankId.VANGUARD_UK,
+        patterns=(
+            re.compile(r"\bContract\s+note\b", re.I),
+            re.compile(r"\bbuy\s+transaction\s+details\b", re.I),
+            re.compile(r"\bNumber\s+of\s+shares\s+purchased\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.VANGUARD_CONTRACT_NOTE_SELL,
+        template_id="vanguard_uk.vanguard_contract_note_sell.v1",
+        bank=BankId.VANGUARD_UK,
+        patterns=(
+            re.compile(r"\bContract\s+note\b", re.I),
+            re.compile(r"\bsell\s+transaction\s+details\b", re.I),
+            re.compile(r"\bNumber\s+of\s+shares\s+sold\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.VANGUARD_REGULAR_STATEMENT,
+        template_id="vanguard_uk.vanguard_regular_statement.v1",
+        bank=BankId.VANGUARD_UK,
+        patterns=(
+            re.compile(r"\bYour\s+Vanguard\s+account\s+summary\b", re.I),
+            re.compile(r"\bYour\s+ISA\s+summary\b", re.I),
+            re.compile(
+                r"\bdetails\s+all\s+transactions\s+over\s+the\s+reporting\s+period\b",
+                re.I,
+            ),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.VANGUARD_CASH_HOLDING_STATEMENT,
+        template_id="vanguard_uk.vanguard_cash_holding_statement.v1",
+        bank=BankId.VANGUARD_UK,
+        patterns=(
+            re.compile(r"\bYour\s+cash\s+holding\s+statement\b", re.I),
+            re.compile(r"\bmore\s+than\s+50%\s+of\s+your\b", re.I),
+            re.compile(r"\bcash-like\s+investments\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.VANGUARD_ISA_DECLARATION,
+        template_id="vanguard_uk.vanguard_isa_declaration.v1",
+        bank=BankId.VANGUARD_UK,
+        patterns=(
+            re.compile(r"\bISA\s+Declaration\b", re.I),
+            re.compile(
+                r"\bapply\s+to\s+subscribe\s+to\s+a\s+stocks\s+and\s+shares\s+ISA\b",
+                re.I,
+            ),
+            re.compile(r"\bDeclaration\s+and\s+Authority\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.VANGUARD_COSTS_AND_CHARGES,
+        template_id="vanguard_uk.vanguard_costs_and_charges.v1",
+        bank=BankId.VANGUARD_UK,
+        patterns=(
+            re.compile(r"\bcosts\s+and\s+charges\b", re.I),
+            re.compile(r"\bFund\s+Management\s+Costs\b", re.I),
+            re.compile(r"\bBreakdown\s+of\s+your\s+Account\s+Fees\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.VANGUARD_DIRECT_DEBIT_CONFIRMATION,
+        template_id="vanguard_uk.vanguard_direct_debit_confirmation.v1",
+        bank=BankId.VANGUARD_UK,
+        patterns=(
+            re.compile(r"\bDirect\s+Debit\s+Confirmation\b", re.I),
+            re.compile(r"\bset\s+up\s+a\s+direct\s+debit\s+instruction\b", re.I),
+            re.compile(r"\bOriginator.{0,3}s\s+identification\s+number\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.VANGUARD_DIRECT_DEBIT_DETAILS,
+        template_id="vanguard_uk.vanguard_direct_debit_details.v1",
+        bank=BankId.VANGUARD_UK,
+        patterns=(
+            re.compile(r"\bAccount\s+fee\s+payable\s+for\s+this\s+quarter\b", re.I),
+            re.compile(
+                r"\belected\s+to\s+pay\s+the\s+Account\s+fee\s+by\s+Direct\s+Debit\b",
+                re.I,
+            ),
+            re.compile(r"\bAmount\s+to\s+be\s+collected\b", re.I),
+        ),
+    ),
+)
+
+
 # Per-bank ruleset registry. The two-stage classifier looks up the bank first,
 # then runs ``RULESETS_BY_BANK[bank] + GENERIC_RULES`` against the document.
 RULESETS_BY_BANK: dict[BankId, tuple[Rule, ...]] = {
     BankId.PICTET: PICTET_RULES,
+    BankId.VANGUARD_UK: VANGUARD_UK_RULES,
 }
 
 
 # Everything the single-stage classifier evaluates by default. Compose per-bank
 # rulesets into this tuple so ``RuleClassifier()`` keeps working out-of-the-box.
-DEFAULT_RULES: tuple[Rule, ...] = GENERIC_RULES + PICTET_RULES
+DEFAULT_RULES: tuple[Rule, ...] = GENERIC_RULES + PICTET_RULES + VANGUARD_UK_RULES
 
 
 @dataclass

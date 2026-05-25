@@ -1,0 +1,64 @@
+How to contact us
+w: www.vanguardinvestor.co.uk
+e: personalinvestors@vanguard.co.uk
+✉ Vanguard
+PO Box 24095
+1 Tanfield
+EDINBURGH
+EH3 1FS
+You can also contact us via
+the secure messaging facility
+available within your online
+account.
+13 February 2025
+Contract note
+Mr T User
+1 Example Street
+Anytown
+Exampleshire
+Exampletown
+EX1 1AA
+Issued by Vanguard Asset Management, Limited (Reg No. 07243412). Vanguard Asset Management, Limited is authorised and regulated
+in the UK by the Financial Conduct Authority. The company is registered in England and Wales, registered office: 4th Floor, The Walbrook
+Building, 25 Walbrook, London, EC4N 8AF.
+Client name: Test User
+Account number: VG0000000
+Dear Mr User
+This document is a confirmation of the investment transaction(s) we processed on
+your behalf.
+If you have questions about any of the details, please get in touch with personal
+investor services.
+Yours sincerely,
+The Vanguard Team
+
+Test User
+Account number: VG0000000
+Page 2 of 2
+ISA - buy transaction details
+We have bought these shares with the money from your contribution.
+Shares - FTSE 250 UCITS ETF - Accumulating
+(VMIG)
+Securities trader name: Winterfloods
+Deal venue:
+Type of order: Market Order
+Deal reference: EVANG25BH1211136
+Order date and time: 13 Feb 2025 01:36:42
+Transaction date and time: 13 Feb 2025 10:18:09.353
+Shares price: £37.330600
+Number of shares purchased: 13.00
+Total purchase cost
+(including Transaction charges): £485.30
+Amount invested: £485.30
+We have bought these shares with the money from your contribution.
+Shares - U.K. Gilt UCITS ETF - Accumulating (VGVA)
+Securities trader name: Winterfloods
+Deal venue:
+Type of order: Market Order
+Deal reference: EVANG25BH1212949
+Order date and time: 13 Feb 2025 01:36:42
+Transaction date and time: 13 Feb 2025 10:19:54.618
+Shares price: £19.918060
+Number of shares purchased: 25.00
+Total purchase cost
+(including Transaction charges): £497.95
+Amount invested: £497.95

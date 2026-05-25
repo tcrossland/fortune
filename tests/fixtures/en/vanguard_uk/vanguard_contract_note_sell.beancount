@@ -1,0 +1,9 @@
+2025-08-11 * "Contract note" "Sell FTSE 250 UCITS ETF - Accumulating (VMIG)"
+  Assets:Vgd:ISA:VG0000000:GBP                       519.27 GBP
+  Assets:Vgd:ISA:VG0000000:VMIG                      -13.00 VMIG {} @ 39.943800 GBP
+  Income:Vgd:ISA:VG0000000:VMIG:Realized
+
+2025-08-11 * "Contract note" "Sell U.K. Gilt UCITS ETF - Accumulating (VGVA)"
+  Assets:Vgd:ISA:VG0000000:GBP                       504.17 GBP
+  Assets:Vgd:ISA:VG0000000:VGVA                      -25.00 VGVA {} @ 20.166600 GBP
+  Income:Vgd:ISA:VG0000000:VGVA:Realized

@@ -36,6 +36,7 @@ SECURITY_BUY_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.COMPRA,
     DocumentType.SUSCRIPCION,
     DocumentType.SWITCH_ENTRADA,
+    DocumentType.VANGUARD_CONTRACT_NOTE_BUY,
 })
 
 SECURITY_SELL_TYPES: frozenset[DocumentType] = frozenset({
@@ -48,6 +49,7 @@ SECURITY_SELL_TYPES: frozenset[DocumentType] = frozenset({
     DocumentType.SELL_STRUCTURED_PRODUCTS,
     DocumentType.SWITCH_SALIDA,
     DocumentType.VENTA,
+    DocumentType.VANGUARD_CONTRACT_NOTE_SELL,
 })
 
 SECURITY_TRADE_TYPES = SECURITY_BUY_TYPES | SECURITY_SELL_TYPES

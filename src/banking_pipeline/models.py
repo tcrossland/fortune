@@ -292,6 +292,51 @@ class DocumentType(StrEnum):
     LIQUIDACION_AVISO_PREVIO_RECEPCION = "liquidacion_aviso_previo_recepcion"
     LIQUIDACION_RECEPCION_DE_VALORES = "liquidacion_recepcion_de_valores"
 
+    # --- Vanguard UK (Stocks & Shares ISA) ------------------------------
+    # Vanguard's documents are English and stay in the issuer's own
+    # vocabulary, same convention as the Pictet locale-specific values.
+    #
+    # Account-opening legal record ("ISA Declaration - Vanguard
+    # Stocks/Shares"). Paper-trail only — no transactions. NO_OUTPUT.
+    VANGUARD_ISA_DECLARATION = "vanguard_isa_declaration"
+    # Buy contract note ("Contract note" + "ISA - buy transaction
+    # details"). Carries one ``Shares - <name> (<ticker>)`` block per
+    # purchased fund with ``Shares price`` / ``Number of shares
+    # purchased`` / ``Total purchase cost``. No ISIN is printed on the
+    # buy side — the ticker is the security identifier. One Transaction
+    # per block (a single note can buy several funds).
+    VANGUARD_CONTRACT_NOTE_BUY = "vanguard_contract_note_buy"
+    # Sell contract note ("Contract note" + "ISA - sell transaction
+    # details"). Mirror of the buy note: ``Shares price`` / ``Number of
+    # shares sold`` / ``Gross proceeds``. The sell side *does* print an
+    # ISIN, but the ticker is used as the beancount commodity for
+    # consistency with the buy note so lots match.
+    VANGUARD_CONTRACT_NOTE_SELL = "vanguard_contract_note_sell"
+    # Quarterly "regular statement" ("Your Vanguard account summary" +
+    # an ``Activity ... for your ISA`` cash ledger). It restates the
+    # buys/sells (owned by the contract notes) but is the *only* source
+    # of the cash deposit (``Deposit for Investment Purchases``) and the
+    # monthly ``Cash Account Interest`` lines, so it emits those two row
+    # kinds and skips the trade/fee lines to avoid double-counting.
+    VANGUARD_REGULAR_STATEMENT = "vanguard_regular_statement"
+    # Regulatory "you hold >50% in cash" notice ("Your cash holding
+    # statement"). Informational; restates holdings already booked.
+    # NO_OUTPUT.
+    VANGUARD_CASH_HOLDING_STATEMENT = "vanguard_cash_holding_statement"
+    # Estimated annual costs-and-charges illustration (MiFID ex-ante
+    # disclosure). Forward-looking estimates, not booked events.
+    # NO_OUTPUT.
+    VANGUARD_COSTS_AND_CHARGES = "vanguard_costs_and_charges"
+    # Direct-debit mandate setup confirmation ("Direct Debit
+    # Confirmation"). No cash movement. NO_OUTPUT.
+    VANGUARD_DIRECT_DEBIT_CONFIRMATION = "vanguard_direct_debit_confirmation"
+    # Quarterly account-fee notice ("You have elected to pay the Account
+    # fee by Direct Debit" / "Account fee payable for this quarter is
+    # £X"). The fee is collected from the user's external bank by direct
+    # debit and nets to zero inside the ISA cash; it's booked as an
+    # expense against the contributions equity account.
+    VANGUARD_DIRECT_DEBIT_DETAILS = "vanguard_direct_debit_details"
+
     UNKNOWN = "unknown"
 
 
@@ -300,6 +345,7 @@ class BankId(StrEnum):
     the pipeline falls back to the generic rules in that case."""
 
     PICTET = "pictet"
+    VANGUARD_UK = "vanguard_uk"
     UNKNOWN = "unknown"
 
 
@@ -357,6 +403,17 @@ NO_OUTPUT_DOCTYPES: frozenset[DocumentType] = frozenset({
     DocumentType.ESTADO_ANUAL,
     # Generic non-bank-specific account statement.
     DocumentType.ACCOUNT_STATEMENT,
+    # Vanguard UK paper-trail-only documents: the account-opening
+    # declaration, the regulatory cash-holding notice, the ex-ante
+    # costs-and-charges illustration, and the direct-debit mandate
+    # confirmation. None of these book a cash event — the deposits,
+    # trades, interest and the account fee arrive via the regular
+    # statement, the contract notes, and the direct-debit *details*
+    # advice respectively.
+    DocumentType.VANGUARD_ISA_DECLARATION,
+    DocumentType.VANGUARD_CASH_HOLDING_STATEMENT,
+    DocumentType.VANGUARD_COSTS_AND_CHARGES,
+    DocumentType.VANGUARD_DIRECT_DEBIT_CONFIRMATION,
 })
 
 
@@ -423,6 +480,15 @@ class FeeItem(BaseModel):
 # internally consistent, so a cent covers any stray rounding without
 # masking a genuine mismatch.
 _WHT_TOLERANCE: Decimal = Decimal("0.01")
+
+
+# Account wrappers whose holdings are sheltered from UK CGT, dividend
+# tax and interest tax. A transaction sitting in one of these is dropped
+# at the single tax-report choke point (see the ``tax-report`` CLI) so
+# none of its gains or income reach SA108 / SA106. ``"isa"`` covers the
+# Stocks & Shares ISA; add ``"sipp"`` / ``"jisa"`` here if those wrappers
+# ever land.
+TAX_EXEMPT_WRAPPERS: frozenset[str] = frozenset({"isa"})
 
 
 class Transaction(BaseModel):
@@ -599,6 +665,15 @@ class Transaction(BaseModel):
 
     # --- Account identifiers --------------------------------------------
     account_number: str | None = None  # IBAN, broker account, etc.
+    # Tax wrapper the holding account sits inside, when it's a sheltered
+    # one — ``"isa"`` for a UK Stocks & Shares ISA today. ``None`` means
+    # an ordinary taxable account (the Pictet default). The tax-report
+    # stage drops every transaction whose wrapper is in
+    # :data:`TAX_EXEMPT_WRAPPERS` before computing CGT / dividends /
+    # interest, so an ISA's disposals and income never reach SA108 /
+    # SA106. Set by the extracting template (it's an account-level fact
+    # the document carries), not by the pipeline.
+    account_wrapper: str | None = None
     # Pictet's per-document reference (``N° de transacción``). Emitted by
     # the writer as a trailing ``  no: <number>`` comment on the entry.
     transaction_number: str | None = None
@@ -637,6 +712,17 @@ class Transaction(BaseModel):
             self.security_currency is not None
             and self.security_currency != self.currency
         )
+
+    @property
+    def is_tax_exempt(self) -> bool:
+        """True when this transaction sits inside a tax-sheltered wrapper.
+
+        Consulted at the single tax-report choke point to drop ISA (and
+        any future SIPP/JISA) transactions before CGT / dividend /
+        interest computation. See :data:`TAX_EXEMPT_WRAPPERS`.
+        """
+
+        return self.account_wrapper in TAX_EXEMPT_WRAPPERS
 
     @model_validator(mode="after")
     def _check_withholding(self) -> Transaction:

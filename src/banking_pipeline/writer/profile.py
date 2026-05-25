@@ -57,11 +57,19 @@ class BankWriterProfile:
 
 PICTET_PROFILE = BankWriterProfile(account_prefix="Pic")
 
+# Vanguard UK holds a single Stocks & Shares ISA. The two-segment prefix
+# ``Vgd:ISA`` puts every Vanguard account under a dedicated tax-free
+# subtree (``Assets:Vgd:ISA:…``, ``Income:Vgd:ISA:…``,
+# ``Expenses:Vgd:ISA:…``, ``Equity:Vgd:ISA:…``) so the wrapper is visible
+# in the ledger and trivially separable from the taxable Pictet holdings.
+VANGUARD_PROFILE = BankWriterProfile(account_prefix="Vgd:ISA")
+
 UNKNOWN_PROFILE = BankWriterProfile(account_prefix="Unknown")
 
 
 PROFILES: dict[BankId, BankWriterProfile] = {
     BankId.PICTET: PICTET_PROFILE,
+    BankId.VANGUARD_UK: VANGUARD_PROFILE,
 }
 
 # Reverse index from the rendered ``account_prefix`` back to the profile.

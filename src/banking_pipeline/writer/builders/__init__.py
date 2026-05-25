@@ -37,6 +37,12 @@ from banking_pipeline.writer.builders.switch_trade import (
 from banking_pipeline.writer.builders.transfer_in import (
     render as render_transfer_in,
 )
+from banking_pipeline.writer.builders.vanguard import (
+    render_account_fee as render_vanguard_account_fee,
+)
+from banking_pipeline.writer.builders.vanguard import (
+    render_statement as render_vanguard_statement,
+)
 
 __all__ = [
     "render_bond_trade",
@@ -51,4 +57,6 @@ __all__ = [
     "render_switch_trade",
     "render_third_party_payment",
     "render_transfer_in",
+    "render_vanguard_account_fee",
+    "render_vanguard_statement",
 ]

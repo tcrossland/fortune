@@ -33,9 +33,11 @@ from banking_pipeline.models import Transaction
 
 # Bump the version suffix when the on-disk shape changes incompatibly so
 # a future reader can branch on it. v2 adds the derived ``dedup_key`` to
-# each transaction line (additive — readers that ignore unknown keys,
-# including our own loader, stay compatible).
-SCHEMA = "banking-pipeline/transactions/v2"
+# each transaction line; v3 adds the ``account_wrapper`` field (``"isa"``
+# for tax-sheltered holdings). Both are additive — readers that ignore
+# unknown keys, and a v3 model reading a v2 line (``account_wrapper``
+# defaults to ``None``), stay compatible.
+SCHEMA = "banking-pipeline/transactions/v3"
 
 
 def sidecar_path(beancount_path: Path) -> Path:
