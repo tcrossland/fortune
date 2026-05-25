@@ -1,95 +1,192 @@
---- page 9/99 ---
-Account no.: K-999999.999
-IBAN: LU999999999999999999
-FIRST MIDDLE LASTNAMES
-Financial Statement
-As at 99 November 9999 (EUR)
+--- page 1/12 ---
+1/1
 Bank Pictet & Cie (Europe) AG
 Succursale de Luxembourg
-99A, avenue J.F. Kennedy
-L-9999 Luxembourg
-B.P. 999
-L-9999 Luxembourg
+12A, avenue J. F. Kennedy
+L-1234 Luxembourg
+B.P. 123
+L-1234 Luxembourg
++123 12 12 12-1 TÉL
++123 12 12 12 FAX
 pictet.com
-9A99
+Bank Pictet & Cie (Europe) AG
+Société anonyme de droit allemand
+(Aktiengesellschaft)
+Siège Social:
+Neue Mainzer Straße 1-1
+12345 Frankfurt am Main
+Allemagne
+Succursale de Luxembourg:
+12A, avenue J. F. Kennedy
+L-1234 Luxembourg
+RCS Luxembourg n° B123456
+Explanatory note regarding the annual notice on the protection of deposits by 
+the EdB (the German statutory deposit protection scheme)
+Dear Sir or Madam,
+In accordance with our obligations 1 and in order to provide the individuals 
+concerned with comprehensive information, you will find enclosed a document with 
+basic information on the deposit protection by the EdB. 
+We wish to remind you that, in principle, all natural or legal persons, other than 
+entities in the financial sector, are eligible for protection by the EdB.1
+Please do not hesitate to contact us if you have any questions or need further 
+information.
+Yours faithfully,
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+Letter without signature
+1
+ The German Deposit Guarantee Act (Einlagensicherungsgesetz )
+1
+ Any exceptions are listed on the website: https://www.edb-banken.de/
 
---- page 9/99 ---
+--- page 1/12 ---
+Basic information about the deposit guarantee scheme
+docondanexLUXen_v1.2a_12345678BP 1/1 TAGD123TTT TAGO123TTT TAGA123TTT TAGB123TTT TAGRA12TTT
+Deposits at Bank Pictet & Cie (Europe) AG are protected by: The German statutory deposit protection scheme operated by 
+Entschädigungseinrichtung deutscher Banken GmbH or “EdB”(1)
+Limit of protection: EUR 123,456 per depositor per credit institution (1)
+If you have more than one deposit at the same credit institution: All your deposits at the same credit institution are aggregated and the total is 
+subject to the EUR 123,456 limit (1)
+If you have a joint account with another person(s): The EUR 123,456 applies to each depositor separately (1)
+Reimbursement period in case of credit institution’s failure: 1 working days (1)
+Currency of reimbursement: Euro
+Contact:
+Entschädigungseinrichtung deutscher Banken GmbH 
+Address (head office): Burgstraße 12, 
+D-12345 Berlin, Germany 
+E-mail address: info@edb-banken.de 
+Tel.: +12 12 12 12 12 12-1 
+More information: https://www.edb-banken.de/en/
+(1) Scheme responsible for the protection of your deposit 
+(1) Overall limit of protection 
+Deposits are covered by the statutory deposit protection scheme. In the event of the Bank's insolvency, these deposits will 
+be reimbursed up to EUR 123,456. 
+In the cases referred to in Article 1(1) of the German Deposit Guarantee Act (Einlagensicherungsgesetz), deposits are 
+guaranteed above EUR 123,456 (one hundred thousand euros), in which case they are guaranteed up to a maximum of 
+EUR 123,456 (five hundred thousand euros). For more information: https://www.edb1banken.de/en/. 
+(1) Limit of protection of joint accounts 
+In the case of joint accounts, the EUR 123,456 limit applies to each depositor. 
+In the cases referred to in Article 1(1) of the German Deposit Guarantee Act (Einlagensicherungsgesetz), deposits are 
+guaranteed above EUR 123,456 (one hundred thousand euros), in which case they are guaranteed up to a maximum 
+of EUR 123,456 (five hundred thousand euros). For more information: https://www.edb1banken.de/en/. 
+
+--- page 1/12 ---
+docondanexLUXen_v1.2a_12345678BP 1/1
+1) Reimbursement 
+The relevant deposit guarantee scheme for accounts held at Bank Pictet & Cie (Europe) AG, succursale de Luxembourg 
+is the German statutory deposit protection scheme (hereafter referred to as the <Statutory Scheme=) operated by 
+Entschädigungseinrichtung deutscher Banken GmbH (Head office address: Burgstraße 12, D123456 Berlin, Germany, e1mail 
+address: info@edb1banken.de, tel.: +12 12 12 12 12 1234; https://www.edb1banken.de/en/). It will reimburse your deposits 
+up to EUR 123,456 within seven (1) business days from receiving notification of these amounts by the depositor, in 
+accordance with Article 12 of the German Deposit Guarantee Act. 
+If you are not repaid within 1 days, you should contact the deposit guarantee scheme as the timeframe to claim reimbursement 
+may be barred after a certain period. Further information can be obtained under https://www.edb1banken.de/en/. 
+Other important information 
+In general, all retail depositors and businesses are covered by deposit guarantee schemes. Exceptions for certain deposits 
+are stated on the website of the deposit guarantee scheme. Your credit institution will also inform you on request 
+whether certain products are covered or not. If deposits are covered, the credit institution will mention this on the 
+account statement. 
+Any liabilities of the depositor towards the credit institution are taken into account when calculating the repayable 
+amount, provided they have fallen due on or before the date on which the relevant administrative or judicial authority 
+confirms that deposits at the institution are unavailable. 
+
+--- page 1/12 ---
+Account no.: K-123456.789
+IBAN: LU123456789012345678
+FIRST MIDDLE LASTNAMES
+Financial Statement
+As at 31 December 2025 (GBP)
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+12A, avenue J.F. Kennedy
+L-1234 Luxembourg
+B.P. 123
+L-1234 Luxembourg
+pictet.com
+1A12
+
+--- page 1/12 ---
 Table of contents
-9A99
-Overview 9
-Executive summary 9
-Performance of benchmarkindices 9
-Analyses 9
-Quarterly and annual performance 9
-Currency breakdown and portfolio structure in % 9
-Valuation 9
-Portfolio valuation 9
-Current accountstatement 9
-In EUR 9
-In USD 99
-In JPY 99
-In GBP 99
-Appendices 99
-Glossary 99
-Disclaimer 99
+1A12
+Overview 1
+Executive summary 1
+Performance of benchmarkindices 1
+Analyses 1
+Quarterly and annual performance 1
+Currency breakdown and portfolio structure in % 1
+Valuation 1
+Portfolio valuation 1
+Current accountstatement 1
+In GBP 1
+In USD 12
+In EUR 12
+In JPY 12
+Appendices 12
+Glossary 12
+Disclaimer 12
 
---- page 9/99 ---
+--- page 1/12 ---
 Executive summary
-As at 99 November 9999
+As at 31 December 2025
 Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-9/99
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+1/12
  a
  a
-Key figures (EUR)
-YEAR YTD 9)
-9999 9999
-Valuation as at beginning of period 9'999'999.99 9'999'999.99
-Deposits and withdrawals in cash and securities 999'999.99 -999'999.99
-Change in valuation 999'999.99 999'999.99
-Valuation as at end of period 9'999'999.99 9'999'999.99
-Performance for the period +9.99% +99.99%
-9) Since start of year
-Breakdown by asset class and by risk currency (%) 9)
-TOTAL QVZ EUR XXZ GBP XTZ OTHERS
-Total 999.99 99.99 99.99 99.99 99.99 9.99 99.99
-Cash 9.99 - 9.99 - 9.99 - 9.99
-Fixed Income 99.99 9.99 99.99 - 99.99 9.99 - Equities 99.99 99.99 9.99 99.99 - 9.99 99.99
-Alternative investments - - - - - - - Precious metals 9.99 - - - - - 9.99
-Multi-Asset - - - - - - - Others 9.99 9.99 - - - - -
-9) QVZ : Global | EUR : Euro | XXZ : Global - Developed | GBP : Pound United Kingdom | XTZ : Europe - Misc. | Others : Other
-currencies 99.99.9999 99.99.9999 99.99.9999 99.99.9999 99.99.9999 99.99.9999 99.99.9999 99.99.9999 99.99.9999
--9%
--9%
--9%
-9%
-9%
-9%
-9% 9.99 -9.99 9.99 -9.99 9.999.99 9.99 -9.99 -9.99 -9.99 9.99 9.99 9.999.999.99 -9.99 9.999.99 9.99 9.999.99 -9.99 9.99 99.99.9999 99.99.9999 99.99.9999 99.99.9999 99.99.9999 99.99.9999 
-99.99.9999 99.99.9999 99.99.9999
-9%
-9%
-99%
-99%
-99%
-Monthly performance (%) Accumulated performance since 9 January 9999 (%) 
+Key figures (GBP)
+YEAR YTD 1)
+1234 1234
+Valuation as at beginning of period 1'234'567.89 1'234'567.89
+Deposits and withdrawals in cash and securities -123'456.78 -12'345.67
+Change in valuation 123'456.78 123'456.78
+Valuation as at end of period 1'234'567.89 1'234'567.89
+Performance for the period +1.23% +1.23%
+1) Since start of year
+Breakdown by asset class and by risk currency (%) 1)
+TOTAL XTZ QVZ GBP EUR XXZ OTHERS
+Total 123.45 12.34 12.34 12.34 12.34 12.34 1.23
+Cash 1.23 - - 1.23 - - - Fixed Income 12.34 1.23 1.23 1.23 12.34 - - Equities 12.34 12.34 12.34 - - 12.34 1.23
+Alternative investments - - - - - - - Precious metals 1.23 - - - - - 1.23
+Multi-Asset - - - - - - - Others 1.23 - 1.23 - - - -
+1) XTZ : Europe - Misc. | QVZ : Global | GBP : Pound United Kingdom | EUR : Euro | XXZ : Global - Developed | Others : Other
+currencies 31.03.2024 30.06.2024 30.09.2024 31.12.2024 31.03.2025 30.06.2025 30.09.2025 31.12.2025
+-1%
+-1%
+-1%
+1%
+1%
+1%
+1% -1.23 1.23 1.23 -1.23 1.23 1.23 1.23 1.23 -1.23 1.23 1.23 -1.23 1.23 -1.23 -1.23 -1.23 1.23 1.23 1.23 1.23 1.23 1.23 -1.23 -1.23 31.12.2023 31.03.2024 30.06.2024 30.09.2024 31.12.2024 
+31.03.2025 30.06.2025 30.09.2025 31.12.2025
+-1%
+-1%
+1%
+1%
+1%
+1%
+1%
+12%
+12%
+12%
+12%
+Monthly performance (%) Accumulated performance since 1 January 1234 (%) 
 
---- page 9/99 ---
+--- page 1/12 ---
 Performance of benchmark indices
-As at 99 November 9999
+As at 31 December 2025
 Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-9/99
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+1/12
  a
 Information Period Performance in %
-Cash Ftse Eur 9 Mth Euro Dep 99.99.9999 - 99.99.9999 9.99
-Bonds J.P. Morgan - Gbi - Emu - 9-99 Years In Eur 99.99.9999 - 99.99.9999 9.99
-Equities Msci Europe (Eur) 99.99.9999 - 99.99.9999 99.99
-Alternative Investments Hfrx Global Hedge Fund Datastream Eur 99.99.9999 - 99.99.9999 9.99
+Cash Bloomberg Gbp 1m Cash Dep. Index 01.01.2024 - 31.12.2025 1.23
+Bonds J.P. Morgan - Gbi - United Kingdom - 1-12 Years In Gbp 01.01.2024 - 31.12.2025 1.23
+Equities Msci Uk (Lc) 01.01.2024 - 31.12.2025 12.34
+Alternative Investments Hfrx Global Hedge Fund Datastream Gbp 01.01.2024 - 31.12.2025 12.34
 Bank Pictet & Cie (Europe) AG reserves the right to change at any time the indices used in order to reflect the best investment policy.
 Information
 Please find herewith the benchmark indices enabling you to assess the performance of your portfolio.
@@ -97,47 +194,48 @@ This document meets the regulations that require portfolio management service pr
 performance.
 Do not hesitate to contact us if you have any questions concerning our choice of indices.
 
---- page 9/99 ---
+--- page 1/12 ---
 Quarterly and annual performance
-As at 99 November 9999
+As at 31 December 2025
 Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-9/99
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+1/12
  a
  a
 Quarterly
-Performance Deposits and withdrawals 9) Net income 9)
-Absolute (EUR) In % Valuation (EUR) Cash (EUR) Securities (EUR) Other (EUR) Absolute (EUR)
-99.99.9999 999'999.99 +9.99 9'999'999.99 -99'999.99 9.99 9.99 9.99
-99.99.9999 999'999.99 +9.99 9'999'999.99 -99'999.99 9.99 9.99 9.99
-99.99.9999 99'999.99 +9.99 9'999'999.99 9.99 9.99 9.99 9'999.99
-99.99.9999 999'999.99 +9.99 9'999'999.99 9.99 9.99 9.99 9'999.99
-99.99.9999 999'999.99 +9.99 9'999'999.99 9.99 9.99 99.99 9'999.99
+Performance Deposits and withdrawals 1) Net income 1)
+Absolute (GBP) In % Valuation (GBP) Cash (GBP) Securities (GBP) Other (GBP) Absolute (GBP)
+31.12.2025 123'456.78 +1.23 1'234'567.89 1.23 1.23 1.23 1'234.56
+30.09.2025 123'456.78 +1.23 1'234'567.89 1.23 1.23 1.23 1'234.56
+30.06.2025 123'456.78 +1.23 1'234'567.89 1.23 1.23 1.23 1'234.56
+31.03.2025 -12'345.67 -1.23 1'234'567.89 -12'345.67 1.23 1.23 1'234.56
+31.12.2024 12'345.67 +1.23 1'234'567.89 -123'456.78 1.23 1.23 1'234.56
 Annual
-Performance Deposits and withdrawals 9) Net income 9)
-Absolute (EUR) In % Valuation (EUR) Cash (EUR) Securities (EUR) Other (EUR) Absolute (EUR)
-99.99.9999 999'999.99 +99.99 9'999'999.99 -999'999.99 9.99 9.99 9'999.99
-99.99.9999 999'999.99 +9.99 9'999'999.99 999'999.99 9.99 9.99 -999.99
-99.99.9999 -999'999.99 -99.99 9'999'999.99 -9'999'999.99 9.99 9.99 9'999.99
-99.99.9999 99'999.99 +9.99 9'999'999.99 9'999'999.99 99'999.99 9.99 9'999.99
+Performance Deposits and withdrawals 1) Net income 1)
+Absolute (GBP) In % Valuation (GBP) Cash (GBP) Securities (GBP) Other (GBP) Absolute (GBP)
+31.12.2025 123'456.78 +1.23 1'234'567.89 -12'345.67 1.23 1.23 12'345.67
+31.12.2024 123'456.78 +1.23 1'234'567.89 -123'456.78 1.23 1.23 1'234.56
+31.12.2023 123'456.78 +1.23 1'234'567.89 123'456.78 1.23 -1.23 -123.45
+31.12.2022 -123'456.78 -1.23 1'234'567.89 -1'234'567.89 1.23 -123.45 1'234.56
+31.12.2021 -12'345.67 +1.23 1'234'567.89 1'234'567.89 12'345.67 -12.34 1'234.56
 Performance type: Capital + income net of taxes and after fees
-Deposits and withdrawals since 99.99.9999 : EUR 9'999'999.99
-(9) including accrued income
-(9) including reclaimed tax
+Deposits and withdrawals since 01.01.2021 : GBP 1'234'567.89
+(1) including accrued income
+(1) including reclaimed tax
 
---- page 9/99 ---
+--- page 1/12 ---
 Portfolio structure
-As at 99 November 9999
+As at 31 December 2025
 Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-9/99
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+1/12
  a
 Breakdown by asset class & risk currency (%)
-General breakdown DETAILS OF CASH INVESTMENTS
+General breakdown Detail of cash investments
 Risk currency Total Cash Fixed Income Equities
 Alternative
 investments
@@ -147,20 +245,20 @@ Current
 accounts Short term
 Forex &
 forwards Collateral
-TOTAL 999.99 9.99 99.99 99.99 - 9.99 - 9.99 9.99 9.99 - - Global 99.99 - 9.99 99.99 - - - 9.99 - - - - Euro 99.99 9.99 99.99 9.99 - - - - 9.99 9.99 - - Global - Developed 99.99 - - 99.99
-- - - - - - - - Pound United Kingdom 99.99 9.99 99.99 - - - - - 9.99 - - - Europe - Misc. 9.99 - 9.99 9.99 - - - - - - - - Dollar USA 9.99 9.99 - 9.99 - - - - 9.99 - - - Ounce of gold 
-9.99 - - - - 9.99 - - - - - - Asia - Miscellaneous 9.99 - - 9.99 - - - - - - - - Global - Emerging 9.99 - - 9.99 - - - - - - - - Yen Japan - - - - - - - - - - - -
-Total portfolio : EUR 9'999'999.99
-Exchange rates : USD/EUR : 9.99999 GBP/EUR : 9.99999 JPY/EUR : 9.99999
+TOTAL 123.45 1.23 12.34 12.34 - 1.23 - 1.23 1.23 1.23 - - Europe - Misc. 12.34 - 1.23 12.34 - - - - - - - - Global 12.34 - 1.23 12.34 - - - 1.23 - - - - Pound United Kingdom 12.34 1.23 1.23 -
+- - - - 1.23 1.23 - - Euro 12.34 - 12.34 - - - - - - - - - Global - Developed 12.34 - - 12.34 - - - - - - - - Global - Emerging 1.23 - - 1.23 - - - - - - - - Ounce of gold 1.23 - - - - 1.23 -
+- - - - - Asia - Miscellaneous 1.23 - - 1.23 - - - - - - - - Dollar USA - - - - - - - - - - - - Yen Japan - - - - - - - - - - - -
+Total portfolio : GBP 1'234'567.89
+Exchange rates : EUR/GBP : 1.23456 USD/GBP : 1.23456 JPY/GBP : 1.23456
 
---- page 9/99 ---
+--- page 12/12 ---
 Portfolio valuation
-As at 99 November 9999
+As at 31 December 2025
 Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-9/99
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+1/12
  a
  a
 Breakdown by asset class
@@ -168,483 +266,449 @@ Quantity Description
 Market price
 Correction factor
 Gross unit cost
-Net cost (EUR)
-Unrealised (Orig.)
-Unrealised (EUR)
+Net cost (GBP)
+Net unrealised (Orig.)
+Net unrealised (GBP)
 Valuation (Orig.)
 Acc. interest (Orig.)
-Valuation (EUR)
-Acc. interest (EUR) Weight
-Total portfolio EUR 9'999'999.99 999.99%
-Total capital EUR 9'999'999.99 999.99%
-Total accrued Interest EUR 9.99 9.99%
-Cash EUR 999'999.99 9.99%
-Capital EUR 999'999.99 9.99%
-Accrued interest EUR 9.99 9.99%
-Current accounts EUR 99'999.99 9.99%
-Capital EUR 99'999.99 9.99%
-Accrued interest EUR 9.99 9.99%
-99'999.99 Euro EUR 99'999.99
-EUR 9.99
-EUR 99'999.99
-EUR 9.99
-9.99%
-9.99%
-99'999.99 Dollar USA USD 99'999.99
-USD 9.99
-EUR 99'999.99
-EUR 9.99
-9.99%
-9.99%
-9 Yen Japan JPY 9
-JPY 9
-EUR 9.99
-EUR 9.99
-9.99%
-9.99%
-999.99 Pound United Kingdom GBP 999.99
-GBP 9.99
-EUR 999.99
-EUR 9.99
-9.99%
-9.99%
-Short term EUR 999'999.99 9.99%
-9'999.99999 S/T Money Mkt Eur-I
-ISIN: LU9999999999
-EUR 999.99 EUR 999.99
-EUR 999'999.99
-EUR 9'999.99
-EUR 9'999.99
-(9.99%)
-(9.99%)
-EUR 999'999.99 EUR 999'999.99 9.99%
-Fixed Income EUR 9'999'999.99 99.99%
-Broad Markets EUR 999'999.99 9.99%
-9'999.999 Jpmf-Income Fd C (Div) Gbp H-Inc.-
-ISIN: LU9999999999
-GBP 99.99 GBP 99.99
-EUR 999'999.99
-GBP -9'999.99
-EUR 999.99
-(-9.99%)
-(9.99%)
-GBP 999'999.99 EUR 999'999.99 9.99%
-Government EUR 999'999.99 9.99%
-99'999.9999 Ssga-Gl.Tr.9-99 Bd Idx I Eur H-Acc
-ISIN: LU9999999999
-EUR 9.99 EUR 9.99
-EUR 999'999.99
-EUR 9'999.99
-EUR 9'999.99
-(9.99%)
-(9.99%)
-EUR 999'999.99 EUR 999'999.99 9.99%
-999.99999 Pictet-Climate Gov.Bd Hi Gbp -Acc.-
-ISIN: LU9999999999
-GBP 999.99 GBP 99.99
-EUR 999'999.99
-GBP 9'999.99
-EUR 9'999.99
-(9.99%)
-(9.99%)
-GBP 99'999.99 EUR 999'999.99 9.99%
+Valuation (GBP)
+Acc. interest (GBP) Weight
+Total portfolio GBP 1'234'567.89 123.45%
+Total capital GBP 1'234'567.89 123.45%
+Total accrued Interest GBP 1.23 1.23%
+Cash GBP 123'456.78 1.23%
+Capital GBP 123'456.78 1.23%
+Accrued interest GBP 1.23 1.23%
+Current accounts GBP 12'345.67 1.23%
+Capital GBP 12'345.67 1.23%
+Accrued interest GBP 1.23 1.23%
+12'345.67 Pound United Kingdom GBP 12'345.67
+GBP 1.23
+GBP 12'345.67
+GBP 1.23
+1.23%
+1.23%
+1.23 Dollar USA USD 1.23
+USD 1.23
+GBP 1.23
+GBP 1.23
+1.23%
+1.23%
+1.23 Euro EUR 1.23
+EUR 1.23
+GBP 1.23
+GBP 1.23
+1.23%
+1.23%
+1 Yen Japan JPY 1
+JPY 1
+GBP 1.23
+GBP 1.23
+1.23%
+1.23%
+Short term GBP 123'456.78 1.23%
+1'234.56789 Pictet-St Money Market Gbp I
+ISIN: LU2601001147
+GBP 123.45 GBP 123.45
+GBP 123'456.78
+GBP 1'234.56
+GBP 1'234.56
+(1.23%)
+(1.23%)
+GBP 123'456.78 GBP 123'456.78 1.23%
+Fixed Income GBP 1'234'567.89 12.34%
+Broad Markets GBP 12'345.67 1.23%
+123.456 Jpmf-Income Fd C (Div) Gbp H-Inc.-
+ISIN: LU2096759431
+GBP 12.34 GBP 12.34
+GBP 12'345.67
+GBP -123.45
+GBP -123.45
+(-1.23%)
+(-1.23%)
+GBP 12'345.67 GBP 12'345.67 1.23%
+Government GBP 123'456.78 1.23%
+123.45678 Pictet-Climate Gov.Bd Hi Gbp -Acc.-
+ISIN: LU2468123570
+GBP 123.45 GBP 12.34
+GBP 12'345.67
+GBP 1'234.56
+GBP 1'234.56
+(1.23%)
+(1.23%)
+GBP 12'345.67 GBP 12'345.67 1.23%
+12'345.6789 Ssga-Gl.Tr.1-12 Bd Idx I Eur H-Acc
+ISIN: LU2014365915
+EUR 1.23 EUR 1.23
+GBP 123'456.78
+EUR 12'345.67
+GBP 12'345.67
+(1.23%)
+(1.23%)
+EUR 123'456.78 GBP 123'456.78 1.23%
 
---- page 9/99 ---
+--- page 12/12 ---
 Portfolio valuation
-As at 99 November 9999
+As at 31 December 2025
 Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-9/99
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+1/12
 Breakdown by asset class
 Quantity Description
 Market price
 Correction factor
 Gross unit cost
-Net cost (EUR)
-Unrealised (Orig.)
-Unrealised (EUR)
+Net cost (GBP)
+Net unrealised (Orig.)
+Net unrealised (GBP)
 Valuation (Orig.)
 Acc. interest (Orig.)
-Valuation (EUR)
-Acc. interest (EUR) Weight
-IG Corporate EUR 999'999.99 99.99%
-99'999.999 Abrdn Ii-Eur C.Bd S&R Inv-D Eur-Acc
-ISIN: LU9999999999
-EUR 99.99 EUR 99.99
-EUR 999'999.99
-EUR 99'999.99
-EUR 99'999.99
-(9.99%)
-(9.99%)
-EUR 999'999.99 EUR 999'999.99 9.99%
-9'999.999 Muzinich-Sust.Credit S Hgd Eur
-ISIN: IE99B9Y9XY99
-EUR 99.99 EUR 99.99
-EUR 99'999.99
-EUR 9'999.99
-EUR 9'999.99
-(9.99%)
-(9.99%)
-EUR 99'999.99 EUR 99'999.99 9.99%
-9'999.99999 Glob.Sust.Credit-Hi Eur
-ISIN: LU9999999999
-EUR 999.99 EUR 999.99
-EUR 999'999.99
-EUR 99'999.99
-EUR 99'999.99
-(9.99%)
-(9.99%)
-EUR 999'999.99 EUR 999'999.99 9.99%
-9'999.999 Pimco Gis-Gig Cred.Inst.Hed.Gbp-Acc
-ISIN: IE99B9HZNB99
-GBP 99.99 GBP 99.99
-EUR 999'999.99
-GBP 9'999.99
-EUR 99'999.99
-(9.99%)
-(9.99%)
-GBP 999'999.99 EUR 999'999.99 9.99%
-USA EUR 99'999.99 9.99%
-999.999 Axa Wf-Us Cr.Sh.Dur.I Eur H 99%-Acc
-ISIN: LU9999999999
-EUR 999.99 EUR 999.99
-EUR 99'999.99
-EUR 9'999.99
-EUR 9'999.99
-(9.99%)
-(9.99%)
-EUR 99'999.99 EUR 99'999.99 9.99%
-High yield EUR 999'999.99 9.99%
-9'999.999 Barings-Global H/Y Bond B Eur-Acc
-ISIN: IE99B99MXX99
-EUR 999.99 EUR 999.99
-EUR 999'999.99
-EUR 9'999.99
-EUR 9'999.99
-(9.99%)
-(9.99%)
-EUR 999'999.99 EUR 999'999.99 9.99%
-Emerging Markets Fixed Income EUR 99'999.99 9.99%
-999.99999 Em Corp Bds-Hi Eur
-ISIN: LU9999999999
-EUR 99.99 EUR 99.99
-EUR 99'999.99
-EUR -9'999.99
-EUR -9'999.99
-(-9.99%)
-(-9.99%)
-EUR 99'999.99 EUR 99'999.99 9.99%
-Other Fixed Income EUR 999'999.99 9.99%
-99.9999 Mirova-Gbl Green Bd Si/A Eur-Acc.
-ISIN: LU9999999999
-EUR 9'999.99 EUR 9'999.99
-EUR 999'999.99
-EUR 9'999.99
-EUR 9'999.99
-(9.99%)
-(9.99%)
-EUR 999'999.99 EUR 999'999.99 9.99%
-Equities EUR 9'999'999.99 99.99%
-Global Markets EUR 9'999'999.99 99.99%
-99'999.9999 Federated Hermes If-Gl.Eq.Esg F Usd
-ISIN: IE99BKRCQ999
-USD 9.99 USD 9.99
-EUR 999'999.99
-USD 99'999.99
-EUR 99'999.99
-(99.99%)
-(99.99%)
-USD 999'999.99 EUR 999'999.99 9.99%
-99.99999 Pictet-Biotech-I Usd
-ISIN: LU9999999999
-USD 9'999.99 USD 9'999.99
-EUR 99'999.99
-USD 9'999.99
-EUR 99'999.99
-(9.99%)
-(99.99%)
-USD 99'999.99 EUR 99'999.99 9.99%
-999.99999 Pictet-Clean Energy Tr.-I Eur
-ISIN: LU9999999999
-EUR 999.99 EUR 999.99
-EUR 99'999.99
-EUR 99'999.99
-EUR 99'999.99
-(99.99%)
-(99.99%)
-EUR 99'999.99 EUR 99'999.99 9.99%
-999.99999 Glob Envir Opp-I Usd
-ISIN: LU9999999999
-USD 999.99 USD 999.99
-EUR 999'999.99
-USD 99'999.99
-EUR 99'999.99
-(99.99%)
-(99.99%)
-USD 999'999.99 EUR 999'999.99 9.99%
+Valuation (GBP)
+Acc. interest (GBP) Weight
+IG Corporate GBP 123'456.78 12.34%
+1'234.567 Pimco Gis-Gig Cred.Inst.Hed.Gbp-Acc
+ISIN: IE00B0HZNB91
+GBP 12.34 GBP 12.34
+GBP 123'456.78
+GBP 12'345.67
+GBP 12'345.67
+(12.34%)
+(12.34%)
+GBP 123'456.78 GBP 123'456.78 1.23%
+12'345.678 Abrdn Ii-Euro Cor.Bd Sust.D Eur-Acc
+ISIN: LU0767911984
+EUR 12.34 EUR 12.34
+GBP 123'456.78
+EUR 12'345.67
+GBP 12'345.67
+(1.23%)
+(1.23%)
+EUR 123'456.78 GBP 123'456.78 1.23%
+1'234.567 Bluebay-Inv.Grade Bd Q Eur-Acc.-
+ISIN: LU1170326638
+EUR 123.45 EUR 123.45
+GBP 123'456.78
+EUR 123.45
+GBP 12.34
+(1.23%)
+(1.23%)
+EUR 123'456.78 GBP 123'456.78 1.23%
+123.45678 Eur Corporate Bonds-I
+ISIN: LU0128472205
+EUR 123.45 EUR 123.45
+GBP 123'456.78
+EUR -123.45
+GBP -1'234.56
+(-1.23%)
+(-1.23%)
+EUR 123'456.78 GBP 123'456.78 1.23%
+High yield GBP 12'345.67 1.23%
+123.456 Barings-Global H/Y Bond B Eur-Acc
+ISIN: IE00B55MXX92
+EUR 123.45 EUR 123.45
+GBP 12'345.67
+EUR 1'234.56
+GBP 1'234.56
+(1.23%)
+(12.34%)
+EUR 12'345.67 GBP 12'345.67 1.23%
+Emerging Markets Fixed Income GBP 12'345.67 1.23%
+123.45678 Em Corp Bds-Hi Eur
+ISIN: LU0844698075
+EUR 12.34 EUR 12.34
+GBP 12'345.67
+EUR 1'234.56
+GBP 1'234.56
+(1.23%)
+(1.23%)
+EUR 12'345.67 GBP 12'345.67 1.23%
+Other Fixed Income GBP 123'456.78 1.23%
+1.2345 Mirova-Gbl Green Bd Si/A Eur-Acc.
+ISIN: LU1525462542
+EUR 1'234.56 EUR 1'234.56
+GBP 12'345.67
+EUR 1'234.56
+GBP 1'234.56
+(1.23%)
+(1.23%)
+EUR 12'345.67 GBP 12'345.67 1.23%
+123.4567 Swisscanto(Lu) Bf-Comm.Coco Gth Eur
+ISIN: LU0899937337
+EUR 123.45 EUR 123.45
+GBP 12'345.67
+EUR 1'234.56
+GBP 1'234.56
+(1.23%)
+(1.23%)
+EUR 12'345.67 GBP 12'345.67 1.23%
+Equities GBP 1'234'567.89 12.34%
+Global Markets GBP 123'456.78 12.34%
+12'345.6789 Federated He.If-Gl.Eq.Esg Pat.F Usd
+ISIN: IE00BKRCQ001
+USD 1.23 USD 1.23
+GBP 12'345.67
+USD 12'345.67
+GBP 12'345.67
+(12.34%)
+(12.34%)
+USD 123'456.78 GBP 123'456.78 1.23%
+123.45678 Glob Envir Opp-I Usd
+ISIN: LU0503632100
+USD 123.45 USD 123.45
+GBP 12'345.67
+USD 12'345.67
+GBP 1'234.56
+(12.34%)
+(1.23%)
+USD 123'456.78 GBP 12'345.67 1.23%
+1'234.56789 Pictet-Positive Change I Usd
+ISIN: LU2478778603
+USD 123.45 USD 123.45
+GBP 123'456.78
+USD 12'345.67
+GBP 12'345.67
+(12.34%)
+(12.34%)
+USD 123'456.78 GBP 123'456.78 1.23%
+123.45 Sisf-Qep Global Esg C Usd -Acc.-
+ISIN: LU1528092635
+USD 123.45 USD 123.45
+GBP 123'456.78
+USD 12'345.67
+GBP 12'345.67
+(12.34%)
+(12.34%)
+USD 123'456.78 GBP 123'456.78 1.23%
 
---- page 9/99 ---
+--- page 12/12 ---
 Portfolio valuation
-As at 99 November 9999
+As at 31 December 2025
 Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-9/99
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+1/12
 Breakdown by asset class
 Quantity Description
 Market price
 Correction factor
 Gross unit cost
-Net cost (EUR)
-Unrealised (Orig.)
-Unrealised (EUR)
+Net cost (GBP)
+Net unrealised (Orig.)
+Net unrealised (GBP)
 Valuation (Orig.)
 Acc. interest (Orig.)
-Valuation (EUR)
-Acc. interest (EUR) Weight
-9'999.99999 Pictet-Positive Change I Usd
-ISIN: LU9999999999
-USD 999.99 USD 999.99
-EUR 999'999.99
-USD 99'999.99
-EUR 99'999.99
-(99.99%)
-(99.99%)
-USD 999'999.99 EUR 999'999.99 9.99%
-999.99 Sisf-Qep Global Esg C Usd -Acc.-
-ISIN: LU9999999999
-USD 999.99 USD 999.99
-EUR 999'999.99
-USD 99'999.99
-EUR 99'999.99
-(99.99%)
-(99.99%)
-USD 999'999.99 EUR 999'999.99 9.99%
-Developed Markets EUR 9'999'999.99 99.99%
-Global dev. markets EUR 999'999.99 99.99%
-9'999.9999 Robeco Cgf-Qi Gbl Su.En.In.Eq.I Eur
-ISIN: LU9999999999
-EUR 999.99 EUR 999.99
-EUR 999'999.99
-EUR 999'999.99
-EUR 999'999.99
-(99.99%)
-(99.99%)
-EUR 999'999.99 EUR 999'999.99 9.99%
-9'999.9999 Ssga-Gl.Esg Scree.Enh.Equ.I Usd-Acc
-ISIN: LU9999999999
-USD 99.99 USD 99.99
-EUR 999'999.99
-USD -99.99
-EUR 999.99
-(-9.99%)
-(9.99%)
-USD 999'999.99 EUR 999'999.99 9.99%
-USA EUR 999'999.99 9.99%
-9'999.999 Ab I Sus Us Th I
-ISIN: LU9999999999
-USD 99.99 USD 99.99
-EUR 999'999.99
-USD 99'999.99
-EUR 99'999.99
-(99.99%)
-(99.99%)
-USD 999'999.99 EUR 999'999.99 9.99%
-Other Europe (dev.) EUR 999'999.99 9.99%
-9'999.999 Candriam Ss-Equit.Europe I Eur-Acc
-ISIN: LU9999999999
-EUR 99.99 EUR 99.99
-EUR 99'999.99
-EUR 9'999.99
-EUR 9'999.99
-(9.99%)
-(9.99%)
-EUR 99'999.99 EUR 99'999.99 9.99%
-999.99999 Pictet-Quest Europ.Sust Eq-I Eur
-ISIN: LU9999999999
-EUR 999.99 EUR 999.99
-EUR 999'999.99
-EUR 99'999.99
-EUR 99'999.99
-(99.99%)
-(99.99%)
-EUR 999'999.99 EUR 999'999.99 9.99%
-Emerging Markets EUR 999'999.99 9.99%
-Other emerg. mark. Asia EUR 999'999.99 9.99%
-999.9999 Sisf-Asian Total Return C Usd-Acc.-
-ISIN: LU9999999999
-USD 999.99 USD 999.99
-EUR 999'999.99
-USD 9'999.99
-EUR 99'999.99
-(9.99%)
-(99.99%)
-USD 999'999.99 EUR 999'999.99 9.99%
-Global EM EUR 999'999.99 9.99%
-99'999.9999 Federat.Hermes If-Gl.Em.M.Eq.L Usd
-ISIN: IE99BZ9C9999
-USD 9.99 USD 9.99
-EUR 99'999.99
-USD 99'999.99
-EUR 99'999.99
-(99.99%)
-(99.99%)
-USD 999'999.99 EUR 999'999.99 9.99%
-Equity Real Estate EUR 99'999.99 9.99%
-999.99999 Pwm Fs-Global Reits Sel.Hi Eur-Acc
-ISIN: LU9999999999
-EUR 999.99 EUR 999.99
-EUR 99'999.99
-EUR 9'999.99
-EUR 9'999.99
-(9.99%)
-(9.99%)
-EUR 99'999.99 EUR 99'999.99 9.99%
-Small Capitalisations EUR 999'999.99 9.99%
-999.99 Kempen If-(Lux)Gl.Sm.-Cap J Usd-Inc
-ISIN: LU9999999999
-USD 9'999.99 USD 9'999.99
-EUR 999'999.99
-USD 99'999.99
-EUR 99'999.99
-(99.99%)
-(99.99%)
-USD 999'999.99 EUR 999'999.99 9.99%
-
---- page 99/99 ---
-Portfolio valuation
-As at 99 November 9999
-Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-9/99
-Breakdown by asset class
-Quantity Description
-Market price
-Correction factor
-Gross unit cost
-Net cost (EUR)
-Unrealised (Orig.)
-Unrealised (EUR)
-Valuation (Orig.)
-Acc. interest (Orig.)
-Valuation (EUR)
-Acc. interest (EUR) Weight
-Precious metals EUR 999'999.99 9.99%
-Gold EUR 999'999.99 9.99%
-999.99999 Physical Gold-I Dy Usd
-ISIN: CH9999999999
-USD 999.99 USD 999.99
-EUR 999'999.99
-USD 99'999.99
-EUR 99'999.99
-(99.99%)
-(99.99%)
-USD 999'999.99 EUR 999'999.99 9.99%
-Others EUR 99'999.99 9.99%
-Miscellaneous EUR 99'999.99 9.99%
-Global dev. markets EUR 99'999.99 9.99%
-999 Eur Pwm Lg Vol Balanc (Pictet)99/99
-ISIN: ZZ99AB9IRH 9
-EUR 99.99 b) EUR 99.99
-EUR 99'999.99
-EUR -99'999.99
-EUR -99'999.99
-(-99.99%)
-(-99.99%)
-EUR 99'999.99 EUR 99'999.99 9.99%
+Valuation (GBP)
+Acc. interest (GBP) Weight
+Developed Markets GBP 1'234'567.89 12.34%
+Other Europe (dev.) GBP 123'456.78 12.34%
+1'234.567 Candriam Ss-Equit.Europe I Eur-Acc
+ISIN: LU1313772078
+EUR 12.34 EUR 12.34
+GBP 123'456.78
+EUR 12'345.67
+GBP 12'345.67
+(1.23%)
+(1.23%)
+EUR 123'456.78 GBP 123'456.78 1.23%
+1'234.56 Eleva-European Selection R Eur-Acc￾ISIN: LU1111643711
+EUR 123.45 EUR 123.45
+GBP 123'456.78
+EUR 1'234.56
+GBP 1'234.56
+(1.23%)
+(1.23%)
+EUR 123'456.78 GBP 123'456.78 1.23%
+123.45678 Pictet-Quest Europ.Sust Eq-I Eur
+ISIN: LU0144509550
+EUR 123.45 EUR 123.45
+GBP 123'456.78
+EUR 12'345.67
+GBP 12'345.67
+(12.34%)
+(12.34%)
+EUR 123'456.78 GBP 123'456.78 1.23%
+Global dev. markets GBP 123'456.78 12.34%
+1'234.56789 Pictet-Quest Ai-Driven Gl.Eq.I Usd
+ISIN: LU2749781717
+USD 123.45 USD 123.45
+GBP 123'456.78
+USD 12'345.67
+GBP 12'345.67
+(1.23%)
+(1.23%)
+USD 123'456.78 GBP 123'456.78 1.23%
+123.4567 Robeco-Qi Gl.Dev.1d.En.Idx Eq.I Eur
+ISIN: LU1036586912
+EUR 123.45 EUR 123.45
+GBP 123'456.78
+EUR 123'456.78
+GBP 12'345.67
+(12.34%)
+(12.34%)
+EUR 123'456.78 GBP 123'456.78 1.23%
+Emerging Markets GBP 123'456.78 1.23%
+Global EM GBP 12'345.67 1.23%
+12'345.6789 Federat.Hermes If-Gl.Em.M.Eq.L Usd
+ISIN: IE00BZ4C8803
+USD 1.23 USD 1.23
+GBP 12'345.67
+USD 12'345.67
+GBP 12'345.67
+(12.34%)
+(12.34%)
+USD 123'456.78 GBP 12'345.67 1.23%
+Other emerg. mark. Asia GBP 12'345.67 1.23%
+123.45 Sisf-Asian Total Return C Usd-Acc.-
+ISIN: LU0326949186
+USD 123.45 USD 123.45
+GBP 12'345.67
+USD 12'345.67
+GBP 1'234.56
+(12.34%)
+(12.34%)
+USD 12'345.67 GBP 12'345.67 1.23%
+Precious metals GBP 12'345.67 1.23%
+Gold GBP 12'345.67 1.23%
+123.45678 Ppmf Ch-Physical Gold I Usd
+ISIN: CH0104848269
+USD 123.45 USD 123.45
+GBP 12'345.67
+USD 12'345.67
+GBP 12'345.67
+(123.45%)
+(123.45%)
+USD 123'456.78 GBP 12'345.67 1.23%
+Others GBP 12'345.67 1.23%
+Unclassified Misc. Structured Products GBP 12'345.67 1.23%
+Global dev. markets GBP 12'345.67 1.23%
+123 Eur Pwm Lg Vol Balanc (Pictet)12/12
+ISIN: ZZ00AB97OD 0
+EUR 12.34 b) EUR 12.34
+GBP 12'345.67
+EUR -1'234.56
+GBP -1'234.56
+(-12.34%)
+(-12.34%)
+EUR 12'345.67 GBP 12'345.67 1.23%
 Price Symbol b) Price provided by an external unofficial source
+
+--- page 12/12 ---
+Portfolio valuation
+As at 31 December 2025
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+1/12
 Valuation based on the latest available prices, without guarantee of accuracy
-The positions presented in the portfolio valuation are not pledged
+The positions presented in the portfolio valuation are pledged
 There are no loaned or borrowed positions in the portfolio
 
---- page 99/99 ---
+--- page 12/12 ---
  a
  a Current account statement
-From 9 November 9999 to 99 November 9999
+From 1 December 2025 to 31 December 2025
 Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-9/99
-Current account EUR: K-999999.999.99.EUR
-Book. date Value date Description Debit (EUR) Credit (EUR) Balance (EUR)
-99.99.9999 Balance carried forward 999.99
-99.99.9999 99.99.9999 Sale 9999 MULTI-AMUNDI EUR GOV BD 9-99Y-ETF 999'999.99 999'999.99
-99.99.9999 99.99.9999 Redemption 9999 CANDRIAM SS-EQUIT.EUROPE I EUR-ACC 99'999.99 999'999.99
-99.99.9999 99.99.9999 Subscription 9999 ABRDN II-EUR C.BD S&R INV-D EUR-ACC 99'999.99 999'999.99
-99.99.9999 99.99.9999 Subscription 9999.99999 PICTET-ST MONEY MARKET EUR-I 999'999.99 99'999.99
-99.99.9999 Balance in your favour 99'999.99
-^ Total deposits and withdrawals : EUR 9.99
-BIC/SWIFT : PICTLULX
-IBAN: LU999999999999999999
-
---- page 99/99 ---
- a Current account statement
-From 9 November 9999 to 99 November 9999
-Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-99/99
-Current account USD: K-999999.999.99.USD
-Book. date Value date Description Debit (USD) Credit (USD) Balance (USD)
-99.99.9999 Balance carried forward 99'999.99
-99.99.9999 99.99.9999 Transfer to your account common GBP (GBP/USD 9.999999) 99'999.99 99'999.99
-99.99.9999 99.99.9999 Transfer from your account common JPY (USD/JPY 999.999999) 99'999.99 999'999.99
-99.99.9999 99.99.9999 Redemption 999.999 LAZARD GIF-EM LOC.DEBT P USD-ACC.- 99'999.99 999'999.99
-99.99.9999 99.99.9999 Subscription 9999 SSGA-GL.ESG SCREE.ENH.EQU.I USD-ACC 99'999.99 99'999.99
-99.99.9999 99.99.9999 Subscription 9999 SSGA-GL.ESG SCREE.ENH.EQU.I USD-ACC 99'999.99 99'999.99
-99.99.9999 Balance in your favour 99'999.99
-^ Total deposits and withdrawals : USD 9.99
-BIC/SWIFT : PICTLULX
-IBAN: LU999999999999999999
-
---- page 99/99 ---
- a Current account statement
-From 9 November 9999 to 99 November 9999
-Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-99/99
-Current account JPY: K-999999.999.99.JPY
-Book. date Value date Description Debit (JPY) Credit (JPY) Balance (JPY)
-99.99.9999 Balance carried forward 9'999'999
-99.99.9999 99.99.9999 Transfer to your account common USD (USD/JPY 999.999999) 9'999'999 9
-99.99.9999 Balance in your favour 9
-^ Total deposits and withdrawals : JPY 9
-BIC/SWIFT : PICTLULX
-IBAN: LU999999999999999999
-
---- page 99/99 ---
- a Current account statement
-From 9 November 9999 to 99 November 9999
-Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-99/99
-Current account GBP: K-999999.999.99.GBP
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+1/12
+Current account GBP: K-123456.789.01.GBP
 Book. date Value date Description Debit (GBP) Credit (GBP) Balance (GBP)
-99.99.9999 Balance carried forward 999.99
-99.99.9999 99.99.9999 Transfer from your account common USD (GBP/USD 9.999999) 99'999.99 99'999.99
-99.99.9999 99.99.9999 Payment to Firstname Surnames 99'999.99 ^ 999.99
-99.99.9999 Balance in your favour 999.99
-^ Total deposits and withdrawals : GBP -99'999.99
+30.11.2025 Balance carried forward 12'345.67
+15.12.2025 31.12.2025 Administration fees 4th quarter 2025 1'234.56 12'345.67
+15.12.2025 31.12.2025 Management fees 4th quarter 2025 1'234.56 12'345.67
+19.12.2025 22.12.2025 Liquidation FX: transfer to account EUR 1'234.56 12'345.67
+22.12.2025 22.12.2025 Liquidation FX: transfer to account EUR 1'234.56 12'345.67
+31.12.2025 Balance in your favour 12'345.67
+^ Total deposits and withdrawals : GBP 1.23
 BIC/SWIFT : PICTLULX
-IBAN: LU999999999999999999
+IBAN: LU123456789012345678
 
---- page 99/99 ---
+--- page 12/12 ---
+ a Current account statement
+From 1 December 2025 to 31 December 2025
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+12/12
+Current account USD: K-123456.789.01.USD
+Book. date Value date Description Debit (USD) Credit (USD) Balance (USD)
+30.11.2025 Balance carried forward 12'345.67
+16.12.2025 18.12.2025 Redemption 1234.567 AB SICAV I-SUST.US THEM.I USD-ACC 123'456.78 123'456.78
+17.12.2025 22.12.2025 Redemption 12345 FEDERATED HE.IF-GL.EQ.ESG PAT.F USD 123'456.78 123'456.78
+17.12.2025 22.12.2025 Redemption 123 SISF-ASIAN TOTAL RETURN C USD-ACC.- 12'345.67 123'456.78
+17.12.2025 22.12.2025 Subscription 123 SISF-QEP GLOBAL ESG C USD -ACC.- 12'345.67 123'456.78
+18.12.2025 19.12.2025 Redemption 123 KEMPEN IF-(LUX)GL.SM.-CAP J USD-INC 123'456.78 123'456.78
+18.12.2025 19.12.2025 Redemption 12 PICTET-POSITIVE CHANGE I USD 12'345.67 123'456.78
+18.12.2025 19.12.2025 Redemption 123 PICTET-GLOB ENVIR OPP-I USD 12'345.67 123'456.78
+18.12.2025 19.12.2025 Redemption 12 PICTET-BIOTECH-I USD 123'456.78 123'456.78
+18.12.2025 18.12.2025 Subscription 1234 PICTET-QUEST AI-DRIVEN GL.EQ.I USD 123'456.78 123'456.78
+19.12.2025 22.12.2025 Liquidation FX: transfer to account EUR 123'456.78 1.23
+31.12.2025 Balance in your favour 1.23
+^ Total deposits and withdrawals : USD 1.23
+BIC/SWIFT : PICTLULX
+IBAN: LU123456789012345678
+
+--- page 12/12 ---
+ a Current account statement
+From 1 December 2025 to 31 December 2025
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+12/12
+Current account EUR: K-123456.789.01.EUR
+Book. date Value date Description Debit (EUR) Credit (EUR) Balance (EUR)
+30.11.2025 Balance carried forward 12'345.67
+01.12.2025 03.12.2025 Redemption 123.456 AXA WF-US CR.SH.DUR.I EUR H 12%-ACC 12'345.67 123'456.78
+01.12.2025 03.12.2025 Redemption 1234.567 MUZINICH-SUST.CREDIT S HGD EUR 12'345.67 123'456.78
+02.12.2025 04.12.2025 Subscription 123 PICTET-EUR CORPORATE BONDS-I 123'456.78 12'345.67
+03.12.2025 05.12.2025 Subscription 1234 BLUEBAY-INV.GRADE BD Q EUR-ACC.- 123'456.78 -123'456.78
+15.12.2025 17.12.2025 FX Spot: Purchase EUR 12'345.67 at 1.23456 against JPY 12'345.67 -12'345.67
+17.12.2025 18.12.2025 Redemption 123 PICTET-EM CORP BDS-HI EUR 12'345.67 -12'345.67
+17.12.2025 18.12.2025 Redemption 1 MIROVA-GBL GREEN BD SI/A EUR-ACC. 12'345.67 12'345.67
+17.12.2025 18.12.2025 Redemption 123 PICTET-CLEAN ENERGY TR.-I EUR 12'345.67 12'345.67
+18.12.2025 19.12.2025 Redemption 1234 SSGA-GL.TR.1-12 BD IDX I EUR H-ACC 12'345.67 123'456.78
+18.12.2025 22.12.2025 Redemption 123 ROBECO-QI GL.DEV.1D.EN.IDX EQ.I EUR 12'345.67 123'456.78
+18.12.2025 22.12.2025 Subscription 1234 CANDRIAM SS-EQUIT.EUROPE I EUR-ACC 123'456.78 -12'345.67
+19.12.2025 22.12.2025 Liquidation FX: transfer from account USD 123'456.78 123'456.78
+19.12.2025 22.12.2025 Liquidation FX: transfer from account GBP 1'234.56 123'456.78
+19.12.2025 22.12.2025 Subscription 123 PICTET-QUEST EUROP.SUST EQ-I EUR 123'456.78 123'456.78
+19.12.2025 22.12.2025 Subscription 1234 ELEVA-EUROPEAN SELECTION R EUR-ACC- 123'456.78 -1'234.56
+22.12.2025 22.12.2025 Liquidation FX: transfer from account GBP 1'234.56 1.23
+31.12.2025 Balance in your favour 1.23
+^ Total deposits and withdrawals : EUR 1.23
+BIC/SWIFT : PICTLULX
+IBAN: LU123456789012345678
+
+--- page 12/12 ---
+ a Current account statement
+From 1 December 2025 to 31 December 2025
+Client: FIRST MIDDLE LASTNAMES
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+12/12
+Current account JPY: K-123456.789.01.JPY
+Book. date Value date Description Debit (JPY) Credit (JPY) Balance (JPY)
+30.11.2025 Balance carried forward 12'345'678
+15.12.2025 17.12.2025 FX Spot: Sale JPY 12'345'678 at 1.23456 against EUR 12'345'678 1
+31.12.2025 Balance in your favour 1
+^ Total deposits and withdrawals : JPY 1
+BIC/SWIFT : PICTLULX
+IBAN: LU123456789012345678
+
+--- page 12/12 ---
 Glossary Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-99/99
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+12/12
  a
  a
 Lexicon
@@ -663,12 +727,12 @@ XTZ Europe - Misc.
 XXZ Global - Developed
 Others Other currencies
 
---- page 99/99 ---
+--- page 12/12 ---
 Disclaimer Client: FIRST MIDDLE LASTNAMES
-Account no.: K-999999.999
-Report name: Financial Statement | Publication date: 99.99.9999 | Reference currency: EUR
-9A99
-99/99
+Account no.: K-123456.789
+Report name: Financial Statement | Publication date: 07.01.2026 | Reference currency: GBP
+1A12
+12/12
  a
 Bank Pictet & Cie (Europe) AG 
 (hereinafter the "Bank") does not 
@@ -727,7 +791,7 @@ they use the Data.
 Pursuant to the Bank's General 
 Business Conditions, the recipient of 
 this report must report any inaccuracy 
-or error within 99 days of receiving this 
+or error within 12 days of receiving this 
 report.
 Unless otherwise stated, any currency 
 breakdowns shown in this document are 
@@ -749,8 +813,7 @@ classification of the securities.
 The Bank has published the different 
 disclaimers for each of the Data 
 Providers under the following link: 
-https://www.group.pictet/indices-discla
-imers
+group.pictet/indices-disclaimers
 In addition, the following disclaimer 
 applies if the data in this financial 
 statement is used in connection with 
