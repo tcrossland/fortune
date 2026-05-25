@@ -5,12 +5,13 @@ reporting, planning, budgeting, and tax. Biased toward changes that
 fit the existing data-driven, sidecar-based architecture rather than
 introducing a new paradigm. Not committed work — a menu to pull from.
 
-Statement-balance reconciliation and idempotent-re-ingest dedup keying
-have since shipped; the standout remaining high-leverage item is the
-**current-year tax-liability forecast**, which builds directly on the
-section-104 engine and the AEA/loss-carry-forward chain. Pair it with
-the **rate-source coverage check** so the forecast isn't built on
-silent `None` rates.
+Statement-balance reconciliation, idempotent-re-ingest dedup keying, and
+the current-year tax-liability forecast have since shipped. The standout
+remaining low-effort item is the **rate-source coverage check** — warn
+when a disposal/dividend has no `gbp_rate` and no HMRC monthly rate,
+rather than silently producing `None` (which also quietly understates the
+new forecast). After that, the **tax pack** (HMRC box-number mapping) is
+the natural next reporting deliverable.
 
 ## Bookkeeping (ingest quality)
 
@@ -62,9 +63,14 @@ cautiously.
 - **Income/expense run-rate** from historical sidecars: trailing-12
   cashflow by category, projected forward. Low effort, reuses
   existing data.
-- **Tax-liability forecast** for the current (incomplete) tax year so
-  there are no April surprises. Most synergistic planning feature
-  with what is already computed.
+- **Tax-liability forecast.** *(Shipped.)* `tax-forecast --income <gbp>`
+  estimates the current (incomplete) tax year's UK liability, reusing the
+  SA108/SA106 machinery for the year-to-date taxable amounts and stacking
+  them in UK order (non-savings income → savings → dividends → CGT on the
+  remaining basic-rate band), with the personal-allowance taper and
+  foreign tax credit relief. Year-to-date actuals only. See
+  `tax/uk/liability.py` + `tax/uk/rates.py`. Still open: run-rate
+  extrapolation, and Scottish income-tax bands.
 - **Full budgeting** (envelopes, targets) is deprioritised — a
   different product, and the substrate isn't built for it.
 

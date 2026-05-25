@@ -94,7 +94,7 @@ src/banking_pipeline/
 │                         classify | scan | extract-text | revolut |
 │                         dedup-check |
 │                         prices | balances | portfolio | check |
-│                         reconcile | rebuild | tax-report)
+│                         reconcile | rebuild | tax-report | tax-forecast)
 ├── pipeline.py         Top-level Pipeline orchestration
 ├── models.py           Domain models — DocumentType, BankId, Language,
 │                         RawDocument, Classification, Transaction,
@@ -178,8 +178,15 @@ src/banking_pipeline/
 │       │                    statutory deduction order + optimal mid-year
 │       │                    rate-change allocation + year-to-year chain
 │       ├── sa106.py       SA106 foreign dividend + interest aggregation
-│       └── eri.py         Excess reportable income + equalisation
-│                            (data/eri.toml → income + base-cost uplift)
+│       ├── eri.py         Excess reportable income + equalisation
+│       │                    (data/eri.toml → income + base-cost uplift)
+│       ├── rates.py       Statutory income-tax bands/rates + CGT rate
+│       │                    percentages by tax year (the `tax-forecast`
+│       │                    inputs; Settings exposes both as overridable)
+│       └── liability.py   UK stacking engine: turns the SA108/SA106
+│                            amounts into an estimated £ liability
+│                            (non-savings → savings → dividends → CGT,
+│                            with PA taper + foreign tax credit relief)
 ├── templates/
 │   ├── __init__.py       TEMPLATE_REGISTRY (populated at import)
 │   ├── pictet/           ~40 per-doctype templates (EN + ES locales)
@@ -510,6 +517,17 @@ and reads the JSONL sidecars, not the ledger:
   AEA/loss-carry-forward chain (`cgt-loss-carryforward.csv`) to
   `<tax_reports_dir>/<year>/` (default `reports/uk-tax/<year>/`).
   `--rate-source` overrides `gbp_rate_source` for the run.
+- `tax-forecast --income <gbp> [--year 2026-27]` — current-year
+  liability estimate (defaults to the in-progress tax year). Reuses the
+  `tax-report` machinery to compute year-to-date taxable amounts, then
+  stacks them in UK order (non-savings income from `--income` + offshore
+  income gains + deeply-discounted profit → savings/interest → dividends
+  → CGT on the remaining basic-rate band), applies the statutory
+  rates/bands (`income_tax_bands` / `cgt_forecast_rates`), nets foreign
+  tax credit relief on WHT, and writes `forecast-summary.txt` +
+  `forecast.csv`. Year-to-date *actuals* only (no run-rate
+  extrapolation); ISA-wrapped transactions are excluded at the same
+  choke point as `tax-report`. England/Wales/NI rates, single taxpayer.
 
 ## Configuration
 
@@ -530,6 +548,13 @@ and reads the JSONL sidecars, not the ledger:
   `cgt_annual_exempt_amount` (`{label: Decimal}`, statutory AEA per tax
   year), and `cgt_losses_path` (`data/cgt-losses.toml` when present —
   pre-ledger brought-forward losses).
+- `tax-forecast` knobs: `income_tax_bands` (`{label: IncomeTaxBands}`)
+  and `cgt_forecast_rates` (`{label: CgtRateSchedule}`) — statutory
+  England/Wales/NI defaults from `tax/uk/rates.py`, frozen across
+  2024-25..2026-27 (CGT split 10/20 → 18/24 on 30 Oct 2024). A
+  forecast year missing from `income_tax_bands` aborts with a clear
+  error rather than guessing; add new years to `rates.py` as HMRC sets
+  them.
 - `reconciliation_dir` (defaults to `reports/reconciliation`) — output
   directory for the `reconcile` command's `summary.txt` / `drift.csv`.
 - Batch config: `banking-pipeline.toml` (gitignored, schema in

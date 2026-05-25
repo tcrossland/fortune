@@ -10,6 +10,13 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from banking_pipeline.tax.uk.rates import (
+    CgtRateSchedule,
+    IncomeTaxBands,
+    default_cgt_rates,
+    default_income_bands,
+)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -109,6 +116,22 @@ class Settings(BaseSettings):
             "2025-26": Decimal("3000"),
             "2026-27": Decimal("3000"),
         }
+    )
+
+    # Income-tax bands / rates and CGT rate percentages by tax-year label,
+    # consumed only by the ``tax-forecast`` command to turn SA108/SA106
+    # amounts into an estimated liability. Statutory England/Wales/NI
+    # defaults live in :mod:`banking_pipeline.tax.uk.rates`; add a new
+    # year there (or override here) as HMRC sets it. A year missing from
+    # ``income_tax_bands`` makes the forecast abort with a clear error
+    # rather than guess. ``cgt_forecast_rates`` carries the rate
+    # *percentages*; the rate-change *date* and the AEA stay in
+    # ``cgt_rate_change_dates`` / ``cgt_annual_exempt_amount`` above.
+    income_tax_bands: dict[str, IncomeTaxBands] = Field(
+        default_factory=default_income_bands
+    )
+    cgt_forecast_rates: dict[str, CgtRateSchedule] = Field(
+        default_factory=default_cgt_rates
     )
 
     # Pre-ledger allowable capital losses carried into the earliest ledger

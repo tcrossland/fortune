@@ -49,9 +49,15 @@ from banking_pipeline.tax.uk.cgt_allowance import (
     loss_carryforward_chain,
 )
 from banking_pipeline.tax.uk.eri import EriResult, compute_eri, load_eri
+from banking_pipeline.tax.uk.liability import LiabilityResult, compute_liability
 from banking_pipeline.tax.uk.sa106 import Sa106Report, compute_sa106_dividends
-from banking_pipeline.tax.uk.sa108 import Sa108Report, compute_sa108, match_history
-from banking_pipeline.tax.uk.tax_year import tax_year_bounds
+from banking_pipeline.tax.uk.sa108 import (
+    Sa108Report,
+    Sa108Row,
+    compute_sa108,
+    match_history,
+)
+from banking_pipeline.tax.uk.tax_year import date_to_tax_year, tax_year_bounds
 from banking_pipeline.transaction_sidecar import (
     dump_transactions,
     load_transactions,
@@ -2044,6 +2050,288 @@ def tax_report(
         f"{n_int} SA106 interest group(s), "
         f"{n_oig} offshore income gain(s), {n_dds} deep-discounted disposal(s), "
         f"{n_eri} ERI group(s))"
+    )
+
+
+# --- tax-forecast -----------------------------------------------------------
+
+def _positive_gains(rows: list[Sa108Row]) -> Decimal:
+    """Sum the positive gains in ``rows`` (losses on income-charged
+    disposals — offshore funds, deeply discounted securities — are not
+    relievable against income, so they're dropped, not netted)."""
+
+    return sum((r.gain_gbp for r in rows if r.gain_gbp > 0), Decimal(0))
+
+
+def _write_forecast_csv(path: Path, liab: LiabilityResult) -> None:
+    """One row per liability component, plus a TOTAL row."""
+
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["component", "taxable_gbp", "tax_gbp"])
+        writer.writerow(
+            ["non-savings income", _money(liab.nonsavings_taxable),
+             _money(liab.nonsavings_tax)]
+        )
+        writer.writerow(
+            ["foreign interest", _money(liab.interest_taxable),
+             _money(liab.interest_tax)]
+        )
+        writer.writerow(
+            ["foreign dividends", _money(liab.dividend_taxable),
+             _money(liab.dividend_tax)]
+        )
+        writer.writerow(
+            ["foreign tax credit relief", "",
+             _money(-liab.foreign_tax_credit)]
+        )
+        writer.writerow(
+            ["capital gains", _money(liab.cgt_taxable_pre + liab.cgt_taxable_post),
+             _money(liab.cgt_tax)]
+        )
+        writer.writerow(["TOTAL", "", _money(liab.total_liability)])
+
+
+def _write_forecast_summary(
+    path: Path, liab: LiabilityResult, *, as_of: date
+) -> None:
+    m = _money
+    lines = [
+        f"UK tax-liability forecast — {liab.tax_year}",
+        f"(year-to-date actuals as of {as_of.isoformat()}; an estimate, "
+        "not a return)",
+        "",
+        "Assumed income:",
+        f"  expected non-savings income: {m(liab.other_income)} GBP",
+    ]
+    if liab.other_taxable_income > 0:
+        lines.append(
+            "  income-charged investment profit (offshore / deep-discounted): "
+            f"{m(liab.other_taxable_income)} GBP"
+        )
+    lines += [
+        f"  personal allowance (after taper): {m(liab.personal_allowance)} GBP",
+        "",
+        "Income tax:",
+        f"  non-savings taxable: {m(liab.nonsavings_taxable)} GBP "
+        f"→ tax {m(liab.nonsavings_tax)} GBP",
+        f"  foreign interest: {m(liab.interest_income)} GBP "
+        f"(starting-rate band {m(liab.starting_rate_used)}, "
+        f"PSA {m(liab.psa_used)}, taxable {m(liab.interest_taxable)}) "
+        f"→ tax {m(liab.interest_tax)} GBP",
+        f"  foreign dividends: {m(liab.dividend_income)} GBP "
+        f"(allowance {m(liab.dividend_allowance_used)}, "
+        f"taxable {m(liab.dividend_taxable)}) → tax {m(liab.dividend_tax)} GBP",
+        f"  income tax before relief: {m(liab.income_tax_before_ftcr)} GBP",
+        f"  foreign tax credit relief: {m(liab.foreign_tax_credit)} GBP "
+        f"(interest {m(liab.interest_ftcr)}, dividend {m(liab.dividend_ftcr)})",
+        f"  income tax: {m(liab.income_tax)} GBP",
+        "",
+        "Capital gains tax:",
+        f"  taxable gain (after AEA + losses): "
+        f"{m(liab.cgt_taxable_pre + liab.cgt_taxable_post)} GBP",
+        f"  basic-rate band remaining for gains: "
+        f"{m(liab.cgt_basic_band_remaining)} GBP",
+        f"  taxed at lower rate: {m(liab.cgt_at_lower)} GBP, "
+        f"higher rate: {m(liab.cgt_at_higher)} GBP",
+        f"  capital gains tax: {m(liab.cgt_tax)} GBP",
+        "",
+        f"ESTIMATED TOTAL LIABILITY: {m(liab.total_liability)} GBP",
+        "",
+        "Assumes England/Wales/NI rates and a single taxpayer; excludes "
+        "PAYE/payments already made, pension/gift-aid relief, and the "
+        "marriage allowance.",
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+@app.command("tax-forecast")
+def tax_forecast(
+    income: Annotated[
+        str,
+        typer.Option(
+            "--income",
+            help="Expected non-savings, non-dividend taxable income for the "
+            "year (e.g. salary + rent), before the personal allowance. Sets "
+            "the marginal band the investment income/gains stack on top of.",
+        ),
+    ],
+    year: Annotated[
+        str | None,
+        typer.Option(
+            "--year",
+            help="UK tax year to forecast, e.g. 2026-27. Defaults to the "
+            "current (incomplete) tax year.",
+        ),
+    ] = None,
+    source: Annotated[
+        Path,
+        typer.Option(
+            "--source",
+            help="Directory walked (recursively) for *.transactions.jsonl "
+            "sidecars. Defaults to ``data``.",
+        ),
+    ] = Path("data"),
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to ``<tax_reports_dir>/<year>``.",
+        ),
+    ] = None,
+    commodities: Annotated[
+        Path | None,
+        typer.Option("--commodities", help="Commodity-metadata TOML."),
+    ] = None,
+    rate_source: Annotated[
+        str | None,
+        typer.Option("--rate-source", help="GBP rate source override."),
+    ] = None,
+    opening_positions: Annotated[
+        Path | None,
+        typer.Option("--opening-positions", help="Opening-positions TOML."),
+    ] = None,
+    eri: Annotated[
+        Path | None,
+        typer.Option("--eri", help="Excess reportable income TOML."),
+    ] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Estimate this tax year's UK liability so April holds no surprises.
+
+    Reuses the SA108/SA106 machinery (``tax-report``) to compute the
+    year-to-date taxable amounts, then stacks them in UK order —
+    non-savings income, savings, dividends, then capital gains on top —
+    and applies the statutory rates/bands to produce an estimated
+    liability. Reports year-to-date *actuals* only (no run-rate
+    extrapolation), and writes ``forecast-summary.txt`` +
+    ``forecast.csv``. Foreign withholding tax is credited against the UK
+    tax on that income. ISA-wrapped transactions are excluded, as for
+    ``tax-report``.
+    """
+
+    _configure_logging(verbose)
+    today = date.today()
+    year = year or date_to_tax_year(today)
+    tax_year_bounds(year)  # validate the label early
+
+    try:
+        expected_income = Decimal(income)
+    except (ArithmeticError, ValueError):
+        err_console.print(f"--income must be a number, got {income!r}.")
+        raise typer.Exit(code=1) from None
+
+    bands = settings.income_tax_bands.get(year)
+    if bands is None:
+        err_console.print(
+            f"No income-tax bands configured for {year}; add it to "
+            "income_tax_bands (see tax/uk/rates.py)."
+        )
+        raise typer.Exit(code=1)
+    cgt_rates = settings.cgt_forecast_rates.get(year)
+    if cgt_rates is None:
+        err_console.print(
+            f"No CGT rates configured for {year}; add it to "
+            "cgt_forecast_rates (see tax/uk/rates.py)."
+        )
+        raise typer.Exit(code=1)
+
+    out_dir = out if out is not None else settings.tax_reports_dir / year
+    cpath = commodities or settings.commodities_metadata_path
+    commodities_map = (
+        load_commodities(cpath) if cpath is not None and cpath.is_file() else {}
+    )
+    eff_settings = (
+        settings.model_copy(update={"gbp_rate_source": rate_source})
+        if rate_source is not None
+        else settings
+    )
+    rates = build_rate_source(eff_settings)
+    opening_path = opening_positions or settings.opening_positions_path
+    opening = (
+        load_opening_positions(opening_path)
+        if opening_path is not None and opening_path.is_file()
+        else {}
+    )
+    eri_path = eri or settings.eri_path
+    eri_entries = (
+        load_eri(eri_path) if eri_path is not None and eri_path.is_file() else {}
+    )
+
+    # Single tax-exemption choke point, mirroring tax-report: ISA-wrapped
+    # transactions are tax-free and never enter the liability estimate.
+    txns = [tx for tx in _load_sidecar_transactions(source) if not tx.is_tax_exempt]
+    eri_result = compute_eri(
+        txns, tax_year_label=year, eri_entries=eri_entries,
+        commodities=commodities_map, opening_positions=opening, source=rates,
+    )
+    sa108 = compute_sa108(
+        txns, tax_year_label=year, commodities=commodities_map, source=rates,
+        rate_change_date=settings.cgt_rate_change_dates.get(year),
+        opening_positions=opening, cost_adjustments=eri_result.base_cost_adjustments,
+    )
+    sa106 = compute_sa106_dividends(
+        txns, tax_year_label=year, commodities=commodities_map, source=rates
+    )
+    history = match_history(
+        txns, commodities=commodities_map, source=rates,
+        opening_positions=opening, cost_adjustments=eri_result.base_cost_adjustments,
+    )
+    losses_path = settings.cgt_losses_path
+    pre_ledger_losses = (
+        load_cgt_brought_forward_losses(losses_path)
+        if losses_path is not None and losses_path.is_file()
+        else Decimal(0)
+    )
+    chain = loss_carryforward_chain(
+        history.rows, through_year=year,
+        aea_by_year=settings.cgt_annual_exempt_amount,
+        rate_change_dates=settings.cgt_rate_change_dates,
+        pre_ledger_losses=pre_ledger_losses,
+    )
+    allowance = chain[year]
+
+    # Income-charged investment profit: offshore income gains + deeply
+    # discounted securities, both taxed as income alongside ``--income``.
+    offshore = [r for r in sa108.rows if r.reporting_status == "non-reporting"]
+    other_taxable_income = _positive_gains(offshore) + _positive_gains(
+        sa108.dds_disposals
+    )
+    eri_div = sum(
+        (r.gross_gbp for r in eri_result.rows if r.income_type == "dividend"),
+        Decimal(0),
+    )
+    eri_int = sum(
+        (r.gross_gbp for r in eri_result.rows if r.income_type == "interest"),
+        Decimal(0),
+    )
+    dividend_income = sum((r.gross_gbp for r in sa106.dividends), Decimal(0)) + eri_div
+    dividend_wht = sum((r.wht_gbp for r in sa106.dividends), Decimal(0))
+    interest_income = sum((r.gross_gbp for r in sa106.interest), Decimal(0)) + eri_int
+    interest_wht = sum((r.wht_gbp for r in sa106.interest), Decimal(0))
+
+    liab = compute_liability(
+        tax_year=year,
+        other_income=expected_income,
+        other_taxable_income=other_taxable_income,
+        interest_income=interest_income,
+        interest_wht=interest_wht,
+        dividend_income=dividend_income,
+        dividend_wht=dividend_wht,
+        cgt_taxable_pre=allowance.taxable_pre,
+        cgt_taxable_post=allowance.taxable_post,
+        bands=bands,
+        cgt_rates=cgt_rates,
+    )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    as_of = today if date_to_tax_year(today) == year else tax_year_bounds(year)[1]
+    _write_forecast_summary(out_dir / "forecast-summary.txt", liab, as_of=as_of)
+    _write_forecast_csv(out_dir / "forecast.csv", liab)
+
+    err_console.print(
+        f"Wrote tax-liability forecast for {year} to {out_dir} "
+        f"(estimated total {_money(liab.total_liability)} GBP)"
     )
 
 
