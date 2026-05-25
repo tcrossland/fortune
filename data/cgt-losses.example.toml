@@ -1,0 +1,15 @@
+# Pre-ledger allowable capital losses — copy to data/cgt-losses.toml and
+# edit. The real file is gitignored (personal tax data), mirroring
+# data/opening-positions.toml.
+#
+# brought_forward_gbp is the total unused allowable capital loss carried
+# into the earliest tax year the ledger covers — losses you realised
+# before the ledger's data starts, or that were already carried forward
+# on a prior self-assessment return. The loss-carry-forward chain seeds
+# its pool with this figure; losses realised within the ledger are added
+# automatically.
+#
+# Leave the file absent (or this key at 0) if you have no pre-ledger
+# losses to bring forward.
+
+brought_forward_gbp = 0.00

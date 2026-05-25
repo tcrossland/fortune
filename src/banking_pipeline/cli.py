@@ -27,6 +27,7 @@ from banking_pipeline import (
     reconcile as reconcile_mod,
 )
 from banking_pipeline.batch_config import BatchConfig, Source, load_config
+from banking_pipeline.cgt_losses import load_cgt_brought_forward_losses
 from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.classifiers.bank import BANK_RULES, BankRuleClassifier
 from banking_pipeline.classifiers.language import LANGUAGE_RULES, LanguageRuleClassifier
@@ -42,9 +43,14 @@ from banking_pipeline.pipeline import Pipeline
 from banking_pipeline.revolut import import_csvs as revolut_import_csvs
 from banking_pipeline.revolut import render as revolut_render
 from banking_pipeline.revolut.render import render_open_directives as revolut_open_directives
+from banking_pipeline.tax.uk.cgt_allowance import (
+    CGT_STATUSES,
+    CgtAllowanceResult,
+    loss_carryforward_chain,
+)
 from banking_pipeline.tax.uk.eri import EriResult, compute_eri, load_eri
 from banking_pipeline.tax.uk.sa106 import Sa106Report, compute_sa106_dividends
-from banking_pipeline.tax.uk.sa108 import Sa108Report, compute_sa108
+from banking_pipeline.tax.uk.sa108 import Sa108Report, compute_sa108, match_history
 from banking_pipeline.tax.uk.tax_year import tax_year_bounds
 from banking_pipeline.transaction_sidecar import (
     dump_transactions,
@@ -1525,11 +1531,6 @@ def _print_rule_matches(pdf_path: Path, classifier: RuleClassifier) -> None:
 
 # --- tax-report -------------------------------------------------------------
 
-# Reporting statuses whose disposals are CGT (SA108); everything else is
-# either offshore income gains (non-reporting) or unclassified.
-_CGT_STATUSES = frozenset({"reporting", "uk-domestic"})
-
-
 def _load_sidecar_transactions(source: Path) -> list[Transaction]:
     """Load every ``*.transactions.jsonl`` under ``source`` (recursive)."""
 
@@ -1560,7 +1561,7 @@ def _qty(value: Decimal) -> str:
 def _write_sa108_csv(path: Path, report: Sa108Report) -> int:
     """Write the CGT disposals (reporting / uk-domestic). Returns row count."""
 
-    rows = [r for r in report.rows if r.reporting_status in _CGT_STATUSES]
+    rows = [r for r in report.rows if r.reporting_status in CGT_STATUSES]
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow([
@@ -1676,15 +1677,47 @@ def _write_eri_csv(path: Path, eri: EriResult) -> int:
     return len(eri.rows)
 
 
+def _write_cgt_carryforward_csv(
+    path: Path, chain: dict[str, CgtAllowanceResult]
+) -> int:
+    """Write the year-by-year CGT allowance / loss-carry-forward chain so
+    the brought-forward figures are auditable. Returns the row count."""
+
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow([
+            "tax_year", "gains_pre", "gains_post", "current_year_losses",
+            "net_gain", "current_year_loss_carried", "bf_losses_available",
+            "bf_losses_used", "annual_exempt_amount", "annual_exempt_used",
+            "taxable_pre", "taxable_post", "taxable_total",
+            "losses_carried_forward",
+        ])
+        for label in sorted(chain):
+            r = chain[label]
+            writer.writerow([
+                r.tax_year, _money(r.gains_pre), _money(r.gains_post),
+                _money(r.current_year_losses), _money(r.net_gain),
+                _money(r.current_year_loss_carried),
+                _money(r.brought_forward_available),
+                _money(r.brought_forward_used),
+                _money(r.annual_exempt_amount), _money(r.annual_exempt_used),
+                _money(r.taxable_pre), _money(r.taxable_post),
+                _money(r.taxable_total), _money(r.losses_carried_forward),
+            ])
+    return len(chain)
+
+
 def _write_tax_summary(
     path: Path,
     year: str,
     sa108: Sa108Report,
     sa106: Sa106Report,
     eri: EriResult,
+    allowance: CgtAllowanceResult,
     rate_change_date: date | None = None,
+    aea_missing: bool = False,
 ) -> None:
-    cgt = [r for r in sa108.rows if r.reporting_status in _CGT_STATUSES]
+    cgt = [r for r in sa108.rows if r.reporting_status in CGT_STATUSES]
     offshore = [r for r in sa108.rows if r.reporting_status == "non-reporting"]
     unclassified = [r for r in sa108.rows if r.reporting_status == "unknown"]
 
@@ -1710,9 +1743,48 @@ def _write_tax_summary(
         ]
     else:
         lines.append(f"  total gains: {_gains(cgt)} GBP")
+    lines.append(f"  allowable losses (this year): {losses} GBP")
+    lines.append("")
+    lines.append("CGT allowances and loss relief:")
+    lines.append(
+        f"  net gain after current-year losses: {_money(allowance.net_gain)} GBP"
+    )
+    if allowance.current_year_loss_carried > 0:
+        lines.append(
+            "  current-year loss carried forward: "
+            f"{_money(allowance.current_year_loss_carried)} GBP"
+        )
+    lines.append(
+        "  brought-forward losses available: "
+        f"{_money(allowance.brought_forward_available)} GBP"
+    )
+    lines.append(
+        f"  brought-forward losses used: {_money(allowance.brought_forward_used)} GBP"
+    )
+    lines.append(
+        f"  annual exempt amount: {_money(allowance.annual_exempt_amount)} GBP"
+    )
+    if allowance.rate_split and rate_change_date is not None:
+        label = f"{rate_change_date.day} {rate_change_date:%B %Y}"
+        lines.append(
+            f"  taxable gain before {label}: {_money(allowance.taxable_pre)} GBP"
+        )
+        lines.append(
+            f"  taxable gain on/after {label}: {_money(allowance.taxable_post)} GBP"
+        )
+        lines.append(f"  taxable gain (total): {_money(allowance.taxable_total)} GBP")
+    else:
+        lines.append(f"  taxable gain: {_money(allowance.taxable_total)} GBP")
+    lines.append(
+        "  losses carried forward to next year: "
+        f"{_money(allowance.losses_carried_forward)} GBP"
+    )
+    if aea_missing:
+        lines.append(
+            f"  WARN no annual exempt amount configured for {year} — treated as "
+            "0; add it to cgt_annual_exempt_amount."
+        )
     lines += [
-        f"  allowable losses: {losses} GBP",
-        f"  net gain/loss: {_total(cgt, 'gain_gbp')} GBP",
         "",
         "SA106 foreign dividends:",
         f"  groups: {len(sa106.dividends)}",
@@ -1859,9 +1931,11 @@ def tax_report(
     ``distributions_as_interest`` in commodities metadata),
     ``sa106-offshore-income-gains.csv``, ``sa106-deep-discounted.csv``,
     ``sa106-eri.csv`` (excess reportable income, which also uplifts the
-    CGT base cost) and ``summary.txt``. Current-account interest is loan
-    interest the user pays (an expense), so it isn't foreign income;
-    reporting-fund accumulated interest arrives via ERI.
+    CGT base cost), ``cgt-loss-carryforward.csv`` (the year-by-year annual
+    exempt amount + allowable-loss chain) and ``summary.txt``.
+    Current-account interest is loan interest the user pays (an expense),
+    so it isn't foreign income; reporting-fund accumulated interest
+    arrives via ERI.
     """
 
     _configure_logging(verbose)
@@ -1915,6 +1989,32 @@ def tax_report(
         txns, tax_year_label=year, commodities=commodities_map, source=rates
     )
 
+    # CGT annual exempt amount + loss carry-forward: run the matcher over
+    # the full history and thread allowable losses across tax years up to
+    # the requested one, seeded by any pre-ledger brought-forward losses.
+    losses_path = settings.cgt_losses_path
+    pre_ledger_losses = (
+        load_cgt_brought_forward_losses(losses_path)
+        if losses_path is not None and losses_path.is_file()
+        else Decimal(0)
+    )
+    history = match_history(
+        txns,
+        commodities=commodities_map,
+        source=rates,
+        opening_positions=opening,
+        cost_adjustments=eri_result.base_cost_adjustments,
+    )
+    chain = loss_carryforward_chain(
+        history.rows,
+        through_year=year,
+        aea_by_year=settings.cgt_annual_exempt_amount,
+        rate_change_dates=settings.cgt_rate_change_dates,
+        pre_ledger_losses=pre_ledger_losses,
+    )
+    allowance = chain[year]
+    aea_missing = year not in settings.cgt_annual_exempt_amount
+
     out_dir.mkdir(parents=True, exist_ok=True)
     n_cgt = _write_sa108_csv(out_dir / "sa108-disposals.csv", sa108)
     n_div = _write_sa106_dividends_csv(out_dir / "sa106-dividends.csv", sa106)
@@ -1926,9 +2026,11 @@ def tax_report(
         out_dir / "sa106-deep-discounted.csv", sa108
     )
     n_eri = _write_eri_csv(out_dir / "sa106-eri.csv", eri_result)
+    _write_cgt_carryforward_csv(out_dir / "cgt-loss-carryforward.csv", chain)
     _write_tax_summary(
-        out_dir / "summary.txt", year, sa108, sa106, eri_result,
+        out_dir / "summary.txt", year, sa108, sa106, eri_result, allowance,
         rate_change_date=settings.cgt_rate_change_dates.get(year),
+        aea_missing=aea_missing,
     )
 
     err_console.print(

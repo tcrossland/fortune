@@ -15,7 +15,7 @@ elsewhere), not capital, so we subtract it from both cost and proceeds.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
 
@@ -76,6 +76,24 @@ class Sa108Report:
     unmatched_isins: list[str] = field(default_factory=list)
 
 
+@dataclass
+class MatchedHistory:
+    """Every matched disposal across the full transaction history.
+
+    The section 104 pool is cumulative, so the matcher always runs over
+    all available trades; the year filter is applied afterwards. Rows
+    carry an empty ``period`` — the caller tags it relative to whichever
+    tax year it's reporting (the rate-change date is year-specific)."""
+
+    # CGT-eligible + offshore + unclassified disposals (everything except
+    # deeply discounted). ``reporting_status`` distinguishes them.
+    rows: list[Sa108Row] = field(default_factory=list)
+    # Deeply discounted disposals (taxed as income, not CGT).
+    dds_rows: list[Sa108Row] = field(default_factory=list)
+    missing_rate_isins: list[str] = field(default_factory=list)
+    unmatched_isins: list[str] = field(default_factory=list)
+
+
 def _consideration_native(tx: Transaction) -> Decimal:
     """Capital consideration in the trade currency: net cash less any
     accrued interest (which is interest income, not capital)."""
@@ -93,28 +111,22 @@ def _period(disposal_date: date, rate_change_date: date | None) -> str:
     return "pre" if disposal_date < rate_change_date else "post"
 
 
-def compute_sa108(
+def match_history(
     transactions: list[Transaction],
     *,
-    tax_year_label: str,
     commodities: dict[str, CommodityMetadata],
     source: GbpRateSource | None = None,
-    rate_change_date: date | None = None,
     opening_positions: dict[str, list[OpeningLot]] | None = None,
     cost_adjustments: dict[str, list[PoolCostAdjustment]] | None = None,
-) -> Sa108Report:
-    """Compute SA108 disposal rows for ``tax_year_label``.
+) -> MatchedHistory:
+    """Run section 104 matching over the full history of every security.
 
-    ``transactions`` should span the full available history (the section
-    104 pool is cumulative); only disposals settling within the tax year
-    are returned. ``source`` supplies GBP rates for any transaction the
-    extractor didn't already stamp with ``gbp_rate``. ``rate_change_date``
-    (the year's mid-year CGT rate change, e.g. 2024-10-30 for 2024-25)
-    tags each row's ``period`` so disposals can be split before / on-or-
-    after it; ``None`` leaves ``period`` empty.
+    Returns one :class:`Sa108Row` per matched disposal portion across all
+    tax years (``period`` left empty — the caller tags it). ``compute_sa108``
+    layers a year filter on top; the loss-carry-forward chain buckets the
+    same rows by tax year. ``source`` supplies GBP rates for any trade the
+    extractor didn't stamp with ``gbp_rate``.
     """
-
-    start, end = tax_year_bounds(tax_year_label)
 
     by_isin: dict[str, list[Transaction]] = defaultdict(list)
     for tx in transactions:
@@ -181,8 +193,6 @@ def compute_sa108(
         # without an acquisition date because the pool is an aggregate).
         first_acq = min((a.date for a in acqs), default=None)
         for m in match_disposals(acqs, disps, adjustments):
-            if not (start <= m.disposal_date <= end):
-                continue
             acq_dates = m.acquisition_dates
             if not acq_dates and first_acq is not None:
                 acq_dates = [first_acq]
@@ -198,7 +208,6 @@ def compute_sa108(
                     gain_gbp=m.gain_gbp,
                     match_type=m.matched_against,
                     acquisition_dates=acq_dates,
-                    period=_period(m.disposal_date, rate_change_date),
                 )
             )
 
@@ -206,9 +215,54 @@ def compute_sa108(
     dds.sort(key=lambda r: (r.disposal_date, r.isin))
     missing.sort()
     unmatched.sort()
-    return Sa108Report(
+    return MatchedHistory(
         rows=rows,
-        dds_disposals=dds,
+        dds_rows=dds,
         missing_rate_isins=missing,
         unmatched_isins=unmatched,
+    )
+
+
+def compute_sa108(
+    transactions: list[Transaction],
+    *,
+    tax_year_label: str,
+    commodities: dict[str, CommodityMetadata],
+    source: GbpRateSource | None = None,
+    rate_change_date: date | None = None,
+    opening_positions: dict[str, list[OpeningLot]] | None = None,
+    cost_adjustments: dict[str, list[PoolCostAdjustment]] | None = None,
+) -> Sa108Report:
+    """Compute SA108 disposal rows for ``tax_year_label``.
+
+    ``transactions`` should span the full available history (the section
+    104 pool is cumulative); only disposals settling within the tax year
+    are returned. ``source`` supplies GBP rates for any transaction the
+    extractor didn't already stamp with ``gbp_rate``. ``rate_change_date``
+    (the year's mid-year CGT rate change, e.g. 2024-10-30 for 2024-25)
+    tags each row's ``period`` so disposals can be split before / on-or-
+    after it; ``None`` leaves ``period`` empty.
+    """
+
+    start, end = tax_year_bounds(tax_year_label)
+    history = match_history(
+        transactions,
+        commodities=commodities,
+        source=source,
+        opening_positions=opening_positions,
+        cost_adjustments=cost_adjustments,
+    )
+
+    def _in_year(rows: list[Sa108Row]) -> list[Sa108Row]:
+        return [
+            replace(r, period=_period(r.disposal_date, rate_change_date))
+            for r in rows
+            if start <= r.disposal_date <= end
+        ]
+
+    return Sa108Report(
+        rows=_in_year(history.rows),
+        dds_disposals=_in_year(history.dds_rows),
+        missing_rate_isins=history.missing_rate_isins,
+        unmatched_isins=history.unmatched_isins,
     )

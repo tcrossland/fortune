@@ -108,6 +108,9 @@ src/banking_pipeline/
 │                              `distributions_as_interest`)
 ├── opening_positions.py     TOML loader for `data/opening-positions.toml`
 │                              — pre-ledger section-104 lots (cost basis)
+├── cgt_losses.py            TOML loader for `data/cgt-losses.toml`
+│                              — pre-ledger brought-forward CGT losses
+│                              seeding the loss-carry-forward chain
 ├── transaction_sidecar.py   JSONL `*.transactions.jsonl` writer/reader
 │                              — the structured substrate `tax-report`
 │                              consumes; each line also carries a derived
@@ -145,8 +148,13 @@ src/banking_pipeline/
 │       │                    "bed and breakfast" share-matching +
 │       │                    dated pool-cost adjustments (ERI uplift)
 │       ├── sa108.py       SA108 CGT row builder (reads sidecars);
+│       │                    `match_history` runs the matcher over the
+│       │                    full history (shared with the loss chain);
 │       │                    routes deeply-discounted → income, non-
 │       │                    reporting → offshore-income-gains
+│       ├── cgt_allowance.py  Annual exempt amount + loss carry-forward:
+│       │                    statutory deduction order + optimal mid-year
+│       │                    rate-change allocation + year-to-year chain
 │       ├── sa106.py       SA106 foreign dividend + interest aggregation
 │       └── eri.py         Excess reportable income + equalisation
 │                            (data/eri.toml → income + base-cost uplift)
@@ -342,22 +350,39 @@ and reads the JSONL sidecars, not the ledger:
   (gain taxed as income) and `distributions_as_interest` (a >60%
   interest-bearing "bond fund" — its distributions and ERI are
   foreign interest, not dividends).
-- Three user-maintained TOMLs feed `tax-report`, all gitignored with a
+- Four user-maintained TOMLs feed `tax-report`, all gitignored with a
   committed `.example.toml`: `data/commodities.toml` (status / flags),
   `data/opening-positions.toml` (pre-ledger section-104 lots — seeds
   cost basis so a disposal isn't matched at zero cost; the summary
-  warns "disposed more than acquired" when one is missing), and
+  warns "disposed more than acquired" when one is missing),
   `data/eri.toml` (excess reportable income; the displayed date is the
   fund *distribution* date and units are measured at the period end six
-  months earlier — see `tax/uk/eri.py`).
+  months earlier — see `tax/uk/eri.py`), and `data/cgt-losses.toml`
+  (a single `brought_forward_gbp` — pre-ledger allowable losses seeding
+  the loss-carry-forward chain).
+- CGT annual exempt amount + loss carry-forward live in
+  `tax/uk/cgt_allowance.py`, layered on the section-104 gains. The chain
+  runs the matcher over the full history (`sa108.match_history`), buckets
+  disposals by tax year, and threads allowable losses forward to the
+  requested year, applying HMRC's deduction order: current-year losses
+  first (even if that wastes the AEA), then brought-forward losses *only
+  down to the AEA*, then the AEA. In a mid-year rate-change year it
+  absorbs relief against the higher-rate (`post`) bucket first so the
+  taxable remainder sits in the lower-rate (`pre`) bucket. AEA values are
+  `cgt_annual_exempt_amount` (statutory; a year missing there is treated
+  as 0 and flagged in `summary.txt`). Losses are claimed automatically —
+  the 4-year claim time limit is not enforced.
 - `tax-report --year 2025-26` writes, under `reports/uk-tax/<year>/`:
   `sa108-disposals.csv` (CGT; `period` splits gains pre / on-or-after
   the year's CGT rate-change date from `cgt_rate_change_dates`),
   `sa106-dividends.csv`, `sa106-interest.csv`,
   `sa106-offshore-income-gains.csv`, `sa106-deep-discounted.csv`,
-  `sa106-eri.csv`, and `summary.txt`. Current-account interest is
-  *not* foreign income — it posts to `Expenses` (loan interest the
-  user pays), so it has no SA106 line.
+  `sa106-eri.csv`, `cgt-loss-carryforward.csv` (the year-by-year AEA +
+  allowable-loss chain), and `summary.txt` (which carries a "CGT
+  allowances and loss relief" block: net gain, losses used, AEA, taxable
+  gain split pre/post, and losses carried forward). Current-account
+  interest is *not* foreign income — it posts to `Expenses` (loan
+  interest the user pays), so it has no SA106 line.
 - The model invariant `gross_income - withholding_tax == amount`
   (within a cent) is enforced in `Transaction`'s
   `@model_validator` — break it and `pydantic` raises at
@@ -408,7 +433,8 @@ and reads the JSONL sidecars, not the ledger:
 - `revolut` — separate side path; Revolut Personal CSV → beancount.
 - `tax-report` — read `*.transactions.jsonl` sidecars under
   `--source` (default `data`), apply UK tax-year bounds + section
-  104 matching, and write the SA108 / SA106 CSVs to
+  104 matching, and write the SA108 / SA106 CSVs plus the CGT
+  AEA/loss-carry-forward chain (`cgt-loss-carryforward.csv`) to
   `<tax_reports_dir>/<year>/` (default `reports/uk-tax/<year>/`).
   `--rate-source` overrides `gbp_rate_source` for the run.
 
@@ -426,8 +452,11 @@ and reads the JSONL sidecars, not the ledger:
   `commodities_metadata_path` (defaults to `data/commodities.toml`
   when present), `opening_positions_path` (`data/opening-positions.toml`),
   `eri_path` (`data/eri.toml`), `tax_reports_dir` (defaults to
-  `reports/uk-tax`), and `cgt_rate_change_dates` (`{label: date}`,
-  default `{"2024-25": 2024-10-30}` — the mid-year CGT rate change).
+  `reports/uk-tax`), `cgt_rate_change_dates` (`{label: date}`,
+  default `{"2024-25": 2024-10-30}` — the mid-year CGT rate change),
+  `cgt_annual_exempt_amount` (`{label: Decimal}`, statutory AEA per tax
+  year), and `cgt_losses_path` (`data/cgt-losses.toml` when present —
+  pre-ledger brought-forward losses).
 - `reconciliation_dir` (defaults to `reports/reconciliation`) — output
   directory for the `reconcile` command's `summary.txt` / `drift.csv`.
 - Batch config: `banking-pipeline.toml` (gitignored, schema in

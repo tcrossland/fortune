@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 
@@ -90,6 +91,36 @@ class Settings(BaseSettings):
     # on-or-after it. A year with no entry is reported without a split.
     cgt_rate_change_dates: dict[str, date] = Field(
         default_factory=lambda: {"2024-25": date(2024, 10, 30)}
+    )
+
+    # CGT annual exempt amount (tax-free allowance) by tax-year label, in
+    # GBP. Statutory values; the £12,300 allowance was cut to £6,000 for
+    # 2023-24 and £3,000 from 2024-25 (frozen since). A year missing here
+    # is treated as a zero allowance and flagged in the tax-report
+    # summary, so add new years as HMRC sets them. Consumed by
+    # :mod:`banking_pipeline.tax.uk.cgt_allowance`.
+    cgt_annual_exempt_amount: dict[str, Decimal] = Field(
+        default_factory=lambda: {
+            "2020-21": Decimal("12300"),
+            "2021-22": Decimal("12300"),
+            "2022-23": Decimal("12300"),
+            "2023-24": Decimal("6000"),
+            "2024-25": Decimal("3000"),
+            "2025-26": Decimal("3000"),
+            "2026-27": Decimal("3000"),
+        }
+    )
+
+    # Pre-ledger allowable capital losses carried into the earliest ledger
+    # tax year (the loss-carry-forward chain seeds its pool with this).
+    # Defaults to ``data/cgt-losses.toml`` when present; the real file is
+    # gitignored. See :mod:`banking_pipeline.cgt_losses`.
+    cgt_losses_path: Path | None = Field(
+        default_factory=lambda: (
+            Path("data/cgt-losses.toml")
+            if Path("data/cgt-losses.toml").is_file()
+            else None
+        )
     )
 
     # Maps Pictet's printed beneficiary-bank name (the ``Bank`` field on

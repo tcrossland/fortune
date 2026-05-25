@@ -17,6 +17,10 @@ data/opening-positions.toml
 # Copy from data/eri.example.toml and edit.
 data/eri.toml
 
+# Personal pre-ledger CGT losses carried into the ledger era.
+# Copy from data/cgt-losses.example.toml and edit.
+data/cgt-losses.toml
+
 # Generated / personal ledger data. The pipeline writes per-year ingest
 # output, the portfolio/prices/balances aggregates, the transaction
 # sidecars, and the *.md summaries here — all derived from personal

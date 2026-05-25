@@ -66,9 +66,16 @@ cautiously.
 
 ## Tax reporting (strongest existing area)
 
-- **CGT annual exempt amount + loss carry-forward** tracking across
-  years in the SA108 output (the section-104 engine exists; the
-  year-level allowances/carried losses appear manual).
+- **CGT annual exempt amount + loss carry-forward.** *(Shipped.)*
+  `tax-report` now threads allowable losses across tax years (seeded by
+  optional pre-ledger losses in `data/cgt-losses.toml`), applies the
+  statutory deduction order (current-year losses → brought-forward
+  losses down to the AEA → AEA), and optimises the mid-year rate-change
+  allocation by absorbing relief against the higher-rate bucket first. It
+  writes `cgt-loss-carryforward.csv` (the year-by-year chain) and a CGT
+  allowance block in `summary.txt`. See `tax/uk/cgt_allowance.py`. Still
+  open: the 4-year loss-claim time limit isn't enforced (losses are
+  claimed automatically).
 - **ISA / pension wrapper awareness** so wrapped accounts are
   excluded from CGT/SA106.
 - **Tax pack** — a single per-year Markdown/PDF summary tying the

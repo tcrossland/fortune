@@ -138,3 +138,13 @@ def test_tax_report_end_to_end(tmp_path: Path) -> None:
     assert "SA106 offshore income gains" in summary
     assert "WARN_UNCLASSIFIED" in summary  # unknown US0378331005 disposal
     assert "US0378331005" in summary
+
+    # --- CGT allowances: 500 gain is under the 3,000 AEA → nothing taxable
+    assert "CGT allowances and loss relief" in summary
+    assert "taxable gain: 0.00 GBP" in summary
+    cf = _read_csv(out_dir / "cgt-loss-carryforward.csv")
+    assert len(cf) == 1
+    assert cf[0]["tax_year"] == "2025-26"
+    assert cf[0]["taxable_total"] == "0.00"
+    assert cf[0]["annual_exempt_amount"] == "3000.00"
+    assert cf[0]["losses_carried_forward"] == "0.00"
