@@ -30,7 +30,12 @@ _VANGUARD = FIXTURES_DIR / "en" / "vanguard_uk"
 _CASES = [
     ("vanguard_contract_note_buy", DocumentType.VANGUARD_CONTRACT_NOTE_BUY, 2),
     ("vanguard_contract_note_sell", DocumentType.VANGUARD_CONTRACT_NOTE_SELL, 2),
+    # Opening statement: deposit + three monthly interest credits.
     ("vanguard_regular_statement", DocumentType.VANGUARD_REGULAR_STATEMENT, 4),
+    # Closure statement: three interest credits (incl. an "Interest
+    # Payment"-labelled one) + a "One-off withdrawal" — exercises the
+    # template's keyword classification of the label variants.
+    ("vanguard_regular_statement.closure", DocumentType.VANGUARD_REGULAR_STATEMENT, 4),
 ]
 
 

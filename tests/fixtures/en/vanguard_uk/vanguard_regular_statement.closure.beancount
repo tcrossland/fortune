@@ -1,0 +1,15 @@
+2025-12-01 * "Regular statement" "Cash Account Interest"
+  Assets:Vgd:ISA:VG0000000:GBP                         0.03 GBP
+  Income:Vgd:ISA:VG0000000:Interest:GBP               -0.03 GBP
+
+2026-01-01 * "Regular statement" "Cash Account Interest"
+  Assets:Vgd:ISA:VG0000000:GBP                         0.03 GBP
+  Income:Vgd:ISA:VG0000000:Interest:GBP               -0.03 GBP
+
+2026-01-24 * "Regular statement" "Cash Account Interest"
+  Assets:Vgd:ISA:VG0000000:GBP                         0.02 GBP
+  Income:Vgd:ISA:VG0000000:Interest:GBP               -0.02 GBP
+
+2026-01-26 * "Regular statement" "Withdrawal"
+  Assets:Vgd:ISA:VG0000000:GBP                       -17.26 GBP
+  Equity:Vgd:ISA:Contributions                        17.26 GBP

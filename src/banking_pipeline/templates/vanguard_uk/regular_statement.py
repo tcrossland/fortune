@@ -10,16 +10,18 @@ complete cash ledger for the ISA::
     01/03/2025 Cash Account Interest       £0.19        £16.94
 
 It restates the buys/sells — which the contract notes own — so this
-template emits **only** the two row kinds that appear nowhere else: the
-cash ``Deposit ...`` contributions and the monthly ``Cash Account
-Interest`` credits. Bought / Sold / Account-fee rows are skipped to
-avoid double-counting (the fee is booked from the direct-debit details
-advice; the trades from the contract notes).
+template emits **only** the row kinds that appear nowhere else: cash
+``Deposit ...`` contributions in, ``Withdrawal ...`` payments out (the
+proceeds paid to the user's external bank), and the monthly ``Cash
+Account Interest`` credits. Bought / Sold / Account-fee rows are skipped
+to avoid double-counting (the fee is booked from the direct-debit
+details advice; the trades from the contract notes).
 
-Both emitted kinds carry ``account_wrapper="isa"`` and route to the
-Vanguard statement builder, which keys off the narration to post the
-contribution against the contributions-equity account and the interest
-against the ISA interest income account.
+All emitted kinds carry ``account_wrapper="isa"`` and route to the
+Vanguard statement builder, which keys off the narration to post
+interest against the ISA interest income account and contributions /
+withdrawals against the contributions-equity account (a withdrawal is
+just a signed-negative cash leg through the same shape).
 
 Empty periods
 -------------
@@ -47,6 +49,7 @@ from banking_pipeline.templates.vanguard_uk._common import (
 # Canonical narrations the statement builder branches on. Kept as
 # constants so the template and the builder agree on the exact strings.
 DEPOSIT_NARRATION = "Deposit for Investment Purchases"
+WITHDRAWAL_NARRATION = "Withdrawal"
 INTEREST_NARRATION = "Cash Account Interest"
 
 # The activity table sits between its header and the protection notice.
@@ -93,10 +96,22 @@ class VanguardRegularStatementTemplate:
             desc = _MONEY_RE.sub("", body)
             desc = re.sub(r"\s+", " ", desc).strip()
 
-            if desc.startswith("Deposit"):
-                narration = DEPOSIT_NARRATION
-            elif INTEREST_NARRATION in desc:
+            # Classify by keyword rather than an exact label — Vanguard
+            # uses several wordings for the same event ("Cash Account
+            # Interest" / "Interest Payment"; "Withdrawal from …" /
+            # "One-off withdrawal Faster"). Canonical narrations keep the
+            # output deterministic and free of the account-holder details
+            # the withdrawal rows carry.
+            low = desc.lower()
+            if "interest" in low:
                 narration = INTEREST_NARRATION
+            elif "withdrawal" in low:
+                # Cash paid out to the user's external bank (signed
+                # negative on the row) — a return of capital from the
+                # wrapper, booked against the contributions-equity account.
+                narration = WITHDRAWAL_NARRATION
+            elif low.startswith("deposit"):
+                narration = DEPOSIT_NARRATION
             else:
                 # Bought / Sold / Account fee rows — owned by the contract
                 # notes and the direct-debit advice respectively.

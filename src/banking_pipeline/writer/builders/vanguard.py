@@ -57,14 +57,19 @@ def render_statement(tx: Transaction, doc_type: DocumentType, prefix: str) -> st
           Assets:<prefix>:<portfolio>:<ccy>        0.19 <ccy>
           Income:<prefix>:<portfolio>:Interest:<ccy>  -0.19 <ccy>
 
-    Layout (contribution — cash arriving from outside the wrapper)::
+    Layout (contribution in / withdrawal out — cash crossing the wrapper
+    boundary, signed as the statement printed it)::
 
         <date> * "Regular statement" "Deposit for Investment Purchases"
           Assets:<prefix>:<portfolio>:<ccy>      1000.00 <ccy>
           Equity:<prefix>:Contributions         -1000.00 <ccy>
 
-    The two are distinguished by the narration the regular-statement
-    template assigns (the only two row kinds it emits).
+        <date> * "Regular statement" "Withdrawal"
+          Assets:<prefix>:<portfolio>:<ccy>     -1023.44 <ccy>
+          Equity:<prefix>:Contributions          1023.44 <ccy>
+
+    Interest is told apart by its narration; everything else (deposit or
+    withdrawal) is an external cash flow against the equity account.
     """
 
     portfolio = portfolio_segment(tx.account_number)

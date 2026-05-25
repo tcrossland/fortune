@@ -71,6 +71,7 @@ _BESPOKE_FIXTURES: frozenset[str] = frozenset({
     "en/vanguard_uk/vanguard_contract_note_buy",
     "en/vanguard_uk/vanguard_contract_note_sell",
     "en/vanguard_uk/vanguard_regular_statement",
+    "en/vanguard_uk/vanguard_regular_statement.closure",
 })
 
 
