@@ -364,10 +364,12 @@ eligible window jointly (threading the loss chain) and recommends the
 cheapest, writing `fig-advice.txt`. It uses year-to-date actuals, so a
 recommendation touching the current year is provisional.
 
-Out of scope (documented simplifications): the 10-prior-non-resident
-eligibility test (configuring an arrival date asserts it), temporary
-non-residence clawback, and former-remittance-basis transitional
-rebasing. Not tax advice — verify against HMRC guidance.
+This is a filing aid with documented simplifications (the
+10-prior-non-resident eligibility test, temporary non-residence
+clawback, and former-remittance-basis rebasing are not modelled) — the
+full list and rationale are in
+[docs/design-decisions.md](docs/design-decisions.md). Not tax advice;
+verify against HMRC guidance.
 
 ## Validation
 

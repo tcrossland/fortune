@@ -3,7 +3,9 @@
 Project-specific instructions for Claude working in this repo. The
 `README.md` is the authoritative user-facing guide; this file captures
 the non-obvious context and conventions that aren't worth re-reading
-the README for every session.
+the README for every session. For the rationale behind the load-bearing
+choices see `docs/design-decisions.md`; for what's shipped vs. open see
+`CHANGELOG.md` / `docs/backlog.md` (`docs/README.md` maps every doc).
 
 ## Project summary
 
@@ -422,7 +424,7 @@ and reads the JSONL sidecars, not the ledger:
   happens in `tax/uk/section_104.py` from the sidecar, not in
   beancount — beancount's booking methods do not implement UK
   matching rules and would compete with the correct answer. The
-  rationale is documented at length in `docs/uk-tax-prompts.md`.
+  rationale is documented at length in `docs/design-decisions.md`.
 - Rate sources are pluggable via the `GbpRateSource` protocol in
   `fx/gbp_rates.py`. Today there are two: `HmrcMonthlyAverageSource`
   (user-maintained CSV at `data/fx/hmrc-monthly-average.csv`,
@@ -599,9 +601,9 @@ the taxable *output* is residence-filtered):
   `fig-designation.csv`.
 
 Out of scope (documented simplifications): the 10-prior-non-resident
-eligibility test (configuring an arrival date asserts it), ERI income is
-attributed to the whole arrival year (not split), temporary-non-residence
-clawback, and former-remittance-basis transitional rebasing/TRF. Not tax
+eligibility test, whole-arrival-year ERI attribution, temporary-non-
+residence clawback, and former-remittance-basis rebasing/TRF — the full
+list and the rationale live in `docs/design-decisions.md`. Not tax
 advice — verify against HMRC guidance.
 
 ## Configuration
