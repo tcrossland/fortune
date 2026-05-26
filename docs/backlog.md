@@ -77,12 +77,11 @@ not tax advice" framing.
 ## Financial reporting
 
 - **Period reports beyond beancount/Fava.** Net-worth-over-time (the
-  `net-worth` command) and income-by-source (the `income` command, by tax
-  or calendar year) shipped; still open: per-portfolio allocation and
+  `net-worth` command), income-by-source (the `income` command, by tax or
+  calendar year), and asset-allocation-over-time (the `allocation`
+  command) shipped; still open: per-portfolio allocation and
   realised/unrealised P&L summaries rendered from the sidecars
   (Markdown/CSV).
-- **Asset-allocation snapshot** driven by the asset-class metadata
-  already in `commodities.toml` (equity/bond/cash mix over time).
 
 ## Financial planning & budgeting
 

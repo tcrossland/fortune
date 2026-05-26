@@ -96,7 +96,8 @@ src/banking_pipeline/
 │                         classify | scan | extract-text | revolut |
 │                         dedup-check |
 │                         prices | balances | portfolio | concentration |
-│                         net-worth | income | property | check | reconcile |
+│                         net-worth | allocation | income | property |
+│                         check | reconcile |
 │                         rebuild | tax-report | tax-forecast | tax-pack |
 │                         fig-advice)
 ├── pipeline.py         Top-level Pipeline orchestration
@@ -122,6 +123,14 @@ src/banking_pipeline/
 │                         by currency and reported separately (the
 │                         `concentration` command). `_value_holdings` /
 │                         `_raw_from_statement` are shared with net_worth
+├── allocation.py       Asset-allocation-over-time: tracks the asset-class
+│                         mix (equity / bond / property / … + net cash)
+│                         across the statement timeline. Composes
+│                         concentration's `_value_holdings` per snapshot
+│                         (securities aggregated by `asset_class`) with
+│                         net_worth's as-of forward-fill; weights are a
+│                         share of gross long, cash/leverage separate (the
+│                         `allocation` command)
 ├── income.py           Income-by-source report: aggregates dividends +
 │                         interest *received* from the JSONL sidecars by
 │                         period (UK tax year or calendar year) and paying
@@ -600,6 +609,17 @@ and reads the JSONL sidecars, not the ledger:
   net cash / net worth per date + Δ) + `net-worth.csv` to
   `<net_worth_reports_dir>/` (default `reports/net-worth/`). Reuses
   `concentration._value_holdings` for the per-snapshot valuation.
+- `allocation` — asset-allocation-over-time. Same statement discovery /
+  `--rate-source` / `--property` as `net-worth`, but at each timeline date
+  reports the asset-class mix (securities aggregated by `commodities.toml`
+  `asset_class`, plus property and an `unknown` bucket for un-classified
+  holdings) as a share of gross long holdings, with net cash (leverage)
+  shown separately. Writes `allocation.md` (a % matrix over time + a
+  latest-date absolute breakdown) + `allocation.csv` (long format, one row
+  per date × class) to `<allocation_reports_dir>/` (default
+  `reports/allocation/`). Reuses `concentration._value_holdings` +
+  `net_worth`'s forward-fill; `--strict` exits non-zero on any unvaluable
+  holding (no mark / no GBP rate).
 - `income` — income-by-source report. Reads the `*.transactions.jsonl`
   sidecars under `--source` (default `data`, same loader as `tax-report`),
   aggregates dividend + interest income by `--period` (`tax-year` default,
@@ -770,6 +790,9 @@ advice — verify against HMRC guidance.
   directory for the `net-worth` command's `net-worth.md` / `net-worth.csv`.
 - `income_reports_dir` (defaults to `reports/income`) — output directory
   for the `income` command's `income.md` / `income.csv`.
+- `allocation_reports_dir` (defaults to `reports/allocation`) — output
+  directory for the `allocation` command's `allocation.md` /
+  `allocation.csv`.
 - `property_path` (defaults to `data/property.toml` when present) — the
   off-ledger residential-property table; `property_ledger_path` (defaults
   to `data/property.beancount`) is the generated ledger the `property`

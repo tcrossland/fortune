@@ -17,6 +17,9 @@ import typer
 from rich.console import Console
 
 from banking_pipeline import (
+    allocation as allocation_mod,
+)
+from banking_pipeline import (
     balances_extract,
     bean_check,
     beancount_writer,
@@ -739,6 +742,115 @@ def net_worth(
     err_console.print(
         f"Wrote net-worth report to {out_dir} ({n} point(s){latest})"
     )
+
+
+@app.command()
+def allocation(
+    statements: Annotated[
+        list[Path],
+        typer.Option(
+            "--statement",
+            help="Statement PDF (or ``.txt`` dump) — Pictet monthly or "
+            "Vanguard ISA regular statement. Repeat / pass a history: each "
+            "statement date becomes a point on the timeline.",
+        ),
+    ] = [],  # noqa: B006 — Typer's documented list-option default; not mutated
+    statements_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--statements-dir",
+            help="Directory to scan for valuation-bearing statements "
+            "(same classifier filter as ``prices``). Point it at the whole "
+            "statement archive to get the full history.",
+        ),
+    ] = None,
+    statements_recursive: Annotated[
+        bool,
+        typer.Option(
+            "--statements-recursive", "-R",
+            help="Descend into subdirectories under ``--statements-dir``.",
+        ),
+    ] = False,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``allocation_reports_dir`` (``reports/allocation``).",
+        ),
+    ] = None,
+    commodities: Annotated[
+        Path | None,
+        typer.Option(
+            "--commodities",
+            help="Commodity-metadata TOML (drives the asset-class buckets). "
+            "Defaults to the configured ``commodities_metadata_path``.",
+        ),
+    ] = None,
+    rate_source: Annotated[
+        str | None,
+        typer.Option(
+            "--rate-source",
+            help="GBP rate source for non-GBP valuations "
+            "(``null`` | ``hmrc-monthly``). Defaults to the configured source.",
+        ),
+    ] = None,
+    property_source: Annotated[
+        Path | None,
+        typer.Option(
+            "--property",
+            help="Property TOML to fold residential property into the "
+            "timeline (asset class ``property``). Defaults to the configured "
+            "``property_path``.",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict", "-s",
+            help="Exit non-zero if any holding couldn't be valued (no mark / "
+            "no GBP rate), so a point's allocation understates.",
+        ),
+    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Asset allocation over time.
+
+    Values each statement at its own date (reusing the concentration
+    valuation) and tracks the asset-class mix — equity / bond / property /
+    … plus net cash — across the combined timeline, writing
+    ``allocation.md`` + ``allocation.csv``. Weights are a share of gross
+    long holdings (cash / leverage shown separately). A reporting aid.
+    """
+
+    _configure_logging(verbose)
+    texts, commodities_map, rates = _load_statement_context(
+        statements, statements_dir, statements_recursive, commodities, rate_source
+    )
+    timeline = allocation_mod.build_timeline(
+        texts, commodities=commodities_map, rate_source=rates,
+        properties=_load_properties(property_source),
+    )
+
+    out_dir = out or settings.allocation_reports_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "allocation.md").write_text(
+        allocation_mod.render_markdown(timeline), encoding="utf-8"
+    )
+    with (out_dir / "allocation.csv").open("w", newline="", encoding="utf-8") as fh:
+        csv.writer(fh).writerows(allocation_mod.render_csv_rows(timeline))
+
+    err_console.print(
+        f"Wrote allocation report to {out_dir} ({len(timeline.points)} point(s))"
+    )
+    gap_n = len(timeline.missing_prices) + len(timeline.rate_gaps)
+    if gap_n:
+        err_console.print(
+            f"[yellow]{gap_n} holding(s) excluded (no mark / no GBP rate) "
+            "— see the report.[/yellow]"
+        )
+        if strict:
+            raise typer.Exit(code=1)
 
 
 @app.command()

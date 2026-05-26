@@ -61,6 +61,14 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`allocation`** — asset-allocation-over-time report. Tracks the
+  asset-class mix (equity / bond / property / … plus net cash) across the
+  statement timeline, so allocation drift is visible. Composes
+  `concentration`'s per-snapshot valuation (securities aggregated by
+  `commodities.toml` asset class) with `net-worth`'s as-of forward-fill;
+  weights are a share of gross long holdings, with cash / leverage shown
+  separately. Writes a % matrix over time + a latest-date breakdown.
+  (`allocation.py`)
 - **`income`** — income-by-source report. Aggregates dividend + interest
   income *received* from the JSONL sidecars by period (UK tax year or
   calendar year) and paying source, valued in GBP. Reuses SA106's

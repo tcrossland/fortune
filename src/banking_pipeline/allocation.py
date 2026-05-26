@@ -1,0 +1,304 @@
+"""Asset-allocation-over-time report.
+
+Tracks the asset-class mix (equity / bond / property / … plus net cash)
+across the statement history, so allocation *drift* is visible — what the
+point-in-time ``concentration`` report shows for the latest snapshot,
+followed through every statement date.
+
+It composes the two existing valuation reports rather than re-deriving
+anything: each statement snapshot is valued exactly as ``concentration``
+does (``_value_holdings`` — securities at ``qty × mark``, cash netted by
+currency, converted to GBP at the snapshot date), and the snapshots are
+stitched into a timeline with the same as-of forward-fill ``net-worth``
+uses (each portfolio contributes its latest valuation on or before each
+date, same-date duplicates deduped per commodity).
+
+Weights are a **share of gross long holdings**, matching ``concentration``:
+the security asset classes sum to ~100%, and net cash (negative under a
+margin / Lombard loan) is reported as its own line so a leveraged book
+doesn't distort the mix. Holdings with no statement mark or no GBP rate
+are excluded and flagged, exactly as the sibling reports do.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
+
+from banking_pipeline.commodities_metadata import CommodityMetadata
+from banking_pipeline.concentration import (
+    _raw_from_statement,
+    _RawHolding,
+    _value_holdings,
+    property_raws,
+)
+from banking_pipeline.fx.gbp_rates import GbpRateSource
+from banking_pipeline.property import Property
+from banking_pipeline.tax.uk.currency import RateGap
+
+_ZERO = Decimal(0)
+_CASH = "cash"
+
+# Asset classes are rendered in this order, then any others alphabetically,
+# with ``unknown`` always last so an un-classified holding doesn't lead.
+# The first five mirror ``CommodityMetadata.AssetClass``; ``property`` is
+# the off-ledger residential class injected by ``property_raws``.
+_CLASS_ORDER = (
+    "equity-etf", "equity-fund", "bond", "money-market", "property", "other"
+)
+_UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class _Snapshot:
+    portfolio: str
+    on_date: date
+    gross_long_gbp: Decimal
+    net_cash_gbp: Decimal
+    by_class: tuple[tuple[str, Decimal], ...]  # securities aggregated by class
+
+
+@dataclass(frozen=True)
+class AllocationPoint:
+    on_date: date
+    gross_long_gbp: Decimal
+    net_cash_gbp: Decimal
+    net_worth_gbp: Decimal
+    by_class_gbp: tuple[tuple[str, Decimal], ...]  # security classes, ordered
+    portfolios: int
+
+
+@dataclass(frozen=True)
+class AllocationTimeline:
+    points: tuple[AllocationPoint, ...]
+    asset_classes: tuple[str, ...]  # ordered union of security classes seen
+    rate_gaps: tuple[RateGap, ...]
+    missing_prices: tuple[str, ...]
+
+
+def _order_classes(classes: set[str]) -> list[str]:
+    """Preferred order first, then the rest alphabetically, ``unknown`` last."""
+
+    rest = sorted(c for c in classes if c not in _CLASS_ORDER and c != _UNKNOWN)
+    ordered = [c for c in _CLASS_ORDER if c in classes] + rest
+    if _UNKNOWN in classes:
+        ordered.append(_UNKNOWN)
+    return ordered
+
+
+def build_timeline(
+    statements: list[tuple[str, str]],
+    *,
+    commodities: dict[str, CommodityMetadata],
+    rate_source: GbpRateSource,
+    properties: list[Property] | None = None,
+) -> AllocationTimeline:
+    """Build the allocation timeline from ``(text, source-name)`` pairs.
+
+    ``properties`` (off-ledger residential property) each contribute a
+    snapshot per valuation date as a pseudo-portfolio, joining via the same
+    forward-fill (asset class ``property``)."""
+
+    raws: list[_RawHolding] = []
+    for text, source in statements:
+        raws.extend(_raw_from_statement(text, source))
+    raws.extend(property_raws(properties or []))
+    return _timeline_from_raw(raws, commodities=commodities, rate_source=rate_source)
+
+
+def _timeline_from_raw(
+    raws: list[_RawHolding],
+    *,
+    commodities: dict[str, CommodityMetadata],
+    rate_source: GbpRateSource,
+) -> AllocationTimeline:
+    # One snapshot per (portfolio, statement date). Dedupe by commodity
+    # within a snapshot: a monthly and a quarterly statement can share an
+    # "as at" date, and counting the same holding twice would double it.
+    groups: dict[tuple[str, date], dict[str, _RawHolding]] = defaultdict(dict)
+    for r in raws:
+        groups[(r.portfolio, r.on_date)][r.key] = r
+
+    snapshots: list[_Snapshot] = []
+    rate_gaps: list[RateGap] = []
+    missing_prices: list[str] = []
+    for (portfolio, on_date), grp in groups.items():
+        valued = _value_holdings(
+            list(grp.values()), commodities=commodities, rate_source=rate_source
+        )
+        by_class: dict[str, Decimal] = defaultdict(lambda: _ZERO)
+        for h in valued.securities:
+            by_class[h.asset_class] += h.value_gbp
+        snapshots.append(
+            _Snapshot(
+                portfolio, on_date, valued.gross_long_gbp, valued.net_cash_gbp,
+                tuple(by_class.items()),
+            )
+        )
+        rate_gaps.extend(valued.rate_gaps)
+        missing_prices.extend(valued.missing_prices)
+
+    by_portfolio: dict[str, list[_Snapshot]] = defaultdict(list)
+    for s in snapshots:
+        by_portfolio[s.portfolio].append(s)
+    for lst in by_portfolio.values():
+        lst.sort(key=lambda s: s.on_date)
+
+    seen_classes: set[str] = set()
+    points: list[AllocationPoint] = []
+    for d in sorted({s.on_date for s in snapshots}):
+        gross = net_cash = _ZERO
+        agg: dict[str, Decimal] = defaultdict(lambda: _ZERO)
+        contributing = 0
+        for lst in by_portfolio.values():
+            chosen = _as_of(lst, d)
+            if chosen is None:
+                continue
+            gross += chosen.gross_long_gbp
+            net_cash += chosen.net_cash_gbp
+            for cls, v in chosen.by_class:
+                agg[cls] += v
+            contributing += 1
+        seen_classes |= set(agg)
+        ordered = _order_classes(set(agg))
+        points.append(
+            AllocationPoint(
+                on_date=d, gross_long_gbp=gross, net_cash_gbp=net_cash,
+                net_worth_gbp=gross + net_cash,
+                by_class_gbp=tuple((c, agg[c]) for c in ordered),
+                portfolios=contributing,
+            )
+        )
+
+    return AllocationTimeline(
+        points=tuple(points),
+        asset_classes=tuple(_order_classes(seen_classes)),
+        rate_gaps=tuple(rate_gaps),
+        missing_prices=tuple(sorted(set(missing_prices))),
+    )
+
+
+def _as_of(snapshots: list[_Snapshot], on_date: date) -> _Snapshot | None:
+    """The latest snapshot on or before ``on_date`` (list is date-sorted)."""
+
+    chosen: _Snapshot | None = None
+    for s in snapshots:
+        if s.on_date <= on_date:
+            chosen = s
+        else:
+            break
+    return chosen
+
+
+# --- rendering --------------------------------------------------------------
+
+
+def _money(value: Decimal) -> str:
+    return f"{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}"
+
+
+def _gbp(value: Decimal) -> str:
+    return f"£{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,}"
+
+
+def _pct(value: Decimal, total: Decimal) -> str:
+    if total == _ZERO:
+        return "—"
+    return f"{(value / total * 100).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}%"
+
+
+def render_markdown(timeline: AllocationTimeline) -> str:
+    points = timeline.points
+    lines = ["# Asset allocation over time", ""]
+    if not points:
+        lines += ["No statement valuations found.", ""]
+        return "\n".join(lines)
+
+    classes = timeline.asset_classes
+    lines += [
+        f"From **{points[0].on_date}** to **{points[-1].on_date}**. Each cell "
+        "is a share of that date's gross long holdings (the security classes "
+        "sum to ~100%); net cash is shown separately (negative = a margin / "
+        "Lombard loan). Values are statement marks converted to GBP — a "
+        "reporting aid, not advice.",
+        "",
+        "| Date | " + " | ".join(c.title() for c in classes)
+        + " | Net cash | Net worth |",
+        "| --- | " + " | ".join("---:" for _ in classes) + " | ---: | ---: |",
+    ]
+    for p in points:
+        by_class_map = dict(p.by_class_gbp)
+        cells = " | ".join(_pct(by_class_map.get(c, _ZERO), p.gross_long_gbp) for c in classes)
+        lines.append(
+            f"| {p.on_date} | {cells} | {_pct(p.net_cash_gbp, p.gross_long_gbp)} "
+            f"| {_gbp(p.net_worth_gbp)} |"
+        )
+    lines.append("")
+
+    # Latest absolute breakdown, so the % table is anchored to real figures.
+    last = points[-1]
+    lines += [
+        f"## Latest breakdown ({last.on_date})",
+        "",
+        "| Asset class | Value | Weight |",
+        "| --- | ---: | ---: |",
+    ]
+    for cls, value in last.by_class_gbp:
+        lines.append(f"| {cls.title()} | {_gbp(value)} | {_pct(value, last.gross_long_gbp)} |")
+    lines.append(
+        f"| {_CASH.title()} (net) | {_gbp(last.net_cash_gbp)} "
+        f"| {_pct(last.net_cash_gbp, last.gross_long_gbp)} |"
+    )
+    lines.append("")
+
+    if timeline.missing_prices:
+        lines += [
+            "## ⚠️ Unvaluable holdings (no statement mark)",
+            "",
+            "Held but excluded — the latest statement carried no price:",
+            "",
+        ]
+        lines += [f"- {k}" for k in timeline.missing_prices]
+        lines.append("")
+    if timeline.rate_gaps:
+        uniq = sorted(set(timeline.rate_gaps), key=lambda g: (g.month, g.currency, g.isin))
+        lines += [
+            "## ⚠️ Some points understate — missing GBP rate",
+            "",
+            "A holding in these statement months couldn't be converted to "
+            "GBP, so that point's allocation understates. Add the "
+            "month/currency to `data/fx/hmrc-monthly-average.csv`:",
+            "",
+        ]
+        lines += [f"- {g.currency} {g.month} ({g.isin})" for g in uniq]
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_csv_rows(timeline: AllocationTimeline) -> list[list[str]]:
+    """Long-format rows (one per date × asset class, plus a cash row per
+    date) so the timeline pivots cleanly in a spreadsheet."""
+
+    out = [["date", "asset_class", "value_gbp", "weight_pct", "gross_long_gbp", "net_worth_gbp"]]
+
+    def _weight(value: Decimal, total: Decimal) -> str:
+        if total == _ZERO:
+            return ""
+        return str((value / total * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
+    for p in timeline.points:
+        for cls, value in p.by_class_gbp:
+            out.append([
+                p.on_date.isoformat(), cls, _money(value),
+                _weight(value, p.gross_long_gbp),
+                _money(p.gross_long_gbp), _money(p.net_worth_gbp),
+            ])
+        out.append([
+            p.on_date.isoformat(), _CASH, _money(p.net_cash_gbp),
+            _weight(p.net_cash_gbp, p.gross_long_gbp),
+            _money(p.gross_long_gbp), _money(p.net_worth_gbp),
+        ])
+    return out
