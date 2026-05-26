@@ -1,4 +1,14 @@
-"""Typer CLI entrypoint."""
+"""Shared CLI infrastructure.
+
+Defines the Typer ``app`` plus the cross-cutting helpers the command
+modules share (logging setup, statement discovery / text loading, commodity
+/ property / sidecar loading, ledger resolution, the bean-check runner).
+The commands themselves live in the sibling group modules (``ingest``,
+``inspect``, ``statements``, ``reports``, ``rebuild``, ``tax``), which
+import ``app`` and these helpers from here and register their
+``@app.command``s on it; :mod:`banking_pipeline.cli` (the package
+``__init__``) imports those modules to assemble the full app.
+"""
 
 from __future__ import annotations
 

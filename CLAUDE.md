@@ -92,14 +92,20 @@ silently when `BANKPIPE_ANTHROPIC_API_KEY` is unset.
 
 ```
 src/banking_pipeline/
-├── cli.py              Typer entrypoint (ingest | dump-transactions |
-│                         classify | scan | extract-text | revolut |
-│                         dedup-check |
-│                         prices | balances | portfolio | concentration |
-│                         net-worth | allocation | portfolio-allocation |
-│                         income | property | check | reconcile |
-│                         rebuild | tax-report | tax-forecast | tax-pack |
-│                         fig-advice)
+├── cli/                Typer CLI package (commands grouped by domain).
+│   ├── __init__.py       Assembles the ``app`` (entry point
+│   │                       ``banking_pipeline.cli:app``); imports the
+│   │                       group modules to register their commands
+│   ├── _main.py          Shared hub: ``app`` + cross-cutting helpers
+│   │                       (logging, statement discovery, commodity /
+│   │                       property / sidecar loading, bean-check runner)
+│   ├── ingest.py         ingest | dump-transactions | dedup-check | revolut
+│   ├── inspect.py        classify | scan | extract-text
+│   ├── statements.py     prices | balances | portfolio | property
+│   ├── reports.py        concentration | net-worth | allocation |
+│   │                       portfolio-allocation | income
+│   ├── rebuild.py        rebuild | check | reconcile
+│   └── tax.py            tax-report | tax-forecast | tax-pack | fig-advice
 ├── cli_options.py      Reusable Annotated Typer option aliases shared
 │                         across commands (VerboseOpt + the statement-
 │                         valuation report option set) — single definition
