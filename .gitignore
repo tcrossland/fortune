@@ -21,6 +21,10 @@ data/eri.toml
 # Copy from data/cgt-losses.example.toml and edit.
 data/cgt-losses.toml
 
+# Personal residential property (off the investment ledger).
+# Copy from data/property.example.toml and edit.
+data/property.toml
+
 # Generated / personal ledger data. The pipeline writes per-year ingest
 # output, the portfolio/prices/balances aggregates, the transaction
 # sidecars, and the *.md summaries here — all derived from personal
@@ -38,6 +42,8 @@ main.beancount
 # hand-written build scripts at reports/ root stay visible.
 reports/uk-tax/
 reports/reconciliation/
+reports/concentration/
+reports/net-worth/
 reports/*.html
 # …but keep the hand-written HTML template (source, not generated output).
 !reports/*_template.html

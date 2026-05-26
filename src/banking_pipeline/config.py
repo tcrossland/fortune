@@ -91,6 +91,23 @@ class Settings(BaseSettings):
         )
     )
 
+    # Residential property held off the investment ledger. Brought onto
+    # the ledger by ``banking-pipeline property`` and folded into the
+    # ``concentration`` / ``net-worth`` reports. Defaults to
+    # ``data/property.toml`` when present. See
+    # :mod:`banking_pipeline.property`.
+    property_path: Path | None = Field(
+        default_factory=lambda: (
+            Path("data/property.toml")
+            if Path("data/property.toml").is_file()
+            else None
+        )
+    )
+
+    # Output file for ``banking-pipeline property`` (generated property
+    # ledger, included by ``main.beancount``).
+    property_ledger_path: Path = Path("data/property.beancount")
+
     # Excess reportable income (ERI) table for accumulating reporting
     # funds (per-unit deemed income + equalisation, by fund period).
     # Defaults to ``data/eri.toml`` when present. See

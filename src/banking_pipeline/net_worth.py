@@ -30,8 +30,10 @@ from banking_pipeline.concentration import (
     _raw_from_statement,
     _RawHolding,
     _value_holdings,
+    property_raws,
 )
 from banking_pipeline.fx.gbp_rates import GbpRateSource
+from banking_pipeline.property import Property
 from banking_pipeline.tax.uk.currency import RateGap
 
 _ZERO = Decimal(0)
@@ -68,12 +70,18 @@ def build_timeline(
     *,
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
+    properties: list[Property] | None = None,
 ) -> NetWorthTimeline:
-    """Build the net-worth timeline from ``(text, source-name)`` pairs."""
+    """Build the net-worth timeline from ``(text, source-name)`` pairs.
+
+    ``properties`` (off-ledger residential property) each become a
+    pseudo-portfolio contributing a snapshot per valuation date, so they
+    join the timeline via the same as-of forward-fill."""
 
     raws: list[_RawHolding] = []
     for text, source in statements:
         raws.extend(_raw_from_statement(text, source))
+    raws.extend(property_raws(properties or []))
     return _timeline_from_raw(raws, commodities=commodities, rate_source=rate_source)
 
 

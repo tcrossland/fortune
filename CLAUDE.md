@@ -96,8 +96,9 @@ src/banking_pipeline/
 │                         classify | scan | extract-text | revolut |
 │                         dedup-check |
 │                         prices | balances | portfolio | concentration |
-│                         net-worth | check | reconcile | rebuild |
-│                         tax-report | tax-forecast | tax-pack | fig-advice)
+│                         net-worth | property | check | reconcile |
+│                         rebuild | tax-report | tax-forecast | tax-pack |
+│                         fig-advice)
 ├── pipeline.py         Top-level Pipeline orchestration
 ├── models.py           Domain models — DocumentType, BankId, Language,
 │                         RawDocument, Classification, Transaction,
@@ -126,6 +127,14 @@ src/banking_pipeline/
 │                         valuation) and builds a combined timeline across
 │                         portfolios via as-of forward-fill, deduping
 │                         same-date statements (the `net-worth` command)
+├── property.py         Off-ledger residential property: loads
+│                         data/property.toml and renders a generated
+│                         data/property.beancount (per-property commodity
+│                         held at cost + price marks, funded against
+│                         Equity:Property:<label>); also feeds the
+│                         concentration / net-worth reports (the `property`
+│                         command). EUR property gets a GBP price mark via
+│                         the rate source
 ├── beancount_writer.py Back-compat re-export of `writer.*`
 ├── balances_extract.py Statement → balance assertions. Dispatches by
 │                         bank: Pictet monthly statement + Vanguard ISA
@@ -413,10 +422,15 @@ of `[post.reconcile] strict`.
     bean-check with "Ambiguous matches".
 - `portfolio_aggregate` only treats flat per-year ingest files as
   sources: it skips any `*.beancount` that itself contains an
-  `include` (a stale or per-account aggregate it once wrote), and only
-  constrains a `…:<CCY>` account leaf to a currency when that token
-  actually appears as a posting currency (so `…:Earnout:IBM` isn't
-  mistaken for a currency). Both guard against `bean-check` errors.
+  `include` (a stale or per-account aggregate it once wrote), the aux
+  files (`prices`/`balances`, which it includes but doesn't source), and
+  `property.beancount` (the `_IGNORED_FILENAMES` set — it's included
+  directly by `main.beancount` and owns its own commodity/open
+  directives, so sourcing it would double-count holdings and re-including
+  it would double-include the file). It also only constrains a `…:<CCY>`
+  account leaf to a currency when that token actually appears as a
+  posting currency (so `…:Earnout:IBM` isn't mistaken for a currency).
+  All guard against `bean-check` errors.
 - `examples/accounts.beancount` is a starter chart of accounts for
   external readers — not loaded by the rebuild.
 
@@ -562,6 +576,20 @@ and reads the JSONL sidecars, not the ledger:
   net cash / net worth per date + Δ) + `net-worth.csv` to
   `<net_worth_reports_dir>/` (default `reports/net-worth/`). Reuses
   `concentration._value_holdings` for the per-snapshot valuation.
+- `property` — generate the residential-property ledger from
+  `data/property.toml`. Each property becomes a commodity held at cost
+  (`1 <COMMODITY> {price ccy}`) revalued by `price` directives, funded
+  against `Equity:Property:<label>` (beancount infers the equity leg). A
+  non-GBP property also gets a GBP price mark (converted via
+  `--rate-source`) so a GBP-operating-currency load values it. Writes
+  `<property_ledger_path>` (`data/property.beancount`); `include` it from
+  `main.beancount` to bring property onto bean-check / Fava. The
+  `concentration` / `net-worth` reports auto-load `property.toml` (or
+  `--property`) and fold property in (asset class `property`, domicile =
+  country) so they total *all* wealth, not just the investment accounts.
+  Funding note: the financing (e.g. the Lombard loan) already sits on the
+  investment ledger, so adding the asset against equity raises net worth
+  by the property value without double-counting.
 - `check` — standalone `bean-check` wrapper.
 - `reconcile` — statement-balance reconciliation. Runs `bean-check`
   over the ledger, parses its balance-assertion failures, and writes a
@@ -695,6 +723,10 @@ advice — verify against HMRC guidance.
   `holdings.csv`.
 - `net_worth_reports_dir` (defaults to `reports/net-worth`) — output
   directory for the `net-worth` command's `net-worth.md` / `net-worth.csv`.
+- `property_path` (defaults to `data/property.toml` when present) — the
+  off-ledger residential-property table; `property_ledger_path` (defaults
+  to `data/property.beancount`) is the generated ledger the `property`
+  command writes. Both consumed by `property` and the valuation reports.
 - Batch config: `banking-pipeline.toml` (gitignored, schema in
   `batch_config.py`). Carries personal Dropbox/iCloud paths, plus
   `[post.reconcile]` (off by default) and `[post.check]` toggles.

@@ -47,6 +47,7 @@ from banking_pipeline.fx.gbp_rates import GbpRateSource, build_rate_source
 from banking_pipeline.models import Classification, DocumentType, Transaction
 from banking_pipeline.opening_positions import load_opening_positions
 from banking_pipeline.pipeline import Pipeline
+from banking_pipeline.property import Property, load_properties, render_beancount
 from banking_pipeline.revolut import import_csvs as revolut_import_csvs
 from banking_pipeline.revolut import render as revolut_render
 from banking_pipeline.revolut.render import render_open_directives as revolut_open_directives
@@ -523,6 +524,14 @@ def _load_statement_context(
     return texts, commodities_map, build_rate_source(eff_settings)
 
 
+def _load_properties(override: Path | None) -> list[Property]:
+    """Off-ledger residential property for the valuation reports — the
+    override path, else the configured ``property_path``, else none."""
+
+    path = override or settings.property_path
+    return load_properties(path) if path is not None and path.is_file() else []
+
+
 @app.command()
 def concentration(
     statements: Annotated[
@@ -576,6 +585,14 @@ def concentration(
             "source; non-GBP holdings with no rate are excluded + flagged.",
         ),
     ] = None,
+    property_source: Annotated[
+        Path | None,
+        typer.Option(
+            "--property",
+            help="Property TOML to fold residential property into the "
+            "breakdown. Defaults to the configured ``property_path``.",
+        ),
+    ] = None,
     strict: Annotated[
         bool,
         typer.Option(
@@ -590,7 +607,8 @@ def concentration(
 
     Reads the latest statement valuation per portfolio and breaks the
     total down by holding, asset class, currency, and domicile, writing
-    ``concentration.md`` + ``holdings.csv``. A reporting aid: values are
+    ``concentration.md`` + ``holdings.csv``. Off-ledger residential
+    property (``property.toml``) is folded in. A reporting aid: values are
     the statement marks converted to GBP at the configured rate.
     """
 
@@ -599,7 +617,8 @@ def concentration(
         statements, statements_dir, statements_recursive, commodities, rate_source
     )
     report = concentration_mod.build_report(
-        texts, commodities=commodities_map, rate_source=rates
+        texts, commodities=commodities_map, rate_source=rates,
+        properties=_load_properties(property_source),
     )
 
     out_dir = out or settings.concentration_reports_dir
@@ -678,13 +697,22 @@ def net_worth(
             "(``null`` | ``hmrc-monthly``). Defaults to the configured source.",
         ),
     ] = None,
+    property_source: Annotated[
+        Path | None,
+        typer.Option(
+            "--property",
+            help="Property TOML to fold residential property into the "
+            "timeline. Defaults to the configured ``property_path``.",
+        ),
+    ] = None,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
     """Net worth over time.
 
     Values each statement's valuation at its own date and builds a combined
     timeline across portfolios (each contributes its latest valuation on or
-    before each date), writing ``net-worth.md`` + ``net-worth.csv``. A
+    before each date), writing ``net-worth.md`` + ``net-worth.csv``.
+    Off-ledger residential property (``property.toml``) is folded in. A
     reporting aid: values are statement marks converted to GBP.
     """
 
@@ -693,7 +721,8 @@ def net_worth(
         statements, statements_dir, statements_recursive, commodities, rate_source
     )
     timeline = net_worth_mod.build_timeline(
-        texts, commodities=commodities_map, rate_source=rates
+        texts, commodities=commodities_map, rate_source=rates,
+        properties=_load_properties(property_source),
     )
 
     out_dir = out or settings.net_worth_reports_dir
@@ -708,6 +737,72 @@ def net_worth(
     latest = f", latest £{timeline.points[-1].net_worth_gbp:,.2f}" if n else ""
     err_console.print(
         f"Wrote net-worth report to {out_dir} ({n} point(s){latest})"
+    )
+
+
+@app.command()
+def property(  # noqa: A001 — command name, not the builtin
+    source: Annotated[
+        Path | None,
+        typer.Option(
+            "--source",
+            help="Property TOML. Defaults to the configured "
+            "``property_path`` (``data/property.toml``).",
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output", "-o",
+            help="Generated ledger file. Defaults to the configured "
+            "``property_ledger_path`` (``data/property.beancount``).",
+        ),
+    ] = None,
+    rate_source: Annotated[
+        str | None,
+        typer.Option(
+            "--rate-source",
+            help="GBP rate source for the GBP price mark on non-GBP "
+            "properties (``null`` | ``hmrc-monthly``). Defaults to the "
+            "configured source.",
+        ),
+    ] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Generate the residential-property ledger from ``data/property.toml``.
+
+    Each property becomes a commodity held at cost (1 unit) and revalued by
+    ``price`` directives, funded against ``Equity:Property:<label>`` (the
+    financing already sits on the investment ledger). ``include`` the output
+    from ``main.beancount`` to bring property onto the bean-check / Fava
+    ledger.
+    """
+
+    _configure_logging(verbose)
+    spath = source or settings.property_path
+    if spath is None or not spath.is_file():
+        err_console.print(
+            "[red]No property TOML found — pass --source or create "
+            "data/property.toml (see data/property.example.toml).[/red]"
+        )
+        raise typer.Exit(code=2)
+
+    properties = load_properties(spath)
+    eff_settings = (
+        settings.model_copy(update={"gbp_rate_source": rate_source})
+        if rate_source is not None
+        else settings
+    )
+    rates = build_rate_source(eff_settings)
+
+    out_path = output or settings.property_ledger_path
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(
+        render_beancount(properties, rate_source=rates), encoding="utf-8"
+    )
+    err_console.print(
+        f"Wrote {out_path} ({len(properties)} property/properties). "
+        "Add `include \"" + str(out_path) + "\"` to main.beancount."
     )
 
 

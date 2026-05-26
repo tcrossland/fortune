@@ -32,11 +32,35 @@ from banking_pipeline.balances_extract import extract_balances_from_statement
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.prices_extract import extract_prices_from_statement
+from banking_pipeline.property import Property
 from banking_pipeline.tax.uk.currency import RateGap, to_gbp
 
 _ZERO = Decimal(0)
 _CASH = "cash"
 _UNKNOWN = "unknown"
+_PROPERTY = "property"
+
+
+def property_raws(properties: list[Property]) -> list[_RawHolding]:
+    """Turn properties into raw holdings (one per valuation mark) so they
+    flow through the same valuation as statement holdings: 1 unit valued at
+    the mark, tagged ``asset_class="property"`` / domicile = country. Each
+    property is its own pseudo-portfolio, so latest-per-portfolio (the
+    concentration view) keeps the most recent mark and the net-worth
+    timeline carries every mark."""
+
+    out: list[_RawHolding] = []
+    for p in properties:
+        for v in p.marks():
+            out.append(
+                _RawHolding(
+                    portfolio=f"Property:{p.label}", on_date=v.date,
+                    key=p.commodity, quantity=Decimal(1), price=v.value,
+                    currency=p.currency, is_cash=False, label=p.display_name,
+                    asset_class=_PROPERTY, domicile=p.country,
+                )
+            )
+    return out
 
 
 @dataclass(frozen=True)
@@ -82,6 +106,11 @@ class _RawHolding:
     price: Decimal | None  # native per-unit mark; None for cash / unpriced
     currency: str
     is_cash: bool
+    # Overrides for non-statement holdings (e.g. property), which carry no
+    # commodities.toml entry. When set, they bypass the metadata lookup.
+    label: str | None = None
+    asset_class: str | None = None
+    domicile: str | None = None
 
 
 def _is_currency(key: str) -> bool:
@@ -137,17 +166,21 @@ def build_report(
     *,
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
+    properties: list[Property] | None = None,
 ) -> ConcentrationReport:
     """Build the concentration report from ``(text, source-name)`` pairs.
 
     Only the latest statement per portfolio contributes (older snapshots
     are superseded), so passing a whole directory of statements yields the
     current position. Holdings are valued in GBP and sorted by value.
+    ``properties`` (off-ledger residential property) are folded in as
+    holdings at their latest valuation.
     """
 
     raws: list[_RawHolding] = []
     for text, source in statements:
         raws.extend(_raw_from_statement(text, source))
+    raws.extend(property_raws(properties or []))
     return _build_from_raw(raws, commodities=commodities, rate_source=rate_source)
 
 
@@ -222,13 +255,14 @@ def _value_holdings(
                         month=r.on_date.strftime("%Y-%m"))
             )
             continue
-        if meta is None:
+        if meta is None and r.asset_class is None:
             unclassified.append(r.key)
         securities.append(
             Holding(
-                key=r.key, name=meta.name if meta else r.key,
-                asset_class=meta.asset_class if meta else _UNKNOWN,
-                domicile=meta.domicile if meta else _UNKNOWN,
+                key=r.key,
+                name=r.label or (meta.name if meta else r.key),
+                asset_class=r.asset_class or (meta.asset_class if meta else _UNKNOWN),
+                domicile=r.domicile or (meta.domicile if meta else _UNKNOWN),
                 currency=r.currency, quantity=r.quantity, value_gbp=value_gbp,
                 is_cash=False,
             )

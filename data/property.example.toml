@@ -1,0 +1,40 @@
+# Residential property held off the investment ledger — copy to
+# data/property.toml and edit. The real file is gitignored (personal),
+# mirroring data/commodities.toml.
+#
+# Each [[property]] is brought onto the beancount ledger by
+# `banking-pipeline property` as a commodity held at cost (1 unit at the
+# purchase price), revalued by the dated valuations below, and folded into
+# the `concentration` / `net-worth` reports so net worth reflects total
+# wealth. Values are in the property's own `currency`; the EUR ones are
+# converted to GBP for the reports / a GBP price mark via the rate source.
+#
+# Funding: the acquisition balances against Equity:Property:<label> — the
+# financing (e.g. a Lombard loan) is already on the investment ledger, so
+# adding the asset against equity raises net worth by the property value
+# without double-counting.
+#
+# `commodity` is optional (defaults to the upper-cased label). `valuations`
+# are manual estimates; seed at least the purchase, then revise over time.
+
+[[property]]
+label = "Bristol"
+country = "GB"
+currency = "GBP"
+acquired = 2025-09-01
+purchase_price = 500000.00
+
+  [[property.valuations]]
+  date = 2025-09-01
+  value = 500000.00
+
+[[property]]
+label = "Torrelodones"
+country = "ES"
+currency = "EUR"
+acquired = 2025-10-01
+purchase_price = 400000.00
+
+  [[property.valuations]]
+  date = 2025-10-01
+  value = 400000.00

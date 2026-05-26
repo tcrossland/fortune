@@ -61,6 +61,16 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **Residential property on the ledger (`property`)** — off-ledger
+  residential property (a user-maintained `data/property.toml`) is brought
+  onto the beancount ledger: each property is a commodity held at cost
+  (1 unit), revalued by `price` directives, funded against
+  `Equity:Property:<label>` (the financing already sits on the investment
+  ledger, so net worth rises by the property value without double-counting).
+  A non-GBP property also gets a GBP price mark (via the rate source) so a
+  GBP load values it. Folded into the `concentration` / `net-worth` reports
+  (asset class `property`, domicile = country) so they show total wealth.
+  (`property.py`)
 - **`net-worth`** — net-worth-over-time report. Values each statement's
   valuation at its own date (reusing the concentration valuation) and
   builds a combined timeline across portfolios — each contributes its

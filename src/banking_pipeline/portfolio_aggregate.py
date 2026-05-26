@@ -192,6 +192,13 @@ def _extract_isin_currencies(files: Sequence[Path]) -> dict[str, str]:
 # from the per-year source-file list.
 _AUX_FILENAMES = ("prices.beancount", "balances.beancount")
 
+# Generated ledgers under ``data/`` that are neither per-year transaction
+# sources nor aggregate-emitted includes. The property ledger owns its own
+# commodity / open directives and is included directly by ``main.beancount``,
+# so the aggregate must ignore it entirely (treating it as a source would
+# double-count holdings; aux-including it would double-include the file).
+_IGNORED_FILENAMES = ("property.beancount",)
+
 # A top-level ``include`` directive — its presence marks a file as an
 # aggregate (it pulls in other ledger files) rather than a per-year
 # ingest source. Indented matches don't occur in practice; anchor to the
@@ -227,6 +234,7 @@ def _source_files(data_dir: Path, output: Path) -> list[Path]:
         for f in sorted(data_dir.glob("*.beancount"))
         if f.resolve() != output.resolve()
         and f.name not in _AUX_FILENAMES
+        and f.name not in _IGNORED_FILENAMES
         and not _is_aggregate(f)
     ]
 
