@@ -123,20 +123,25 @@ src/banking_pipeline/
 │                         bean-check assertion failures into a drift
 │                         report (drift rows + earliest-drift +
 │                         coverage gaps)
-├── concentration.py    Portfolio concentration / exposure report: reads
-│                         the latest statement valuation per portfolio
-│                         (via extract_balances/prices_from_statement),
-│                         values holdings in GBP, breaks down by holding /
-│                         asset class / currency / domicile. Leverage-aware
-│                         — weights are a share of gross long holdings and
-│                         negative cash (a margin/Lombard loan) is netted
-│                         by currency and reported separately (the
-│                         `concentration` command). `_value_holdings` /
-│                         `_raw_from_statement` are shared with net_worth
+├── valuation.py        Statement-valuation core (shared engine): the
+│                         `RawHolding` model, `raw_from_statement` parser,
+│                         and `value_holdings` (securities at qty×mark, cash
+│                         netted by currency → GBP) returning a
+│                         `ValuationResult`. Owned here, not in any report,
+│                         so concentration / net_worth / allocation /
+│                         portfolio_allocation all consume it as peers
+├── concentration.py    Portfolio concentration / exposure report: takes
+│                         the latest statement valuation per portfolio (via
+│                         `valuation.value_holdings`), breaks the total down
+│                         by holding / asset class / currency / domicile.
+│                         Leverage-aware — weights are a share of gross long
+│                         holdings and negative cash (a margin/Lombard loan)
+│                         is netted by currency and reported separately (the
+│                         `concentration` command)
 ├── allocation.py       Asset-allocation-over-time: tracks the asset-class
 │                         mix (equity / bond / property / … + net cash)
 │                         across the statement timeline. Composes
-│                         concentration's `_value_holdings` per snapshot
+│                         `valuation.value_holdings` per snapshot
 │                         (securities aggregated by `asset_class`) with
 │                         net_worth's as-of forward-fill; weights are a
 │                         share of gross long, cash/leverage separate (the
@@ -144,7 +149,7 @@ src/banking_pipeline/
 ├── portfolio_allocation.py  Per-portfolio allocation: breaks the latest
 │                         valuation down per portfolio (each Pictet
 │                         account, the ISA, each property) — reuses
-│                         concentration's `_value_holdings` per portfolio
+│                         `valuation.value_holdings` per portfolio
 │                         (cash netted within, not across) for a
 │                         per-portfolio asset-class + holdings breakdown,
 │                         plus a cross-portfolio net-worth/share summary
@@ -161,8 +166,8 @@ src/banking_pipeline/
 │                         amount); overdraft interest the user pays is an
 │                         expense and excluded
 ├── net_worth.py        Net-worth-over-time: values each statement
-│                         snapshot at its date (reusing concentration's
-│                         valuation) and builds a combined timeline across
+│                         snapshot at its date (via `valuation.value_holdings`)
+│                         and builds a combined timeline across
 │                         portfolios via as-of forward-fill, deduping
 │                         same-date statements (the `net-worth` command)
 ├── property.py         Off-ledger residential property: loads

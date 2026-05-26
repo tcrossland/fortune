@@ -6,7 +6,7 @@ account, the Vanguard ISA, and each off-ledger property — so you can see
 how every portfolio is allocated and how they compare.
 
 It reuses ``concentration``'s valuation wholesale: each portfolio's latest
-statement snapshot is run through ``_value_holdings`` independently (so
+statement snapshot is run through ``value_holdings`` independently (so
 cash is netted within a portfolio, not across the book), giving a
 per-portfolio asset-class + holdings breakdown. A cross-portfolio summary
 then shows each portfolio's net worth and its share of the total.
@@ -25,16 +25,16 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
-from banking_pipeline.concentration import (
-    Holding,
-    _raw_from_statement,
-    _RawHolding,
-    _value_holdings,
-    property_raws,
-)
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.property import Property
 from banking_pipeline.tax.uk.currency import RateGap
+from banking_pipeline.valuation import (
+    Holding,
+    RawHolding,
+    property_raws,
+    raw_from_statement,
+    value_holdings,
+)
 
 _ZERO = Decimal(0)
 _CASH = "cash"
@@ -82,15 +82,15 @@ def build_report(
     are superseded). ``properties`` are folded in, each as its own
     portfolio at its latest valuation."""
 
-    raws: list[_RawHolding] = []
+    raws: list[RawHolding] = []
     for text, source in statements:
-        raws.extend(_raw_from_statement(text, source))
+        raws.extend(raw_from_statement(text, source))
     raws.extend(property_raws(properties or []))
     return _report_from_raw(raws, commodities=commodities, rate_source=rate_source)
 
 
 def _report_from_raw(
-    raws: list[_RawHolding],
+    raws: list[RawHolding],
     *,
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
@@ -100,7 +100,7 @@ def _report_from_raw(
         if r.portfolio not in latest or r.on_date > latest[r.portfolio]:
             latest[r.portfolio] = r.on_date
 
-    by_pf: dict[str, list[_RawHolding]] = defaultdict(list)
+    by_pf: dict[str, list[RawHolding]] = defaultdict(list)
     for r in raws:
         if r.on_date == latest[r.portfolio]:
             by_pf[r.portfolio].append(r)
@@ -110,7 +110,7 @@ def _report_from_raw(
     rate_gaps: list[RateGap] = []
     unclassified: list[str] = []
     for portfolio, prs in by_pf.items():
-        rep = _value_holdings(prs, commodities=commodities, rate_source=rate_source)
+        rep = value_holdings(prs, commodities=commodities, rate_source=rate_source)
         by_class: dict[str, Decimal] = defaultdict(lambda: _ZERO)
         for h in rep.securities:
             by_class[h.asset_class] += h.value_gbp

@@ -10,8 +10,9 @@ from typer.testing import CliRunner
 
 from banking_pipeline import cli
 from banking_pipeline.commodities_metadata import CommodityMetadata
-from banking_pipeline.concentration import _build_from_raw, _RawHolding, build_report
+from banking_pipeline.concentration import _build_from_raw, build_report
 from banking_pipeline.fx.gbp_rates import NullSource
+from banking_pipeline.valuation import RawHolding
 
 D = Decimal
 
@@ -31,8 +32,8 @@ class _FakeRates:
 def _raw(
     *, portfolio: str = "Pic:K", on: date = date(2026, 4, 1), key: str,
     qty: Decimal, price: Decimal | None, ccy: str, cash: bool = False,
-) -> _RawHolding:
-    return _RawHolding(portfolio, on, key, qty, price, ccy, cash)
+) -> RawHolding:
+    return RawHolding(portfolio, on, key, qty, price, ccy, cash)
 
 
 def test_vanguard_end_to_end_values_and_unclassified() -> None:

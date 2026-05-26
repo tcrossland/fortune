@@ -9,17 +9,17 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from banking_pipeline import cli
-from banking_pipeline.concentration import _RawHolding
 from banking_pipeline.fx.gbp_rates import NullSource
 from banking_pipeline.net_worth import _timeline_from_raw, build_timeline
+from banking_pipeline.valuation import RawHolding
 
 D = Decimal
 
 _VANGUARD = Path("tests/fixtures/en/vanguard_uk/vanguard_regular_statement.txt")
 
 
-def _sec(portfolio: str, on: date, key: str, qty: Decimal, price: Decimal) -> _RawHolding:
-    return _RawHolding(portfolio, on, key, qty, price, "GBP", False)
+def _sec(portfolio: str, on: date, key: str, qty: Decimal, price: Decimal) -> RawHolding:
+    return RawHolding(portfolio, on, key, qty, price, "GBP", False)
 
 
 def test_as_of_forward_fill_across_portfolios() -> None:
@@ -64,7 +64,7 @@ def test_duplicate_statements_same_date_not_double_counted() -> None:
 def test_leverage_shows_in_net_cash() -> None:
     raws = [
         _sec("A", date(2025, 1, 1), "IE00B3VWN518", D(100), D(100)),  # 10000
-        _RawHolding("A", date(2025, 1, 1), "GBP", D(-6000), None, "GBP", True),
+        RawHolding("A", date(2025, 1, 1), "GBP", D(-6000), None, "GBP", True),
     ]
     tl = _timeline_from_raw(raws, commodities={}, rate_source=NullSource())
     p = tl.points[0]

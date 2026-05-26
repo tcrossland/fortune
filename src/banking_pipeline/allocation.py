@@ -7,7 +7,7 @@ followed through every statement date.
 
 It composes the two existing valuation reports rather than re-deriving
 anything: each statement snapshot is valued exactly as ``concentration``
-does (``_value_holdings`` — securities at ``qty × mark``, cash netted by
+does (``value_holdings`` — securities at ``qty × mark``, cash netted by
 currency, converted to GBP at the snapshot date), and the snapshots are
 stitched into a timeline with the same as-of forward-fill ``net-worth``
 uses (each portfolio contributes its latest valuation on or before each
@@ -28,15 +28,15 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
-from banking_pipeline.concentration import (
-    _raw_from_statement,
-    _RawHolding,
-    _value_holdings,
-    property_raws,
-)
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.property import Property
 from banking_pipeline.tax.uk.currency import RateGap
+from banking_pipeline.valuation import (
+    RawHolding,
+    property_raws,
+    raw_from_statement,
+    value_holdings,
+)
 
 _ZERO = Decimal(0)
 _CASH = "cash"
@@ -101,15 +101,15 @@ def build_timeline(
     snapshot per valuation date as a pseudo-portfolio, joining via the same
     forward-fill (asset class ``property``)."""
 
-    raws: list[_RawHolding] = []
+    raws: list[RawHolding] = []
     for text, source in statements:
-        raws.extend(_raw_from_statement(text, source))
+        raws.extend(raw_from_statement(text, source))
     raws.extend(property_raws(properties or []))
     return _timeline_from_raw(raws, commodities=commodities, rate_source=rate_source)
 
 
 def _timeline_from_raw(
-    raws: list[_RawHolding],
+    raws: list[RawHolding],
     *,
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
@@ -117,7 +117,7 @@ def _timeline_from_raw(
     # One snapshot per (portfolio, statement date). Dedupe by commodity
     # within a snapshot: a monthly and a quarterly statement can share an
     # "as at" date, and counting the same holding twice would double it.
-    groups: dict[tuple[str, date], dict[str, _RawHolding]] = defaultdict(dict)
+    groups: dict[tuple[str, date], dict[str, RawHolding]] = defaultdict(dict)
     for r in raws:
         groups[(r.portfolio, r.on_date)][r.key] = r
 
@@ -125,7 +125,7 @@ def _timeline_from_raw(
     rate_gaps: list[RateGap] = []
     missing_prices: list[str] = []
     for (portfolio, on_date), grp in groups.items():
-        valued = _value_holdings(
+        valued = value_holdings(
             list(grp.values()), commodities=commodities, rate_source=rate_source
         )
         by_class: dict[str, Decimal] = defaultdict(lambda: _ZERO)

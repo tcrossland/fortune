@@ -11,8 +11,8 @@ from typer.testing import CliRunner
 from banking_pipeline import cli
 from banking_pipeline.allocation import _timeline_from_raw, build_timeline
 from banking_pipeline.commodities_metadata import CommodityMetadata
-from banking_pipeline.concentration import _RawHolding
 from banking_pipeline.fx.gbp_rates import NullSource
+from banking_pipeline.valuation import RawHolding
 
 D = Decimal
 
@@ -22,8 +22,8 @@ _VANGUARD = Path("tests/fixtures/en/vanguard_uk/vanguard_regular_statement.txt")
 def _sec(
     portfolio: str, on: date, key: str, qty: Decimal, price: Decimal,
     currency: str = "GBP",
-) -> _RawHolding:
-    return _RawHolding(portfolio, on, key, qty, price, currency, False)
+) -> RawHolding:
+    return RawHolding(portfolio, on, key, qty, price, currency, False)
 
 
 def _meta(isin: str, asset_class: str) -> CommodityMetadata:
@@ -80,7 +80,7 @@ def test_unknown_class_sorts_last() -> None:
 def test_leverage_negative_net_cash() -> None:
     raws = [
         _sec("A", date(2025, 1, 1), _EQUITY, D(100), D(100)),  # equity 10000
-        _RawHolding("A", date(2025, 1, 1), "GBP", D(-6000), None, "GBP", True),
+        RawHolding("A", date(2025, 1, 1), "GBP", D(-6000), None, "GBP", True),
     ]
     tl = _timeline_from_raw(raws, commodities=_COMMODITIES, rate_source=NullSource())
     p = tl.points[0]
@@ -94,7 +94,7 @@ def test_leverage_negative_net_cash() -> None:
 def test_property_folded_in_as_class() -> None:
     raws = [
         _sec("A", date(2025, 1, 1), _EQUITY, D(10), D(100)),  # equity 1000
-        _RawHolding(
+        RawHolding(
             "Property:Home", date(2025, 1, 1), "HOME", D(1), D(500000),
             "GBP", False, label="Home", asset_class="property", domicile="GB",
         ),

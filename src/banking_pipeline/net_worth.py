@@ -26,15 +26,15 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
-from banking_pipeline.concentration import (
-    _raw_from_statement,
-    _RawHolding,
-    _value_holdings,
-    property_raws,
-)
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.property import Property
 from banking_pipeline.tax.uk.currency import RateGap
+from banking_pipeline.valuation import (
+    RawHolding,
+    property_raws,
+    raw_from_statement,
+    value_holdings,
+)
 
 _ZERO = Decimal(0)
 
@@ -78,15 +78,15 @@ def build_timeline(
     pseudo-portfolio contributing a snapshot per valuation date, so they
     join the timeline via the same as-of forward-fill."""
 
-    raws: list[_RawHolding] = []
+    raws: list[RawHolding] = []
     for text, source in statements:
-        raws.extend(_raw_from_statement(text, source))
+        raws.extend(raw_from_statement(text, source))
     raws.extend(property_raws(properties or []))
     return _timeline_from_raw(raws, commodities=commodities, rate_source=rate_source)
 
 
 def _timeline_from_raw(
-    raws: list[_RawHolding],
+    raws: list[RawHolding],
     *,
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
@@ -96,7 +96,7 @@ def _timeline_from_raw(
     # "as at" date (a monthly and a quarterly/annual both dated to the same
     # period end), and counting the same holding from both would double the
     # valuation.
-    groups: dict[tuple[str, date], dict[str, _RawHolding]] = defaultdict(dict)
+    groups: dict[tuple[str, date], dict[str, RawHolding]] = defaultdict(dict)
     for r in raws:
         groups[(r.portfolio, r.on_date)][r.key] = r
 
@@ -104,7 +104,7 @@ def _timeline_from_raw(
     rate_gaps: list[RateGap] = []
     missing_prices: list[str] = []
     for (portfolio, on_date), grp in groups.items():
-        valued = _value_holdings(
+        valued = value_holdings(
             list(grp.values()), commodities=commodities, rate_source=rate_source
         )
         snapshots.append(

@@ -24,141 +24,22 @@ the geographic-exposure dimension.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
-from banking_pipeline.balances_extract import extract_balances_from_statement
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
-from banking_pipeline.prices_extract import extract_prices_from_statement
 from banking_pipeline.property import Property
-from banking_pipeline.tax.uk.currency import RateGap, to_gbp
+from banking_pipeline.valuation import (
+    Holding,
+    RawHolding,
+    ValuationResult,
+    property_raws,
+    raw_from_statement,
+    value_holdings,
+)
 
 _ZERO = Decimal(0)
-_CASH = "cash"
-_UNKNOWN = "unknown"
-_PROPERTY = "property"
-
-
-def property_raws(properties: list[Property]) -> list[_RawHolding]:
-    """Turn properties into raw holdings (one per valuation mark) so they
-    flow through the same valuation as statement holdings: 1 unit valued at
-    the mark, tagged ``asset_class="property"`` / domicile = country. Each
-    property is its own pseudo-portfolio, so latest-per-portfolio (the
-    concentration view) keeps the most recent mark and the net-worth
-    timeline carries every mark."""
-
-    out: list[_RawHolding] = []
-    for p in properties:
-        for v in p.marks():
-            out.append(
-                _RawHolding(
-                    portfolio=f"Property:{p.label}", on_date=v.date,
-                    key=p.commodity, quantity=Decimal(1), price=v.value,
-                    currency=p.currency, is_cash=False, label=p.display_name,
-                    asset_class=_PROPERTY, domicile=p.country,
-                )
-            )
-    return out
-
-
-@dataclass(frozen=True)
-class Holding:
-    """One valued position at the report date."""
-
-    key: str  # ISIN / ticker / currency (for cash)
-    name: str
-    asset_class: str
-    domicile: str
-    currency: str  # quotation currency (cash: the cash currency)
-    quantity: Decimal
-    value_gbp: Decimal
-    is_cash: bool
-
-
-@dataclass(frozen=True)
-class ConcentrationReport:
-    as_of: date | None
-    # Sum of (positive) security values — the concentration denominator.
-    # Cash, including a negative margin/Lombard balance, is financing, not
-    # a position you're concentrated in, so it's excluded from the weights
-    # and reported separately.
-    gross_long_gbp: Decimal
-    net_cash_gbp: Decimal  # signed; negative = a margin/Lombard loan
-    net_worth_gbp: Decimal  # gross long + net cash
-    securities: tuple[Holding, ...]  # valued, sorted by value desc
-    cash: tuple[Holding, ...]  # one per currency (netted), sorted by |value|
-    # Securities held but with no statement mark, so unvaluable.
-    missing_prices: tuple[str, ...]
-    # Holdings valued in a non-GBP currency with no rate (excluded).
-    rate_gaps: tuple[RateGap, ...]
-    # Valued holdings with no commodities.toml metadata (unknown buckets).
-    unclassified: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class _RawHolding:
-    portfolio: str
-    on_date: date
-    key: str
-    quantity: Decimal
-    price: Decimal | None  # native per-unit mark; None for cash / unpriced
-    currency: str
-    is_cash: bool
-    # Overrides for non-statement holdings (e.g. property), which carry no
-    # commodities.toml entry. When set, they bypass the metadata lookup.
-    label: str | None = None
-    asset_class: str | None = None
-    domicile: str | None = None
-
-
-def _is_currency(key: str) -> bool:
-    return len(key) == 3 and key.isalpha()
-
-
-def _portfolio_of(account: str) -> str:
-    """``Assets:Pic:K123456001:IE00…`` → ``Assets:Pic:K123456001`` — the
-    account minus its commodity/currency leaf, used to keep only the
-    latest statement per portfolio."""
-
-    return account.rsplit(":", 1)[0]
-
-
-def _raw_from_statement(text: str, source: str) -> list[_RawHolding]:
-    """Per-holding raw rows from one statement's valuation snapshot.
-
-    Joins the balance quantities to the statement's per-commodity marks;
-    a cash sub-account (3-letter currency leaf) becomes a cash holding,
-    and a security with a quantity but no mark is kept price-less so it
-    can be reported as unvaluable rather than dropped.
-    """
-
-    balances = extract_balances_from_statement(text)
-    if not balances:
-        return []
-    prices = extract_prices_from_statement(text, doctype=None, source=source)
-    price_map = {p.commodity: (Decimal(p.price), p.currency) for p in prices}
-
-    out: list[_RawHolding] = []
-    for date_str, account, amount_str, key in balances:
-        on_date = date.fromisoformat(date_str)
-        portfolio = _portfolio_of(account)
-        amount = Decimal(amount_str)
-        if key in price_map:
-            price, ccy = price_map[key]
-            out.append(
-                _RawHolding(portfolio, on_date, key, amount, price, ccy, False)
-            )
-        elif _is_currency(key):
-            out.append(
-                _RawHolding(portfolio, on_date, key, amount, None, key, True)
-            )
-        else:
-            out.append(
-                _RawHolding(portfolio, on_date, key, amount, None, "", False)
-            )
-    return out
 
 
 def build_report(
@@ -167,7 +48,7 @@ def build_report(
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
     properties: list[Property] | None = None,
-) -> ConcentrationReport:
+) -> ValuationResult:
     """Build the concentration report from ``(text, source-name)`` pairs.
 
     Only the latest statement per portfolio contributes (older snapshots
@@ -177,19 +58,19 @@ def build_report(
     holdings at their latest valuation.
     """
 
-    raws: list[_RawHolding] = []
+    raws: list[RawHolding] = []
     for text, source in statements:
-        raws.extend(_raw_from_statement(text, source))
+        raws.extend(raw_from_statement(text, source))
     raws.extend(property_raws(properties or []))
     return _build_from_raw(raws, commodities=commodities, rate_source=rate_source)
 
 
 def _build_from_raw(
-    raws: list[_RawHolding],
+    raws: list[RawHolding],
     *,
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
-) -> ConcentrationReport:
+) -> ValuationResult:
     """Value + aggregate raw holdings into a report (the testable core).
 
     Only the latest statement per portfolio contributes — older snapshots
@@ -201,98 +82,8 @@ def _build_from_raw(
         if r.portfolio not in latest or r.on_date > latest[r.portfolio]:
             latest[r.portfolio] = r.on_date
     current = [r for r in raws if r.on_date == latest[r.portfolio]]
-    return _value_holdings(current, commodities=commodities, rate_source=rate_source)
+    return value_holdings(current, commodities=commodities, rate_source=rate_source)
 
-
-def _value_holdings(
-    raws: list[_RawHolding],
-    *,
-    commodities: dict[str, CommodityMetadata],
-    rate_source: GbpRateSource,
-) -> ConcentrationReport:
-    """Value a set of raw holdings to GBP and aggregate (no latest-per-
-    portfolio filtering — the caller decides what to pass). Securities are
-    valued at ``qty × mark``; cash is netted by currency; everything is
-    converted at each holding's statement date. Shared by the concentration
-    report and the net-worth timeline."""
-
-    securities: list[Holding] = []
-    # Cash is netted across portfolios by currency (a Lombard loan on one
-    # account and credit cash on another are one economic FX position).
-    cash_gbp: dict[str, Decimal] = defaultdict(lambda: _ZERO)
-    cash_native: dict[str, Decimal] = defaultdict(lambda: _ZERO)
-    missing_prices: list[str] = []
-    rate_gaps: list[RateGap] = []
-    unclassified: list[str] = []
-
-    for r in raws:
-        if r.is_cash:
-            value_gbp = to_gbp(
-                r.quantity, currency=r.currency, on_date=r.on_date,
-                source=rate_source,
-            )
-            if value_gbp is None:
-                rate_gaps.append(
-                    RateGap(isin=r.key, currency=r.currency,
-                            month=r.on_date.strftime("%Y-%m"))
-                )
-                continue
-            cash_gbp[r.currency] += value_gbp
-            cash_native[r.currency] += r.quantity
-            continue
-
-        if r.price is None:
-            missing_prices.append(r.key)
-            continue
-        meta = commodities.get(r.key)
-        value_gbp = to_gbp(
-            r.quantity * r.price, currency=r.currency, on_date=r.on_date,
-            source=rate_source,
-        )
-        if value_gbp is None:
-            rate_gaps.append(
-                RateGap(isin=r.key, currency=r.currency,
-                        month=r.on_date.strftime("%Y-%m"))
-            )
-            continue
-        if meta is None and r.asset_class is None:
-            unclassified.append(r.key)
-        securities.append(
-            Holding(
-                key=r.key,
-                name=r.label or (meta.name if meta else r.key),
-                asset_class=r.asset_class or (meta.asset_class if meta else _UNKNOWN),
-                domicile=r.domicile or (meta.domicile if meta else _UNKNOWN),
-                currency=r.currency, quantity=r.quantity, value_gbp=value_gbp,
-                is_cash=False,
-            )
-        )
-
-    securities.sort(key=lambda h: h.value_gbp, reverse=True)
-    cash = tuple(
-        Holding(
-            key=ccy, name=f"Cash ({ccy})", asset_class=_CASH, domicile="—",
-            currency=ccy, quantity=cash_native[ccy], value_gbp=cash_gbp[ccy],
-            is_cash=True,
-        )
-        for ccy in sorted(cash_gbp, key=lambda c: abs(cash_gbp[c]), reverse=True)
-    )
-
-    gross_long = sum((h.value_gbp for h in securities if h.value_gbp > _ZERO), _ZERO)
-    net_cash = sum(cash_gbp.values(), _ZERO)
-    net_worth = sum((h.value_gbp for h in securities), _ZERO) + net_cash
-    as_of = max((r.on_date for r in raws), default=None)
-    return ConcentrationReport(
-        as_of=as_of,
-        gross_long_gbp=gross_long,
-        net_cash_gbp=net_cash,
-        net_worth_gbp=net_worth,
-        securities=tuple(securities),
-        cash=cash,
-        missing_prices=tuple(sorted(set(missing_prices))),
-        rate_gaps=tuple(rate_gaps),
-        unclassified=tuple(sorted(set(unclassified))),
-    )
 
 
 # --- rendering --------------------------------------------------------------
@@ -332,7 +123,7 @@ def _table(title: str, rows: list[tuple[str, Decimal]], total: Decimal) -> list[
     return lines
 
 
-def render_markdown(report: ConcentrationReport) -> str:
+def render_markdown(report: ValuationResult) -> str:
     as_of = report.as_of.isoformat() if report.as_of else "—"
     gross = report.gross_long_gbp
     lines = [
@@ -419,7 +210,7 @@ def render_markdown(report: ConcentrationReport) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_csv_rows(report: ConcentrationReport) -> list[list[str]]:
+def render_csv_rows(report: ValuationResult) -> list[list[str]]:
     """Per-holding rows for the CSV (header first). Securities then cash;
     ``weight_pct`` is a share of gross long holdings (blank for cash)."""
 

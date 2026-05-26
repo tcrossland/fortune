@@ -10,9 +10,9 @@ from typer.testing import CliRunner
 
 from banking_pipeline import cli
 from banking_pipeline.commodities_metadata import CommodityMetadata
-from banking_pipeline.concentration import _RawHolding
 from banking_pipeline.fx.gbp_rates import NullSource
 from banking_pipeline.portfolio_allocation import _report_from_raw, build_report
+from banking_pipeline.valuation import RawHolding
 
 D = Decimal
 
@@ -22,8 +22,8 @@ _VANGUARD = Path("tests/fixtures/en/vanguard_uk/vanguard_regular_statement.txt")
 def _sec(
     portfolio: str, on: date, key: str, qty: Decimal, price: Decimal,
     currency: str = "GBP",
-) -> _RawHolding:
-    return _RawHolding(portfolio, on, key, qty, price, currency, False)
+) -> RawHolding:
+    return RawHolding(portfolio, on, key, qty, price, currency, False)
 
 
 def _meta(isin: str, asset_class: str) -> CommodityMetadata:
@@ -75,9 +75,9 @@ def test_latest_snapshot_per_portfolio() -> None:
 def test_cash_netted_within_portfolio_not_across() -> None:
     raws = [
         _sec("Assets:Pic:A", date(2025, 1, 1), _EQUITY, D(100), D(100)),  # 10000
-        _RawHolding("Assets:Pic:A", date(2025, 1, 1), "GBP", D(-4000), None, "GBP", True),
+        RawHolding("Assets:Pic:A", date(2025, 1, 1), "GBP", D(-4000), None, "GBP", True),
         _sec("Assets:Pic:B", date(2025, 1, 1), _BOND, D(20), D(100)),     # 2000
-        _RawHolding("Assets:Pic:B", date(2025, 1, 1), "GBP", D(1000), None, "GBP", True),
+        RawHolding("Assets:Pic:B", date(2025, 1, 1), "GBP", D(1000), None, "GBP", True),
     ]
     report = _report_from_raw(raws, commodities=_COMMODITIES, rate_source=NullSource())
     by_label = {p.label: p for p in report.portfolios}
@@ -91,7 +91,7 @@ def test_cash_netted_within_portfolio_not_across() -> None:
 def test_property_is_its_own_portfolio() -> None:
     raws = [
         _sec("Assets:Pic:A", date(2025, 1, 1), _EQUITY, D(10), D(100)),
-        _RawHolding(
+        RawHolding(
             "Property:Home", date(2025, 1, 1), "HOME", D(1), D(500000),
             "GBP", False, label="Home", asset_class="property", domicile="GB",
         ),
