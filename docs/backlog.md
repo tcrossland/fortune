@@ -13,12 +13,6 @@ planning ideas.
 
 ## Tax reporting
 
-- **Flag unclassified holdings that escape FIG relief.** A disposal with
-  no `commodities.toml` entry defaults to UK-situs, so under a claim it
-  stays taxable (and a genuinely foreign one wrongly lands on SA108).
-  `tax-report` already emits `WARN_UNCLASSIFIED`; the pack / FIG path
-  should additionally call out that an unclassified holding may be
-  *missing* relief, to prompt a metadata fix before filing.
 - **`fig-advice` refinements** — per-year income (one `--income` is
   currently assumed across the window) and run-rate projection of
   incomplete years (it uses year-to-date actuals, so a current-year

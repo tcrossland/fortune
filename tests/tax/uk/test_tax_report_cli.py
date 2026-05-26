@@ -202,6 +202,10 @@ def test_tax_report_fig_claim_relieves_foreign_to_designation(
     assert "foreign income relieved: 80.00 GBP" in summary
     assert "non-UK gains relieved: 650.00 GBP" in summary
     assert "disallowed foreign losses (loss relief forfeited): 0.00 GBP" in summary
+    # The unclassified US0378331005 disposal defaults to UK situs under the
+    # claim → flagged as possibly missing relief.
+    assert "WARN_UNCLASSIFIED" in summary
+    assert "MISSING RELIEF" in summary
 
 
 def test_tax_report_fig_claim_surfaces_disallowed_loss(

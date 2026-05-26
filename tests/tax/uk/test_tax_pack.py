@@ -116,3 +116,39 @@ def test_fig_section_and_coverage_warning() -> None:
     # Coverage warning naming the missing rate.
     assert "missing GBP rates" in md
     assert "EUR 2025-06 (LU1287023185)" in md
+
+
+def test_unclassified_holding_flagged_as_missing_relief_under_claim() -> None:
+    """An unknown-status disposal defaults to UK situs and is neither
+    taxed nor relieved; under a FIG claim the pack must flag it as
+    possibly missing relief."""
+
+    sa108 = Sa108Report(
+        rows=[
+            _cgt_row(reporting_status="uk-domestic"),
+            _cgt_row(isin="XS9999999999", commodity_name="Mystery Bond",
+                     reporting_status="unknown"),
+        ]
+    )
+    md = render_tax_pack(
+        year="2025-26", sa108=sa108, sa106=Sa106Report(dividends=[]),
+        eri=EriResult(rows=[]), allowance=_allowance(),
+        designation=[], fig_claimed=True,
+    )
+    assert "## ⚠️ Unclassified holdings — may be missing FIG relief" in md
+    assert "- XS9999999999 — Mystery Bond" in md
+    assert "missing relief" in md.lower()
+
+
+def test_unclassified_holding_not_flagged_without_claim() -> None:
+    """The missing-relief callout is FIG-specific — no claim, no section."""
+
+    sa108 = Sa108Report(
+        rows=[_cgt_row(isin="XS9999999999", reporting_status="unknown")]
+    )
+    md = render_tax_pack(
+        year="2025-26", sa108=sa108, sa106=Sa106Report(dividends=[]),
+        eri=EriResult(rows=[]), allowance=_allowance(),
+        designation=[], fig_claimed=False,
+    )
+    assert "Unclassified holdings" not in md

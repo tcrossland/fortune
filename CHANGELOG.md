@@ -8,6 +8,12 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## UK tax
 
+- **Unclassified-holding FIG-relief warning** — under a FIG claim a
+  disposal with no `commodities.toml` entry defaults to UK situs, so it is
+  neither taxed nor relieved; a genuinely foreign one silently misses
+  relief. `tax-report`'s summary now flags this on the `WARN_UNCLASSIFIED`
+  block, and the tax-pack gains an "unclassified holdings — may be missing
+  FIG relief" section, prompting a metadata fix before filing.
 - **FIG designation loss split** — the `fig-designation.csv` / tax-pack
   table now buckets each relieved item as income / gain / *disallowed
   loss* (a `kind` column) instead of netting a forfeited foreign loss

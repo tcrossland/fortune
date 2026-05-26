@@ -72,6 +72,7 @@ def render_tax_pack(
     lines += _deep_discounted_section(sa108)
     if fig_claimed:
         lines += _fig_section(designation)
+        lines += _unclassified_fig_section(sa108)
     lines += _coverage_section(rate_gaps or [])
 
     return "\n".join(lines).rstrip() + "\n"
@@ -248,6 +249,38 @@ def _fig_section(designation: list[FigDesignationRow]) -> list[str]:
             f"| {r.kind} | {r.category} | {r.country} | {r.isin} "
             f"| {_gbp(r.amount_gbp)} |"
         )
+    lines.append("")
+    return lines
+
+
+def _unclassified_fig_section(sa108: Sa108Report) -> list[str]:
+    """Under a FIG claim, disposals with no ``commodities.toml`` entry
+    default to UK situs, so they are neither reported as a gain nor
+    relieved — and a genuinely foreign one is silently missing relief.
+    List them so the metadata can be fixed before filing. (Only rendered
+    when a claim is active; the caller gates on ``fig_claimed``.)"""
+
+    unknown = {
+        r.isin: r.commodity_name
+        for r in sa108.rows
+        if r.reporting_status == "unknown"
+    }
+    if not unknown:
+        return []
+    lines = [
+        "## ⚠️ Unclassified holdings — may be missing FIG relief",
+        "",
+        "These disposals have no `data/commodities.toml` entry, so they "
+        "default to **UK situs** — under the FIG claim they are neither "
+        "reported as a gain nor relieved. If any is actually a foreign "
+        "holding it is **missing relief** and should be designated on the "
+        "FIG pages. Confirm each one's situs and add it to "
+        "`commodities.toml` before filing:",
+        "",
+    ]
+    for isin in sorted(unknown):
+        name = unknown[isin]
+        lines.append(f"- {isin}" + (f" — {name}" if name and name != isin else ""))
     lines.append("")
     return lines
 

@@ -2094,6 +2094,13 @@ def _write_tax_summary(
         )
         for isin in isins:
             lines.append(f"  {isin}")
+        if fig_claimed:
+            lines.append(
+                "  NOTE under the FIG claim these default to UK-situs and are "
+                "neither taxed nor relieved; if any is actually foreign it is "
+                "MISSING RELIEF — set its situs in data/commodities.toml "
+                "before filing."
+            )
         lines.append("")
     if sa108.unmatched_isins:
         lines.append(
