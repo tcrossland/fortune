@@ -9,6 +9,7 @@ transactions that predate that enrichment.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -60,3 +61,33 @@ def to_gbp(
         if rate is not None:
             return amount * rate
     return None
+
+
+def to_gbp_all(
+    amounts: Iterable[Decimal],
+    *,
+    currency: str,
+    on_date: date,
+    gbp_rate: Decimal | None = None,
+    source: GbpRateSource | None = None,
+) -> list[Decimal] | None:
+    """Convert several amounts that share one rate context, or ``None``.
+
+    All amounts are in the same ``currency`` at the same ``on_date`` (the
+    gross / withholding / net trio on a dividend, say), so they resolve a
+    GBP rate the same way — see :func:`to_gbp`. Returns the converted list,
+    or ``None`` if *any* amount can't be converted, so a caller can record a
+    single rate gap and skip the whole row rather than converting some legs
+    and not others.
+    """
+
+    out: list[Decimal] = []
+    for amount in amounts:
+        value = to_gbp(
+            amount, currency=currency, on_date=on_date,
+            gbp_rate=gbp_rate, source=source,
+        )
+        if value is None:
+            return None
+        out.append(value)
+    return out

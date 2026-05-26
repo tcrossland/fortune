@@ -44,7 +44,7 @@ from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.models import DocumentType, Transaction
 from banking_pipeline.report_format import gbp, money, rate_gap_lines
-from banking_pipeline.tax.uk.currency import RateGap, to_gbp
+from banking_pipeline.tax.uk.currency import RateGap, to_gbp_all
 from banking_pipeline.tax.uk.tax_year import date_to_tax_year
 from banking_pipeline.writer.builders.dividend import DIVIDEND_TYPES
 from banking_pipeline.writer.builders.interest import INTEREST_TYPES
@@ -161,21 +161,14 @@ def compute_income(
         on = _income_date(tx)
         gross_native = tx.gross_income if tx.gross_income is not None else tx.amount
         wht_native = tx.withholding_tax if tx.withholding_tax is not None else _ZERO
-        gross = to_gbp(
-            gross_native, currency=tx.currency, on_date=on,
-            gbp_rate=tx.gbp_rate, source=source,
+        converted = to_gbp_all(
+            [gross_native, wht_native, tx.amount],
+            currency=tx.currency, on_date=on, gbp_rate=tx.gbp_rate, source=source,
         )
-        wht = to_gbp(
-            wht_native, currency=tx.currency, on_date=on,
-            gbp_rate=tx.gbp_rate, source=source,
-        )
-        net = to_gbp(
-            tx.amount, currency=tx.currency, on_date=on,
-            gbp_rate=tx.gbp_rate, source=source,
-        )
-        if gross is None or wht is None or net is None:
+        if converted is None:
             gaps.add(RateGap.at(source_key, tx.currency, on))
             continue
+        gross, wht, net = converted
 
         acc = groups[(_period(on, period), kind, source_key, tx.currency, tx.account_wrapper)]
         acc.gross += gross

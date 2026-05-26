@@ -54,7 +54,7 @@ from banking_pipeline.commodities_metadata import (
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.models import Transaction
 from banking_pipeline.opening_positions import OpeningLot
-from banking_pipeline.tax.uk.currency import RateGap, to_gbp
+from banking_pipeline.tax.uk.currency import RateGap, to_gbp_all
 from banking_pipeline.tax.uk.section_104 import PoolCostAdjustment
 from banking_pipeline.tax.uk.tax_year import reporting_period_end, tax_year_bounds
 from banking_pipeline.writer.builders.security_trade import (
@@ -202,18 +202,15 @@ def compute_eri(
             if units <= 0:
                 continue
             on = entry.fund_distribution_date
-            gross = to_gbp(
-                units * entry.eri_per_unit,
+            converted = to_gbp_all(
+                [units * entry.eri_per_unit, units * entry.equalisation_per_unit],
                 currency=entry.currency, on_date=on, source=source,
             )
-            equalisation = to_gbp(
-                units * entry.equalisation_per_unit,
-                currency=entry.currency, on_date=on, source=source,
-            )
-            if gross is None or equalisation is None:
+            if converted is None:
                 missing.add(isin)
                 gaps.add(RateGap.at(isin, entry.currency, on))
                 continue
+            gross, equalisation = converted
             # Taxable income is the gross; the pool uplift is net of
             # equalisation (return of capital).
             base_cost_adj = gross - equalisation

@@ -242,7 +242,10 @@ src/banking_pipeline/
 │       ├── tax_year.py    UK tax-year boundary helpers (6 Apr–5 Apr,
 │       │                    label `"YYYY-YY"`)
 │       ├── currency.py    `to_gbp(...)` — preferred per-tx rate, else
-│       │                    `GbpRateSource` fallback, else None
+│       │                    `GbpRateSource` fallback, else None;
+│       │                    `to_gbp_all(...)` converts several amounts in
+│       │                    one rate context (gross/wht/net), None if any
+│       │                    fails — used by income / sa106 / eri
 │       ├── section_104.py Section 104 pool + same-day + 30-day
 │       │                    "bed and breakfast" share-matching +
 │       │                    dated pool-cost adjustments (ERI uplift)

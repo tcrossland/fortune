@@ -200,10 +200,7 @@ def value_holdings(
                 source=rate_source,
             )
             if value_gbp is None:
-                rate_gaps.append(
-                    RateGap(isin=r.key, currency=r.currency,
-                            month=r.on_date.strftime("%Y-%m"))
-                )
+                rate_gaps.append(RateGap.at(r.key, r.currency, r.on_date))
                 continue
             cash_gbp[r.currency] += value_gbp
             cash_native[r.currency] += r.quantity
@@ -218,10 +215,7 @@ def value_holdings(
             source=rate_source,
         )
         if value_gbp is None:
-            rate_gaps.append(
-                RateGap(isin=r.key, currency=r.currency,
-                        month=r.on_date.strftime("%Y-%m"))
-            )
+            rate_gaps.append(RateGap.at(r.key, r.currency, r.on_date))
             continue
         if meta is None and r.asset_class is None:
             unclassified.append(r.key)

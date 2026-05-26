@@ -26,7 +26,7 @@ from decimal import Decimal
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.models import Transaction
-from banking_pipeline.tax.uk.currency import RateGap, to_gbp
+from banking_pipeline.tax.uk.currency import RateGap, to_gbp_all
 from banking_pipeline.tax.uk.residence import is_pre_residence
 from banking_pipeline.tax.uk.tax_year import tax_year_bounds
 from banking_pipeline.writer.builders.dividend import DIVIDEND_TYPES
@@ -114,22 +114,15 @@ def compute_sa106_dividends(
         on = _income_date(tx)
         gross_native = tx.gross_income if tx.gross_income is not None else tx.amount
         wht_native = tx.withholding_tax if tx.withholding_tax is not None else Decimal(0)
-        gross = to_gbp(
-            gross_native, currency=tx.currency, on_date=on,
-            gbp_rate=tx.gbp_rate, source=source,
+        converted = to_gbp_all(
+            [gross_native, wht_native, tx.amount],
+            currency=tx.currency, on_date=on, gbp_rate=tx.gbp_rate, source=source,
         )
-        wht = to_gbp(
-            wht_native, currency=tx.currency, on_date=on,
-            gbp_rate=tx.gbp_rate, source=source,
-        )
-        net = to_gbp(
-            tx.amount, currency=tx.currency, on_date=on,
-            gbp_rate=tx.gbp_rate, source=source,
-        )
-        if gross is None or wht is None or net is None:
+        if converted is None:
             missing.add(tx.isin)
             gaps.add(RateGap.at(tx.isin, tx.currency, on))
             continue
+        gross, wht, net = converted
 
         meta = commodities.get(tx.isin)
         # A >60%-interest-bearing offshore fund's distribution is taxed
