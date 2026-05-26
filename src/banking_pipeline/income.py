@@ -37,12 +37,13 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from typing import Literal
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.models import DocumentType, Transaction
+from banking_pipeline.report_format import gbp, money, rate_gap_lines
 from banking_pipeline.tax.uk.currency import RateGap, to_gbp
 from banking_pipeline.tax.uk.tax_year import date_to_tax_year
 from banking_pipeline.writer.builders.dividend import DIVIDEND_TYPES
@@ -204,14 +205,6 @@ def compute_income(
 # --- rendering --------------------------------------------------------------
 
 
-def _money(value: Decimal) -> str:
-    return f"{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}"
-
-
-def _gbp(value: Decimal) -> str:
-    return f"£{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,}"
-
-
 def _period_noun(mode: PeriodMode) -> str:
     return "tax year" if mode == "tax-year" else "calendar year"
 
@@ -228,9 +221,9 @@ def render_markdown(report: IncomeReport) -> str:
     tax_free = sum((r.net_gbp for r in rows if r.wrapper is not None), _ZERO)
     lines += [
         f"Dividend and interest income by {_period_noun(report.period_mode)} and "
-        f"source, valued in GBP. Total net income **{_gbp(grand_net)}** across "
+        f"source, valued in GBP. Total net income **{gbp(grand_net)}** across "
         f"{len(periods)} {_period_noun(report.period_mode)}(s)"
-        + (f", of which **{_gbp(tax_free)}** is tax-free (ISA)." if tax_free else ".")
+        + (f", of which **{gbp(tax_free)}** is tax-free (ISA)." if tax_free else ".")
         + " A reporting aid, not advice.",
         "",
         "## Totals by period",
@@ -244,8 +237,8 @@ def render_markdown(report: IncomeReport) -> str:
         interest = sum((r.net_gbp for r in prows if r.kind == "interest"), _ZERO)
         free = sum((r.net_gbp for r in prows if r.wrapper is not None), _ZERO)
         lines.append(
-            f"| {p} | {_gbp(div)} | {_gbp(interest)} | {_gbp(div + interest)} "
-            f"| {_gbp(free) if free else '—'} |"
+            f"| {p} | {gbp(div)} | {gbp(interest)} | {gbp(div + interest)} "
+            f"| {gbp(free) if free else '—'} |"
         )
     lines.append("")
 
@@ -259,23 +252,20 @@ def render_markdown(report: IncomeReport) -> str:
         ]
         for r in prows:
             lines.append(
-                f"| {r.source_name} | {r.kind} | {r.currency} | {_gbp(r.gross_gbp)} "
-                f"| {_gbp(r.wht_gbp)} | {_gbp(r.net_gbp)} | {r.wrapper or '—'} "
+                f"| {r.source_name} | {r.kind} | {r.currency} | {gbp(r.gross_gbp)} "
+                f"| {gbp(r.wht_gbp)} | {gbp(r.net_gbp)} | {r.wrapper or '—'} "
                 f"| {r.count} |"
             )
         lines.append("")
 
     if report.missing_rates:
-        lines += [
-            "## ⚠️ Some income excluded — missing GBP rate",
-            "",
-            "These (source, month) amounts couldn't be converted to GBP and "
-            "are omitted from the totals. Add the month/currency to "
+        lines += rate_gap_lines(
+            report.missing_rates,
+            title="Some income excluded — missing GBP rate",
+            intro="These (source, month) amounts couldn't be converted to GBP "
+            "and are omitted from the totals. Add the month/currency to "
             "`data/fx/hmrc-monthly-average.csv`:",
-            "",
-        ]
-        lines += [f"- {g.currency} {g.month} ({g.isin})" for g in report.missing_rates]
-        lines.append("")
+        )
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -288,7 +278,7 @@ def render_csv_rows(report: IncomeReport) -> list[list[str]]:
     for r in report.rows:
         out.append([
             r.period, r.kind, r.source_key, r.source_name, r.currency,
-            r.wrapper or "", _money(r.gross_gbp), _money(r.wht_gbp),
-            _money(r.net_gbp), str(r.count),
+            r.wrapper or "", money(r.gross_gbp), money(r.wht_gbp),
+            money(r.net_gbp), str(r.count),
         ])
     return out

@@ -127,9 +127,14 @@ src/banking_pipeline/
 │                         `RawHolding` model, `raw_from_statement` parser,
 │                         and `value_holdings` (securities at qty×mark, cash
 │                         netted by currency → GBP) returning a
-│                         `ValuationResult`. Owned here, not in any report,
-│                         so concentration / net_worth / allocation /
+│                         `ValuationResult`, plus the generic `as_of`
+│                         forward-fill. Owned here, not in any report, so
+│                         concentration / net_worth / allocation /
 │                         portfolio_allocation all consume it as peers
+├── report_format.py    Shared report rendering helpers: `money` / `gbp` /
+│                         `pct` formatters + `rate_gap_lines` (the ⚠️
+│                         missing-GBP-rate Markdown section), so the five
+│                         reports format consistently from one definition
 ├── concentration.py    Portfolio concentration / exposure report: takes
 │                         the latest statement valuation per portfolio (via
 │                         `valuation.value_holdings`), breaks the total down

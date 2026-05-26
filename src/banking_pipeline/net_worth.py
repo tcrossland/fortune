@@ -23,14 +23,16 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.property import Property
+from banking_pipeline.report_format import gbp, money, rate_gap_lines
 from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.valuation import (
     RawHolding,
+    as_of,
     property_raws,
     raw_from_statement,
     value_holdings,
@@ -128,7 +130,7 @@ def _timeline_from_raw(
         gross = net_cash = net_worth = _ZERO
         contributing = 0
         for lst in by_portfolio.values():
-            chosen = _as_of(lst, d)
+            chosen = as_of(lst, d, key=lambda s: s.on_date)
             if chosen is not None:
                 gross += chosen.gross_long_gbp
                 net_cash += chosen.net_cash_gbp
@@ -147,27 +149,7 @@ def _timeline_from_raw(
     )
 
 
-def _as_of(snapshots: list[_Snapshot], on_date: date) -> _Snapshot | None:
-    """The latest snapshot on or before ``on_date`` (list is date-sorted)."""
-
-    chosen: _Snapshot | None = None
-    for s in snapshots:
-        if s.on_date <= on_date:
-            chosen = s
-        else:
-            break
-    return chosen
-
-
 # --- rendering --------------------------------------------------------------
-
-
-def _money(value: Decimal) -> str:
-    return f"{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}"
-
-
-def _gbp(value: Decimal) -> str:
-    return f"£{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,}"
 
 
 def render_markdown(timeline: NetWorthTimeline) -> str:
@@ -181,8 +163,8 @@ def render_markdown(timeline: NetWorthTimeline) -> str:
     total_change = last.net_worth_gbp - first.net_worth_gbp
     lines += [
         f"From **{first.on_date}** to **{last.on_date}**: net worth "
-        f"**{_gbp(first.net_worth_gbp)} → {_gbp(last.net_worth_gbp)}** "
-        f"({'+' if total_change >= _ZERO else ''}{_gbp(total_change)}). "
+        f"**{gbp(first.net_worth_gbp)} → {gbp(last.net_worth_gbp)}** "
+        f"({'+' if total_change >= _ZERO else ''}{gbp(total_change)}). "
         "Each row uses every portfolio's latest valuation on or before that "
         "date. A reporting aid, not advice.",
         "",
@@ -191,26 +173,22 @@ def render_markdown(timeline: NetWorthTimeline) -> str:
     ]
     for p in points:
         delta = "—" if p.change_gbp is None else (
-            f"{'+' if p.change_gbp >= _ZERO else ''}{_gbp(p.change_gbp)}"
+            f"{'+' if p.change_gbp >= _ZERO else ''}{gbp(p.change_gbp)}"
         )
         lines.append(
-            f"| {p.on_date} | {_gbp(p.gross_long_gbp)} | {_gbp(p.net_cash_gbp)} "
-            f"| {_gbp(p.net_worth_gbp)} | {delta} |"
+            f"| {p.on_date} | {gbp(p.gross_long_gbp)} | {gbp(p.net_cash_gbp)} "
+            f"| {gbp(p.net_worth_gbp)} | {delta} |"
         )
     lines.append("")
 
     if timeline.rate_gaps:
-        uniq = sorted(set(timeline.rate_gaps), key=lambda g: (g.month, g.currency, g.isin))
-        lines += [
-            "## ⚠️ Some points understate — missing GBP rate",
-            "",
-            "A holding in these statement months couldn't be converted to "
-            "GBP, so that point's net worth understates. Add the "
+        lines += rate_gap_lines(
+            timeline.rate_gaps,
+            title="Some points understate — missing GBP rate",
+            intro="A holding in these statement months couldn't be converted "
+            "to GBP, so that point's net worth understates. Add the "
             "month/currency to `data/fx/hmrc-monthly-average.csv`:",
-            "",
-        ]
-        lines += [f"- {g.currency} {g.month} ({g.isin})" for g in uniq]
-        lines.append("")
+        )
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -222,9 +200,9 @@ def render_csv_rows(timeline: NetWorthTimeline) -> list[list[str]]:
     ]]
     for p in timeline.points:
         rows.append([
-            p.on_date.isoformat(), _money(p.gross_long_gbp),
-            _money(p.net_cash_gbp), _money(p.net_worth_gbp),
-            "" if p.change_gbp is None else _money(p.change_gbp),
+            p.on_date.isoformat(), money(p.gross_long_gbp),
+            money(p.net_cash_gbp), money(p.net_worth_gbp),
+            "" if p.change_gbp is None else money(p.change_gbp),
             str(p.portfolios),
         ])
     return rows

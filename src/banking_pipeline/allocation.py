@@ -30,9 +30,11 @@ from decimal import ROUND_HALF_UP, Decimal
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.property import Property
+from banking_pipeline.report_format import gbp, money, pct, rate_gap_lines
 from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.valuation import (
     RawHolding,
+    as_of,
     property_raws,
     raw_from_statement,
     value_holdings,
@@ -153,7 +155,7 @@ def _timeline_from_raw(
         agg: dict[str, Decimal] = defaultdict(lambda: _ZERO)
         contributing = 0
         for lst in by_portfolio.values():
-            chosen = _as_of(lst, d)
+            chosen = as_of(lst, d, key=lambda s: s.on_date)
             if chosen is None:
                 continue
             gross += chosen.gross_long_gbp
@@ -180,33 +182,7 @@ def _timeline_from_raw(
     )
 
 
-def _as_of(snapshots: list[_Snapshot], on_date: date) -> _Snapshot | None:
-    """The latest snapshot on or before ``on_date`` (list is date-sorted)."""
-
-    chosen: _Snapshot | None = None
-    for s in snapshots:
-        if s.on_date <= on_date:
-            chosen = s
-        else:
-            break
-    return chosen
-
-
 # --- rendering --------------------------------------------------------------
-
-
-def _money(value: Decimal) -> str:
-    return f"{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}"
-
-
-def _gbp(value: Decimal) -> str:
-    return f"£{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,}"
-
-
-def _pct(value: Decimal, total: Decimal) -> str:
-    if total == _ZERO:
-        return "—"
-    return f"{(value / total * 100).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}%"
 
 
 def render_markdown(timeline: AllocationTimeline) -> str:
@@ -230,10 +206,10 @@ def render_markdown(timeline: AllocationTimeline) -> str:
     ]
     for p in points:
         by_class_map = dict(p.by_class_gbp)
-        cells = " | ".join(_pct(by_class_map.get(c, _ZERO), p.gross_long_gbp) for c in classes)
+        cells = " | ".join(pct(by_class_map.get(c, _ZERO), p.gross_long_gbp) for c in classes)
         lines.append(
-            f"| {p.on_date} | {cells} | {_pct(p.net_cash_gbp, p.gross_long_gbp)} "
-            f"| {_gbp(p.net_worth_gbp)} |"
+            f"| {p.on_date} | {cells} | {pct(p.net_cash_gbp, p.gross_long_gbp)} "
+            f"| {gbp(p.net_worth_gbp)} |"
         )
     lines.append("")
 
@@ -246,10 +222,10 @@ def render_markdown(timeline: AllocationTimeline) -> str:
         "| --- | ---: | ---: |",
     ]
     for cls, value in last.by_class_gbp:
-        lines.append(f"| {cls.title()} | {_gbp(value)} | {_pct(value, last.gross_long_gbp)} |")
+        lines.append(f"| {cls.title()} | {gbp(value)} | {pct(value, last.gross_long_gbp)} |")
     lines.append(
-        f"| {_CASH.title()} (net) | {_gbp(last.net_cash_gbp)} "
-        f"| {_pct(last.net_cash_gbp, last.gross_long_gbp)} |"
+        f"| {_CASH.title()} (net) | {gbp(last.net_cash_gbp)} "
+        f"| {pct(last.net_cash_gbp, last.gross_long_gbp)} |"
     )
     lines.append("")
 
@@ -263,17 +239,13 @@ def render_markdown(timeline: AllocationTimeline) -> str:
         lines += [f"- {k}" for k in timeline.missing_prices]
         lines.append("")
     if timeline.rate_gaps:
-        uniq = sorted(set(timeline.rate_gaps), key=lambda g: (g.month, g.currency, g.isin))
-        lines += [
-            "## ⚠️ Some points understate — missing GBP rate",
-            "",
-            "A holding in these statement months couldn't be converted to "
-            "GBP, so that point's allocation understates. Add the "
+        lines += rate_gap_lines(
+            timeline.rate_gaps,
+            title="Some points understate — missing GBP rate",
+            intro="A holding in these statement months couldn't be converted "
+            "to GBP, so that point's allocation understates. Add the "
             "month/currency to `data/fx/hmrc-monthly-average.csv`:",
-            "",
-        ]
-        lines += [f"- {g.currency} {g.month} ({g.isin})" for g in uniq]
-        lines.append("")
+        )
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -292,13 +264,13 @@ def render_csv_rows(timeline: AllocationTimeline) -> list[list[str]]:
     for p in timeline.points:
         for cls, value in p.by_class_gbp:
             out.append([
-                p.on_date.isoformat(), cls, _money(value),
+                p.on_date.isoformat(), cls, money(value),
                 _weight(value, p.gross_long_gbp),
-                _money(p.gross_long_gbp), _money(p.net_worth_gbp),
+                money(p.gross_long_gbp), money(p.net_worth_gbp),
             ])
         out.append([
-            p.on_date.isoformat(), _CASH, _money(p.net_cash_gbp),
+            p.on_date.isoformat(), _CASH, money(p.net_cash_gbp),
             _weight(p.net_cash_gbp, p.gross_long_gbp),
-            _money(p.gross_long_gbp), _money(p.net_worth_gbp),
+            money(p.gross_long_gbp), money(p.net_worth_gbp),
         ])
     return out

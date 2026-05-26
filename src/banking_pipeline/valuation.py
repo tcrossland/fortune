@@ -16,6 +16,7 @@ and surfaced as a warning rather than silently understating a weight.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -31,6 +32,23 @@ _ZERO = Decimal(0)
 _CASH = "cash"
 _UNKNOWN = "unknown"
 _PROPERTY = "property"
+
+
+def as_of[T](items: list[T], on_date: date, *, key: Callable[[T], date]) -> T | None:
+    """The last item whose ``key(item)`` falls on or before ``on_date``.
+
+    Assumes ``items`` is sorted ascending by ``key`` — the as-of forward-fill
+    the timeline reports use to carry each portfolio's latest snapshot
+    forward to a given date.
+    """
+
+    chosen: T | None = None
+    for item in items:
+        if key(item) <= on_date:
+            chosen = item
+        else:
+            break
+    return chosen
 
 
 def property_raws(properties: list[Property]) -> list[RawHolding]:

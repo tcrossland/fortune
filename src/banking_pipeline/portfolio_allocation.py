@@ -27,6 +27,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.property import Property
+from banking_pipeline.report_format import gbp, money, pct, rate_gap_lines
 from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.valuation import (
     Holding,
@@ -142,20 +143,6 @@ def _report_from_raw(
 # --- rendering --------------------------------------------------------------
 
 
-def _money(value: Decimal) -> str:
-    return f"{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}"
-
-
-def _gbp(value: Decimal) -> str:
-    return f"£{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,}"
-
-
-def _pct(value: Decimal, total: Decimal) -> str:
-    if total == _ZERO:
-        return "—"
-    return f"{(value / total * 100).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}%"
-
-
 def render_markdown(report: PortfolioAllocationReport) -> str:
     lines = ["# Portfolio allocation", ""]
     if not report.portfolios:
@@ -165,7 +152,7 @@ def render_markdown(report: PortfolioAllocationReport) -> str:
     total_nw = report.total_net_worth_gbp
     lines += [
         f"Latest valuation per portfolio. Total net worth "
-        f"**{_gbp(total_nw)}** across {len(report.portfolios)} portfolio(s). "
+        f"**{gbp(total_nw)}** across {len(report.portfolios)} portfolio(s). "
         "Within a portfolio, asset-class weights are a share of that "
         "portfolio's gross long holdings; the table below shares each "
         "portfolio against total net worth. A reporting aid, not advice.",
@@ -177,13 +164,13 @@ def render_markdown(report: PortfolioAllocationReport) -> str:
     ]
     for r in report.portfolios:
         lines.append(
-            f"| {r.label} | {r.as_of} | {_gbp(r.gross_long_gbp)} "
-            f"| {_gbp(r.net_cash_gbp)} | {_gbp(r.net_worth_gbp)} "
-            f"| {_pct(r.net_worth_gbp, total_nw)} |"
+            f"| {r.label} | {r.as_of} | {gbp(r.gross_long_gbp)} "
+            f"| {gbp(r.net_cash_gbp)} | {gbp(r.net_worth_gbp)} "
+            f"| {pct(r.net_worth_gbp, total_nw)} |"
         )
     lines += [
-        f"| **Total** | — | {_gbp(report.total_gross_long_gbp)} "
-        f"| {_gbp(report.total_net_cash_gbp)} | {_gbp(total_nw)} | 100.0% |",
+        f"| **Total** | — | {gbp(report.total_gross_long_gbp)} "
+        f"| {gbp(report.total_net_cash_gbp)} | {gbp(total_nw)} | 100.0% |",
         "",
     ]
 
@@ -191,7 +178,7 @@ def render_markdown(report: PortfolioAllocationReport) -> str:
         lines += [f"## {r.label} ({r.as_of})", ""]
         if r.net_cash_gbp < _ZERO:
             lines += [
-                f"> Leveraged: net cash {_gbp(r.net_cash_gbp)} (a margin / "
+                f"> Leveraged: net cash {gbp(r.net_cash_gbp)} (a margin / "
                 "Lombard loan).",
                 "",
             ]
@@ -202,11 +189,11 @@ def render_markdown(report: PortfolioAllocationReport) -> str:
             "| --- | ---: | ---: |",
         ]
         for cls, value in r.by_class_gbp:
-            lines.append(f"| {cls} | {_gbp(value)} | {_pct(value, r.gross_long_gbp)} |")
+            lines.append(f"| {cls} | {gbp(value)} | {pct(value, r.gross_long_gbp)} |")
         if r.net_cash_gbp != _ZERO:
             lines.append(
-                f"| {_CASH} (net) | {_gbp(r.net_cash_gbp)} "
-                f"| {_pct(r.net_cash_gbp, r.gross_long_gbp)} |"
+                f"| {_CASH} (net) | {gbp(r.net_cash_gbp)} "
+                f"| {pct(r.net_cash_gbp, r.gross_long_gbp)} |"
             )
         lines.append("")
         if r.securities:
@@ -218,8 +205,8 @@ def render_markdown(report: PortfolioAllocationReport) -> str:
             ]
             for h in r.securities:
                 lines.append(
-                    f"| {h.name} ({h.key}) | {h.asset_class} | {_gbp(h.value_gbp)} "
-                    f"| {_pct(h.value_gbp, r.gross_long_gbp)} |"
+                    f"| {h.name} ({h.key}) | {h.asset_class} | {gbp(h.value_gbp)} "
+                    f"| {pct(h.value_gbp, r.gross_long_gbp)} |"
                 )
             lines.append("")
 
@@ -233,16 +220,12 @@ def render_markdown(report: PortfolioAllocationReport) -> str:
         lines += [f"- {k}" for k in report.missing_prices]
         lines.append("")
     if report.rate_gaps:
-        uniq = sorted(set(report.rate_gaps), key=lambda g: (g.month, g.currency, g.isin))
-        lines += [
-            "## ⚠️ Excluded — missing GBP rate",
-            "",
-            "Valued in a non-GBP currency with no rate, so excluded. Add the "
-            "month/currency to `data/fx/hmrc-monthly-average.csv`:",
-            "",
-        ]
-        lines += [f"- {g.currency} {g.month} ({g.isin})" for g in uniq]
-        lines.append("")
+        lines += rate_gap_lines(
+            report.rate_gaps,
+            title="Excluded — missing GBP rate",
+            intro="Valued in a non-GBP currency with no rate, so excluded. Add "
+            "the month/currency to `data/fx/hmrc-monthly-average.csv`:",
+        )
     if report.unclassified:
         lines += [
             "## ⚠️ Unclassified holdings (no metadata)",
@@ -274,11 +257,11 @@ def render_csv_rows(report: PortfolioAllocationReport) -> list[list[str]]:
     for r in report.portfolios:
         for cls, value in r.by_class_gbp:
             out.append([
-                r.label, r.as_of.isoformat(), cls, _money(value),
-                _weight(value, r.gross_long_gbp), _money(r.net_worth_gbp),
+                r.label, r.as_of.isoformat(), cls, money(value),
+                _weight(value, r.gross_long_gbp), money(r.net_worth_gbp),
             ])
         out.append([
-            r.label, r.as_of.isoformat(), _CASH, _money(r.net_cash_gbp),
-            _weight(r.net_cash_gbp, r.gross_long_gbp), _money(r.net_worth_gbp),
+            r.label, r.as_of.isoformat(), _CASH, money(r.net_cash_gbp),
+            _weight(r.net_cash_gbp, r.gross_long_gbp), money(r.net_worth_gbp),
         ])
     return out

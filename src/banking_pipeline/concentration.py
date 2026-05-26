@@ -30,6 +30,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.property import Property
+from banking_pipeline.report_format import gbp, money, pct, rate_gap_lines
 from banking_pipeline.valuation import (
     Holding,
     RawHolding,
@@ -89,20 +90,6 @@ def _build_from_raw(
 # --- rendering --------------------------------------------------------------
 
 
-def _money(value: Decimal) -> str:
-    return f"{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}"
-
-
-def _gbp(value: Decimal) -> str:
-    return f"£{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,}"
-
-
-def _pct(value: Decimal, total: Decimal) -> str:
-    if total == _ZERO:
-        return "—"
-    return f"{(value / total * 100).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}%"
-
-
 def _aggregate(holdings: tuple[Holding, ...], attr: str) -> list[tuple[str, Decimal]]:
     agg: dict[str, Decimal] = defaultdict(lambda: _ZERO)
     for h in holdings:
@@ -118,7 +105,7 @@ def _table(title: str, rows: list[tuple[str, Decimal]], total: Decimal) -> list[
         "| --- | ---: | ---: |",
     ]
     for label, value in rows:
-        lines.append(f"| {label} | {_gbp(value)} | {_pct(value, total)} |")
+        lines.append(f"| {label} | {gbp(value)} | {pct(value, total)} |")
     lines.append("")
     return lines
 
@@ -129,9 +116,9 @@ def render_markdown(report: ValuationResult) -> str:
     lines = [
         "# Portfolio concentration",
         "",
-        f"As at **{as_of}**. Gross long holdings: **{_gbp(gross)}**; "
-        f"net cash: **{_gbp(report.net_cash_gbp)}**; net worth: "
-        f"**{_gbp(report.net_worth_gbp)}**. Weights below are a share of "
+        f"As at **{as_of}**. Gross long holdings: **{gbp(gross)}**; "
+        f"net cash: **{gbp(report.net_cash_gbp)}**; net worth: "
+        f"**{gbp(report.net_worth_gbp)}**. Weights below are a share of "
         "gross long holdings (cash / leverage shown separately). Values are "
         "statement marks converted to GBP — a reporting aid, not advice.",
         "",
@@ -139,8 +126,8 @@ def render_markdown(report: ValuationResult) -> str:
     if report.net_cash_gbp < _ZERO:
         lines += [
             f"> The portfolio is **leveraged**: net cash is "
-            f"{_gbp(report.net_cash_gbp)} (a margin / Lombard loan). Gross "
-            f"long holdings of {_gbp(gross)} are funded partly by borrowing, "
+            f"{gbp(report.net_cash_gbp)} (a margin / Lombard loan). Gross "
+            f"long holdings of {gbp(gross)} are funded partly by borrowing, "
             "so concentration is measured against the gross long book.",
             "",
         ]
@@ -167,10 +154,10 @@ def render_markdown(report: ValuationResult) -> str:
         ]
         for c in report.cash:
             lines.append(
-                f"| {c.currency} | {_gbp(c.value_gbp)} | {_pct(c.value_gbp, gross)} |"
+                f"| {c.currency} | {gbp(c.value_gbp)} | {pct(c.value_gbp, gross)} |"
             )
-        lines.append(f"| **Net cash** | {_gbp(report.net_cash_gbp)} | "
-                     f"{_pct(report.net_cash_gbp, gross)} |")
+        lines.append(f"| **Net cash** | {gbp(report.net_cash_gbp)} | "
+                     f"{pct(report.net_cash_gbp, gross)} |")
         lines.append("")
 
     if report.missing_prices:
@@ -184,17 +171,13 @@ def render_markdown(report: ValuationResult) -> str:
         lines += [f"- {k}" for k in report.missing_prices]
         lines.append("")
     if report.rate_gaps:
-        uniq = sorted(set(report.rate_gaps), key=lambda g: (g.currency, g.isin))
-        lines += [
-            "## ⚠️ Excluded — missing GBP rate",
-            "",
-            "Valued in a non-GBP currency with no rate, so excluded (the "
+        lines += rate_gap_lines(
+            report.rate_gaps,
+            title="Excluded — missing GBP rate",
+            intro="Valued in a non-GBP currency with no rate, so excluded (the "
             "weights above understate). Add the month/currency to "
             "`data/fx/hmrc-monthly-average.csv` and re-run:",
-            "",
-        ]
-        lines += [f"- {g.currency} {g.month} ({g.isin})" for g in uniq]
-        lines.append("")
+        )
     if report.unclassified:
         lines += [
             "## ⚠️ Unclassified holdings (no metadata)",
@@ -228,11 +211,11 @@ def render_csv_rows(report: ValuationResult) -> list[list[str]]:
     for h in report.securities:
         rows.append([
             "security", h.key, h.name, h.asset_class, h.domicile, h.currency,
-            _money(h.quantity), _money(h.value_gbp), _weight(h.value_gbp),
+            money(h.quantity), money(h.value_gbp), _weight(h.value_gbp),
         ])
     for c in report.cash:
         rows.append([
             "cash", c.key, c.name, c.asset_class, c.domicile, c.currency,
-            _money(c.quantity), _money(c.value_gbp), "",
+            money(c.quantity), money(c.value_gbp), "",
         ])
     return rows
