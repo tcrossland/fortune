@@ -73,7 +73,7 @@ def _fake_pdf_loader(monkeypatch: pytest.MonkeyPatch) -> None:
             raise ValueError("empty document")
         return RawDocument(path=path, text=text, page_count=1)
 
-    monkeypatch.setattr(cli._main, "load_pdf", fake)
+    monkeypatch.setattr(cli.inspect, "load_pdf", fake)
 
 
 def test_scan_text_mode_lists_every_pdf(scan_tree: Path) -> None:
