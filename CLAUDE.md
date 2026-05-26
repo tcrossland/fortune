@@ -100,6 +100,10 @@ src/banking_pipeline/
 │                         income | property | check | reconcile |
 │                         rebuild | tax-report | tax-forecast | tax-pack |
 │                         fig-advice)
+├── cli_options.py      Reusable Annotated Typer option aliases shared
+│                         across commands (VerboseOpt + the statement-
+│                         valuation report option set) — single definition
+│                         so help text doesn't drift per command
 ├── pipeline.py         Top-level Pipeline orchestration
 ├── models.py           Domain models — DocumentType, BankId, Language,
 │                         RawDocument, Classification, Transaction,

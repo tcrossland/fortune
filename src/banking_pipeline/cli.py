@@ -53,6 +53,15 @@ from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.classifiers.bank import BANK_RULES, BankRuleClassifier
 from banking_pipeline.classifiers.language import LANGUAGE_RULES, LanguageRuleClassifier
 from banking_pipeline.classifiers.rules import DEFAULT_RULES, RuleClassifier
+from banking_pipeline.cli_options import (
+    CommoditiesOpt,
+    PropertyOpt,
+    StatementOpt,
+    StatementsDirOpt,
+    StatementsRecursiveOpt,
+    ValuationRateSourceOpt,
+    VerboseOpt,
+)
 from banking_pipeline.commodities_metadata import CommodityMetadata, load_commodities
 from banking_pipeline.config import settings
 from banking_pipeline.extractors import extract_pages, load_pdf
@@ -168,7 +177,7 @@ def ingest(
             "treat bean-check warnings as errors.",
         ),
     ] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Classify and extract one or more PDFs, then render beancount entries."""
 
@@ -233,7 +242,7 @@ def dump_transactions_cmd(
             help="One or more PDFs to extract and print as JSONL.",
         ),
     ],
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Extract transactions from PDFs and print the JSONL sidecar to stdout.
 
@@ -280,7 +289,7 @@ def dedup_check(
             "member). Omit to only print the summary.",
         ),
     ] = None,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Audit the transaction sidecars for double-counted events.
 
@@ -344,7 +353,7 @@ def revolut(
             "account encountered. One-shot bootstrap for fresh ledgers.",
         ),
     ] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Convert Revolut Personal CSV exports into beancount transactions."""
 
@@ -417,7 +426,7 @@ def prices(
             "doesn't spider the home folder.",
         ),
     ] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Extract ``price`` directives and write a beancount
     price-database file under ``data_dir``.
@@ -546,32 +555,9 @@ def _load_properties(override: Path | None) -> list[Property]:
 
 @app.command()
 def concentration(
-    statements: Annotated[
-        list[Path],
-        typer.Option(
-            "--statement",
-            help="Statement PDF (or pre-extracted ``.txt`` dump) whose "
-            "valuation snapshot to read — a Pictet monthly statement or a "
-            "Vanguard ISA regular statement. Repeat for multiple; the "
-            "latest per portfolio wins so passing a whole history is fine.",
-        ),
-    ] = [],  # noqa: B006 — Typer's documented list-option default; not mutated
-    statements_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--statements-dir",
-            help="Directory to scan for valuation-bearing statements "
-            "(same classifier filter as ``prices``).",
-        ),
-    ] = None,
-    statements_recursive: Annotated[
-        bool,
-        typer.Option(
-            "--statements-recursive",
-            "-R",
-            help="Descend into subdirectories under ``--statements-dir``.",
-        ),
-    ] = False,
+    statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
+    statements_dir: StatementsDirOpt = None,
+    statements_recursive: StatementsRecursiveOpt = False,
     out: Annotated[
         Path | None,
         typer.Option(
@@ -580,31 +566,9 @@ def concentration(
             "``concentration_reports_dir`` (``reports/concentration``).",
         ),
     ] = None,
-    commodities: Annotated[
-        Path | None,
-        typer.Option(
-            "--commodities",
-            help="Commodity-metadata TOML (asset class / domicile). "
-            "Defaults to the configured ``commodities_metadata_path``.",
-        ),
-    ] = None,
-    rate_source: Annotated[
-        str | None,
-        typer.Option(
-            "--rate-source",
-            help="GBP rate source for non-GBP valuations "
-            "(``null`` | ``hmrc-monthly``). Defaults to the configured "
-            "source; non-GBP holdings with no rate are excluded + flagged.",
-        ),
-    ] = None,
-    property_source: Annotated[
-        Path | None,
-        typer.Option(
-            "--property",
-            help="Property TOML to fold residential property into the "
-            "breakdown. Defaults to the configured ``property_path``.",
-        ),
-    ] = None,
+    commodities: CommoditiesOpt = None,
+    rate_source: ValuationRateSourceOpt = None,
+    property_source: PropertyOpt = None,
     strict: Annotated[
         bool,
         typer.Option(
@@ -613,7 +577,7 @@ def concentration(
             "statement mark or no GBP rate).",
         ),
     ] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Portfolio concentration / exposure breakdown.
 
@@ -659,32 +623,9 @@ def concentration(
 
 @app.command("net-worth")
 def net_worth(
-    statements: Annotated[
-        list[Path],
-        typer.Option(
-            "--statement",
-            help="Statement PDF (or ``.txt`` dump) — Pictet monthly or "
-            "Vanguard ISA regular statement. Repeat / pass a history: each "
-            "statement date becomes a point on the timeline.",
-        ),
-    ] = [],  # noqa: B006 — Typer's documented list-option default; not mutated
-    statements_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--statements-dir",
-            help="Directory to scan for valuation-bearing statements "
-            "(same classifier filter as ``prices``). Point it at the whole "
-            "statement archive to get the full history.",
-        ),
-    ] = None,
-    statements_recursive: Annotated[
-        bool,
-        typer.Option(
-            "--statements-recursive",
-            "-R",
-            help="Descend into subdirectories under ``--statements-dir``.",
-        ),
-    ] = False,
+    statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
+    statements_dir: StatementsDirOpt = None,
+    statements_recursive: StatementsRecursiveOpt = False,
     out: Annotated[
         Path | None,
         typer.Option(
@@ -693,31 +634,10 @@ def net_worth(
             "``net_worth_reports_dir`` (``reports/net-worth``).",
         ),
     ] = None,
-    commodities: Annotated[
-        Path | None,
-        typer.Option(
-            "--commodities",
-            help="Commodity-metadata TOML. Defaults to the configured "
-            "``commodities_metadata_path``.",
-        ),
-    ] = None,
-    rate_source: Annotated[
-        str | None,
-        typer.Option(
-            "--rate-source",
-            help="GBP rate source for non-GBP valuations "
-            "(``null`` | ``hmrc-monthly``). Defaults to the configured source.",
-        ),
-    ] = None,
-    property_source: Annotated[
-        Path | None,
-        typer.Option(
-            "--property",
-            help="Property TOML to fold residential property into the "
-            "timeline. Defaults to the configured ``property_path``.",
-        ),
-    ] = None,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    commodities: CommoditiesOpt = None,
+    rate_source: ValuationRateSourceOpt = None,
+    property_source: PropertyOpt = None,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Net worth over time.
 
@@ -754,31 +674,9 @@ def net_worth(
 
 @app.command()
 def allocation(
-    statements: Annotated[
-        list[Path],
-        typer.Option(
-            "--statement",
-            help="Statement PDF (or ``.txt`` dump) — Pictet monthly or "
-            "Vanguard ISA regular statement. Repeat / pass a history: each "
-            "statement date becomes a point on the timeline.",
-        ),
-    ] = [],  # noqa: B006 — Typer's documented list-option default; not mutated
-    statements_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--statements-dir",
-            help="Directory to scan for valuation-bearing statements "
-            "(same classifier filter as ``prices``). Point it at the whole "
-            "statement archive to get the full history.",
-        ),
-    ] = None,
-    statements_recursive: Annotated[
-        bool,
-        typer.Option(
-            "--statements-recursive", "-R",
-            help="Descend into subdirectories under ``--statements-dir``.",
-        ),
-    ] = False,
+    statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
+    statements_dir: StatementsDirOpt = None,
+    statements_recursive: StatementsRecursiveOpt = False,
     out: Annotated[
         Path | None,
         typer.Option(
@@ -787,31 +685,9 @@ def allocation(
             "``allocation_reports_dir`` (``reports/allocation``).",
         ),
     ] = None,
-    commodities: Annotated[
-        Path | None,
-        typer.Option(
-            "--commodities",
-            help="Commodity-metadata TOML (drives the asset-class buckets). "
-            "Defaults to the configured ``commodities_metadata_path``.",
-        ),
-    ] = None,
-    rate_source: Annotated[
-        str | None,
-        typer.Option(
-            "--rate-source",
-            help="GBP rate source for non-GBP valuations "
-            "(``null`` | ``hmrc-monthly``). Defaults to the configured source.",
-        ),
-    ] = None,
-    property_source: Annotated[
-        Path | None,
-        typer.Option(
-            "--property",
-            help="Property TOML to fold residential property into the "
-            "timeline (asset class ``property``). Defaults to the configured "
-            "``property_path``.",
-        ),
-    ] = None,
+    commodities: CommoditiesOpt = None,
+    rate_source: ValuationRateSourceOpt = None,
+    property_source: PropertyOpt = None,
     strict: Annotated[
         bool,
         typer.Option(
@@ -820,7 +696,7 @@ def allocation(
             "no GBP rate), so a point's allocation understates.",
         ),
     ] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Asset allocation over time.
 
@@ -863,30 +739,9 @@ def allocation(
 
 @app.command("portfolio-allocation")
 def portfolio_allocation(
-    statements: Annotated[
-        list[Path],
-        typer.Option(
-            "--statement",
-            help="Statement PDF (or ``.txt`` dump) — Pictet monthly or "
-            "Vanguard ISA regular statement. The latest per portfolio is "
-            "used.",
-        ),
-    ] = [],  # noqa: B006 — Typer's documented list-option default; not mutated
-    statements_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--statements-dir",
-            help="Directory to scan for valuation-bearing statements "
-            "(same classifier filter as ``prices``).",
-        ),
-    ] = None,
-    statements_recursive: Annotated[
-        bool,
-        typer.Option(
-            "--statements-recursive", "-R",
-            help="Descend into subdirectories under ``--statements-dir``.",
-        ),
-    ] = False,
+    statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
+    statements_dir: StatementsDirOpt = None,
+    statements_recursive: StatementsRecursiveOpt = False,
     out: Annotated[
         Path | None,
         typer.Option(
@@ -896,31 +751,9 @@ def portfolio_allocation(
             "(``reports/portfolio-allocation``).",
         ),
     ] = None,
-    commodities: Annotated[
-        Path | None,
-        typer.Option(
-            "--commodities",
-            help="Commodity-metadata TOML (drives the asset-class buckets). "
-            "Defaults to the configured ``commodities_metadata_path``.",
-        ),
-    ] = None,
-    rate_source: Annotated[
-        str | None,
-        typer.Option(
-            "--rate-source",
-            help="GBP rate source for non-GBP valuations "
-            "(``null`` | ``hmrc-monthly``). Defaults to the configured source.",
-        ),
-    ] = None,
-    property_source: Annotated[
-        Path | None,
-        typer.Option(
-            "--property",
-            help="Property TOML to fold residential property in (each "
-            "property is its own portfolio). Defaults to the configured "
-            "``property_path``.",
-        ),
-    ] = None,
+    commodities: CommoditiesOpt = None,
+    rate_source: ValuationRateSourceOpt = None,
+    property_source: PropertyOpt = None,
     strict: Annotated[
         bool,
         typer.Option(
@@ -929,7 +762,7 @@ def portfolio_allocation(
             "no GBP rate).",
         ),
     ] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Per-portfolio allocation.
 
@@ -1025,7 +858,7 @@ def income(
             "(and so was excluded from the totals).",
         ),
     ] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Income by source (dividends + interest received).
 
@@ -1109,7 +942,7 @@ def property(  # noqa: A001 — command name, not the builtin
             "configured source.",
         ),
     ] = None,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Generate the residential-property ledger from ``data/property.toml``.
 
@@ -1258,7 +1091,7 @@ def balances(
             "``<data_dir>/balances.beancount``.",
         ),
     ] = None,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Extract per-holding and per-cash-sub-account balance
     assertions from Pictet monthly statements.
@@ -1349,7 +1182,7 @@ def portfolio(
             "Pass an empty string to omit the directive.",
         ),
     ] = "FIFO",
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Regenerate the portfolio-aggregate file (central account opens
     + per-year includes) under ``data_dir``."""
@@ -1457,7 +1290,7 @@ def reconcile(
             "of this flag.",
         ),
     ] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Reconcile statement-asserted balances against the ledger.
 
@@ -1590,7 +1423,7 @@ def rebuild(
             "config setting.",
         ),
     ] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """End-to-end rebuild driven by ``banking-pipeline.toml``.
 
@@ -2013,7 +1846,7 @@ def _expand_globs(globs: list[str], project_root: Path) -> list[Path]:
 @app.command()
 def classify(
     pdf_paths: Annotated[list[Path], typer.Argument(exists=True, readable=True)],
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Classify PDFs without running the full extraction — useful for triage."""
 
@@ -2083,7 +1916,7 @@ def scan(
         Path | None,
         typer.Option("--output", "-o", help="Write results here instead of stdout."),
     ] = None,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Classify every PDF in ``directory`` and log the verdict.
 
@@ -3023,7 +2856,7 @@ def tax_report(
             "(a missing rate silently excludes it). Turn on for a CI gate.",
         ),
     ] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Produce UK SA106 / SA108 CSV inputs from the JSONL sidecars.
 
@@ -3367,7 +3200,7 @@ def tax_forecast(
             "(a missing rate silently understates the estimate).",
         ),
     ] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Estimate this tax year's UK liability so April holds no surprises.
 
@@ -3525,7 +3358,7 @@ def tax_pack(
         Path | None,
         typer.Option("--eri", help="Excess reportable income TOML."),
     ] = None,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Render a per-year 'tax pack' — one Markdown filing aid that ties the
     computed SA108 / SA106 figures to the boxes on the HMRC forms.
@@ -3718,7 +3551,7 @@ def fig_advice(
             help="Exit non-zero if any amount lacked a GBP rate.",
         ),
     ] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    verbose: VerboseOpt = False,
 ) -> None:
     """Recommend which FIG years to claim, optimised across the window.
 
