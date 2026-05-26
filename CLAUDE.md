@@ -96,8 +96,8 @@ src/banking_pipeline/
 │                         classify | scan | extract-text | revolut |
 │                         dedup-check |
 │                         prices | balances | portfolio | concentration |
-│                         net-worth | allocation | income | property |
-│                         check | reconcile |
+│                         net-worth | allocation | portfolio-allocation |
+│                         income | property | check | reconcile |
 │                         rebuild | tax-report | tax-forecast | tax-pack |
 │                         fig-advice)
 ├── pipeline.py         Top-level Pipeline orchestration
@@ -131,6 +131,14 @@ src/banking_pipeline/
 │                         net_worth's as-of forward-fill; weights are a
 │                         share of gross long, cash/leverage separate (the
 │                         `allocation` command)
+├── portfolio_allocation.py  Per-portfolio allocation: breaks the latest
+│                         valuation down per portfolio (each Pictet
+│                         account, the ISA, each property) — reuses
+│                         concentration's `_value_holdings` per portfolio
+│                         (cash netted within, not across) for a
+│                         per-portfolio asset-class + holdings breakdown,
+│                         plus a cross-portfolio net-worth/share summary
+│                         (the `portfolio-allocation` command)
 ├── income.py           Income-by-source report: aggregates dividends +
 │                         interest *received* from the JSONL sidecars by
 │                         period (UK tax year or calendar year) and paying
@@ -620,6 +628,17 @@ and reads the JSONL sidecars, not the ledger:
   `reports/allocation/`). Reuses `concentration._value_holdings` +
   `net_worth`'s forward-fill; `--strict` exits non-zero on any unvaluable
   holding (no mark / no GBP rate).
+- `portfolio-allocation` — per-portfolio allocation. Same statement
+  discovery / `--rate-source` / `--property` / `--strict` as `allocation`,
+  but instead of a timeline it breaks the *latest* valuation down per
+  portfolio (each Pictet account, the Vanguard ISA, each property): a
+  cross-portfolio summary (gross long / net cash / net worth + share of
+  total) plus, per portfolio, an asset-class and by-holding breakdown
+  (weights a share of that portfolio's gross long). Cash is netted within
+  a portfolio, not across the book (so a Lombard loan stays on its
+  account). Writes `portfolio-allocation.md` + `portfolio-allocation.csv`
+  to `<portfolio_allocation_reports_dir>/` (default
+  `reports/portfolio-allocation/`). Reuses `concentration._value_holdings`.
 - `income` — income-by-source report. Reads the `*.transactions.jsonl`
   sidecars under `--source` (default `data`, same loader as `tax-report`),
   aggregates dividend + interest income by `--period` (`tax-year` default,
@@ -661,8 +680,12 @@ and reads the JSONL sidecars, not the ledger:
   Defaults: `ledger=main.beancount`, `--balances=data/balances.beancount`.
 - `rebuild` — end-to-end run driven by `banking-pipeline.toml`
   (gitignored; copy from `banking-pipeline.example.toml`). Owns the
-  `clean → ingest per source → prices/portfolio/balances → reconcile
-  → check` sequence. `[post.reconcile]` (off by default) runs *before*
+  `clean → ingest per source → prices/portfolio/balances → reports →
+  reconcile → check` sequence. `[post.reports]` (off by default)
+  regenerates the analytical reports (income / concentration / net-worth /
+  allocation / portfolio-allocation) into the configured `*_reports_dir`s,
+  running *before* reconcile/check so they land even when `bean-check`
+  later exits nonzero. `[post.reconcile]` (off by default) runs *before*
   `check` so its drift report lands even though `bean-check` exits
   nonzero on the same drift.
 - `revolut` — separate side path; Revolut Personal CSV → beancount.
@@ -793,14 +816,20 @@ advice — verify against HMRC guidance.
 - `allocation_reports_dir` (defaults to `reports/allocation`) — output
   directory for the `allocation` command's `allocation.md` /
   `allocation.csv`.
+- `portfolio_allocation_reports_dir` (defaults to
+  `reports/portfolio-allocation`) — output directory for the
+  `portfolio-allocation` command's `portfolio-allocation.md` / `.csv`.
 - `property_path` (defaults to `data/property.toml` when present) — the
   off-ledger residential-property table; `property_ledger_path` (defaults
   to `data/property.beancount`) is the generated ledger the `property`
   command writes. Both consumed by `property` and the valuation reports.
 - Batch config: `banking-pipeline.toml` (gitignored, schema in
   `batch_config.py`). Carries personal Dropbox/iCloud paths, plus
-  `[post.reconcile]` (off by default) and `[post.check]` toggles. Its
-  `[settings]` table feeds `Settings` (above); the rest is BatchConfig.
+  `[post.reports]`, `[post.reconcile]` (both off by default) and
+  `[post.check]` toggles. `[post.reports]` regenerates the analytical
+  reports into the `*_reports_dir`s (per-report toggles; its `statements`
+  glob falls back to `balance_statements`). Its `[settings]` table feeds
+  `Settings` (above); the rest is BatchConfig.
 - `.env.example` / `banking-pipeline.example.toml` are the committed
   templates; copy to `.env` / `banking-pipeline.toml` for local work.
 

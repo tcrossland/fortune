@@ -69,6 +69,31 @@ balances = false     # ``banking-pipeline balances <data_dir> --statement ...``
 # ]
 
 
+# Analytical Markdown/CSV reports. Regenerates the read-only reports from
+# the freshly-built ingest output plus the statement archive, into the
+# ``reports/`` dirs configured in ``[settings]`` (``income_reports_dir``
+# etc.). Runs *before* reconcile/check so the reports always land even
+# when bean-check later exits nonzero on drift.
+#
+# Off by default. ``income`` reads only the sidecars under ``data_dir``;
+# the other four value the statement archive — set ``statements`` (or
+# leave empty to reuse ``balance_statements`` above). ``income_period`` is
+# ``"tax-year"`` (6 Apr–5 Apr) or ``"calendar"``. The GBP rate source /
+# commodity metadata / property table come from ``[settings]``.
+[post.reports]
+enabled = false
+income = true
+concentration = true
+net_worth = true
+allocation = true
+portfolio_allocation = true
+income_period = "tax-year"
+# statements = [
+#     "~/Documents/Banking/**/*monthly*.pdf",
+#     "~/Documents/Vanguard/*.pdf",
+# ]
+
+
 # Statement-balance reconciliation. Runs just *before* the bean-check
 # step. bean-check exits nonzero on a drifted balance assertion, so
 # running reconcile first guarantees its localised drift report is

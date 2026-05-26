@@ -37,9 +37,17 @@ from banking_pipeline import (
     net_worth as net_worth_mod,
 )
 from banking_pipeline import (
+    portfolio_allocation as portfolio_allocation_mod,
+)
+from banking_pipeline import (
     reconcile as reconcile_mod,
 )
-from banking_pipeline.batch_config import BatchConfig, Source, load_config
+from banking_pipeline.batch_config import (
+    BatchConfig,
+    ReportsStep,
+    Source,
+    load_config,
+)
 from banking_pipeline.cgt_losses import load_cgt_brought_forward_losses
 from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.classifiers.bank import BANK_RULES, BankRuleClassifier
@@ -853,6 +861,118 @@ def allocation(
             raise typer.Exit(code=1)
 
 
+@app.command("portfolio-allocation")
+def portfolio_allocation(
+    statements: Annotated[
+        list[Path],
+        typer.Option(
+            "--statement",
+            help="Statement PDF (or ``.txt`` dump) — Pictet monthly or "
+            "Vanguard ISA regular statement. The latest per portfolio is "
+            "used.",
+        ),
+    ] = [],  # noqa: B006 — Typer's documented list-option default; not mutated
+    statements_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--statements-dir",
+            help="Directory to scan for valuation-bearing statements "
+            "(same classifier filter as ``prices``).",
+        ),
+    ] = None,
+    statements_recursive: Annotated[
+        bool,
+        typer.Option(
+            "--statements-recursive", "-R",
+            help="Descend into subdirectories under ``--statements-dir``.",
+        ),
+    ] = False,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``portfolio_allocation_reports_dir`` "
+            "(``reports/portfolio-allocation``).",
+        ),
+    ] = None,
+    commodities: Annotated[
+        Path | None,
+        typer.Option(
+            "--commodities",
+            help="Commodity-metadata TOML (drives the asset-class buckets). "
+            "Defaults to the configured ``commodities_metadata_path``.",
+        ),
+    ] = None,
+    rate_source: Annotated[
+        str | None,
+        typer.Option(
+            "--rate-source",
+            help="GBP rate source for non-GBP valuations "
+            "(``null`` | ``hmrc-monthly``). Defaults to the configured source.",
+        ),
+    ] = None,
+    property_source: Annotated[
+        Path | None,
+        typer.Option(
+            "--property",
+            help="Property TOML to fold residential property in (each "
+            "property is its own portfolio). Defaults to the configured "
+            "``property_path``.",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict", "-s",
+            help="Exit non-zero if any holding couldn't be valued (no mark / "
+            "no GBP rate).",
+        ),
+    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Per-portfolio allocation.
+
+    Breaks the latest valuation down per portfolio (each Pictet account,
+    the Vanguard ISA, each property), showing each portfolio's asset-class
+    + holdings allocation and its share of total net worth. Writes
+    ``portfolio-allocation.md`` + ``portfolio-allocation.csv``. A reporting
+    aid.
+    """
+
+    _configure_logging(verbose)
+    texts, commodities_map, rates = _load_statement_context(
+        statements, statements_dir, statements_recursive, commodities, rate_source
+    )
+    report = portfolio_allocation_mod.build_report(
+        texts, commodities=commodities_map, rate_source=rates,
+        properties=_load_properties(property_source),
+    )
+
+    out_dir = out or settings.portfolio_allocation_reports_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "portfolio-allocation.md").write_text(
+        portfolio_allocation_mod.render_markdown(report), encoding="utf-8"
+    )
+    with (out_dir / "portfolio-allocation.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as fh:
+        csv.writer(fh).writerows(portfolio_allocation_mod.render_csv_rows(report))
+
+    err_console.print(
+        f"Wrote portfolio-allocation report to {out_dir} "
+        f"({len(report.portfolios)} portfolio(s))"
+    )
+    gap_n = len(report.missing_prices) + len(report.rate_gaps)
+    if gap_n:
+        err_console.print(
+            f"[yellow]{gap_n} holding(s) excluded (no mark / no GBP rate) "
+            "— see the report.[/yellow]"
+        )
+        if strict:
+            raise typer.Exit(code=1)
+
+
 @app.command()
 def income(
     source: Annotated[
@@ -1483,8 +1603,8 @@ def rebuild(
     1. Deletes stale outputs under ``<data_dir>/<clean_glob>``.
     2. Runs ``ingest`` once per ``[[sources]]`` entry, writing to
        ``<data_dir>/<label>.beancount``.
-    3. Runs ``prices`` / ``portfolio`` / ``balances`` according to the
-       ``[post]`` toggles.
+    3. Runs ``prices`` / ``portfolio`` / ``balances`` / ``reports`` /
+       ``reconcile`` / ``check`` according to the ``[post]`` toggles.
 
     Globs that match zero files surface as a non-fatal warning rather
     than an error — handy when a year-partition hasn't received any
@@ -1640,6 +1760,30 @@ def _do_rebuild(
                 f"  wrote {output_path} ({total} balance assertion(s))"
             )
 
+    # --- Step 3.5: reports -----------------------------------------------
+    # Read-only analytical reports. Runs before reconcile/check so the
+    # Markdown/CSV always regenerate even when bean-check later exits
+    # nonzero on drift.
+    if cfg.post.reports.enabled:
+        rep = cfg.post.reports
+        stmt_globs = rep.statements or cfg.post.balance_statements
+        stmt_paths = _expand_globs(stmt_globs, project_root)
+        wanted = [
+            name for name, on in (
+                ("income", rep.income),
+                ("concentration", rep.concentration),
+                ("net-worth", rep.net_worth),
+                ("allocation", rep.allocation),
+                ("portfolio-allocation", rep.portfolio_allocation),
+            ) if on
+        ]
+        err_console.print(
+            f"[bold]reports[/bold] {', '.join(wanted)} "
+            f"({len(stmt_paths)} statement{'s' if len(stmt_paths) != 1 else ''})"
+        )
+        if not dry_run:
+            _run_rebuild_reports(rep, data_dir, stmt_paths, project_root)
+
     # --- Step 4: reconcile -----------------------------------------------
     # Runs *before* bean-check: bean-check exits nonzero on a drifted
     # assertion, so going first guarantees reconcile's localised report
@@ -1683,6 +1827,106 @@ def _do_rebuild(
         )
         if not dry_run:
             _run_check_or_exit(ledger, strict=check_strict)
+
+
+def _resolve_report_dir(configured: Path, project_root: Path) -> Path:
+    """Resolve a configured ``*_reports_dir`` against the project root.
+
+    The report-dir settings default to repo-relative paths (``reports/…``);
+    rebuild resolves them against ``project_root`` so the output lands in
+    the same place regardless of the process's working directory."""
+
+    if configured.is_absolute():
+        return configured
+    return (project_root / configured).resolve()
+
+
+def _write_report(
+    out_dir: Path, md_name: str, md_text: str, csv_name: str,
+    csv_rows: list[list[str]],
+) -> None:
+    """Write a report's ``.md`` + ``.csv`` to ``out_dir`` (created if absent)."""
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / md_name).write_text(md_text, encoding="utf-8")
+    with (out_dir / csv_name).open("w", newline="", encoding="utf-8") as fh:
+        csv.writer(fh).writerows(csv_rows)
+    err_console.print(f"  wrote {out_dir}/{md_name} + {csv_name}")
+
+
+def _run_rebuild_reports(
+    rep: ReportsStep,
+    data_dir: Path,
+    statement_paths: list[Path],
+    project_root: Path,
+) -> None:
+    """Regenerate the analytical reports for the rebuild's reports step.
+
+    Uses the configured GBP rate source / commodity metadata / property
+    table (no CLI overrides in rebuild). The valuation reports read the
+    statement archive; ``income`` reads the sidecars under ``data_dir``.
+    """
+
+    commodities_map = _resolve_commodities() or {}
+    rates = build_rate_source(settings)
+    properties = _load_properties(None)
+    texts = [(_statement_text(p), p.name) for p in statement_paths]
+
+    if rep.income:
+        report = income_mod.compute_income(
+            _load_sidecar_transactions(data_dir),
+            period=cast(income_mod.PeriodMode, rep.income_period),
+            commodities=commodities_map, source=rates,
+        )
+        _write_report(
+            _resolve_report_dir(settings.income_reports_dir, project_root),
+            "income.md", income_mod.render_markdown(report),
+            "income.csv", income_mod.render_csv_rows(report),
+        )
+    if rep.concentration:
+        creport = concentration_mod.build_report(
+            texts, commodities=commodities_map, rate_source=rates,
+            properties=properties,
+        )
+        _write_report(
+            _resolve_report_dir(settings.concentration_reports_dir, project_root),
+            "concentration.md", concentration_mod.render_markdown(creport),
+            "holdings.csv", concentration_mod.render_csv_rows(creport),
+        )
+    if rep.net_worth:
+        timeline = net_worth_mod.build_timeline(
+            texts, commodities=commodities_map, rate_source=rates,
+            properties=properties,
+        )
+        _write_report(
+            _resolve_report_dir(settings.net_worth_reports_dir, project_root),
+            "net-worth.md", net_worth_mod.render_markdown(timeline),
+            "net-worth.csv", net_worth_mod.render_csv_rows(timeline),
+        )
+    if rep.allocation:
+        atimeline = allocation_mod.build_timeline(
+            texts, commodities=commodities_map, rate_source=rates,
+            properties=properties,
+        )
+        _write_report(
+            _resolve_report_dir(settings.allocation_reports_dir, project_root),
+            "allocation.md", allocation_mod.render_markdown(atimeline),
+            "allocation.csv", allocation_mod.render_csv_rows(atimeline),
+        )
+    if rep.portfolio_allocation:
+        preport = portfolio_allocation_mod.build_report(
+            texts, commodities=commodities_map, rate_source=rates,
+            properties=properties,
+        )
+        _write_report(
+            _resolve_report_dir(
+                settings.portfolio_allocation_reports_dir, project_root
+            ),
+            "portfolio-allocation.md",
+            portfolio_allocation_mod.render_markdown(preport),
+            "portfolio-allocation.csv",
+            portfolio_allocation_mod.render_csv_rows(preport),
+        )
 
 
 def _resolve_ledger(ledger: str, data_dir: Path) -> Path:

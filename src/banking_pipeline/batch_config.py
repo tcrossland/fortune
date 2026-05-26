@@ -164,6 +164,54 @@ class ReconcileStep(BaseModel):
     strict: bool = False
 
 
+class ReportsStep(BaseModel):
+    """Configuration for the read-only analytical report post-steps.
+
+    Regenerates the Markdown/CSV reports from the freshly-built ingest
+    output plus the statement archive, into the configured ``reports/``
+    directories (``income_reports_dir`` etc. in ``[settings]``). Runs
+    *before* reconcile/check so the reports always land even when
+    bean-check later exits nonzero on drift.
+
+    Off by default: it's optional output, and the valuation reports need a
+    statement glob to value holdings against.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Whether to regenerate the reports at the end of every rebuild.
+    enabled: bool = False
+
+    # Per-report toggles (each on by default once the step is enabled).
+    # ``income`` reads only the sidecars under ``data_dir``; the other four
+    # value the statement archive (see :attr:`statements`).
+    income: bool = True
+    concentration: bool = True
+    net_worth: bool = True
+    allocation: bool = True
+    portfolio_allocation: bool = True
+
+    # Statement PDF globs for the valuation reports (concentration /
+    # net-worth / allocation / portfolio-allocation). Resolved like
+    # :class:`Source.glob`. When empty, falls back to
+    # :attr:`PostSteps.balance_statements` — the valuation reports want the
+    # same statement archive the balances step consumes.
+    statements: list[str] = Field(default_factory=list)
+
+    # Grouping period for the income report: ``"tax-year"`` or
+    # ``"calendar"`` (see the ``income`` command's ``--period``).
+    income_period: str = "tax-year"
+
+    @field_validator("income_period")
+    @classmethod
+    def _validate_income_period(cls, v: str) -> str:
+        if v not in ("tax-year", "calendar"):
+            raise ValueError(
+                f"income_period {v!r} must be 'tax-year' or 'calendar'"
+            )
+        return v
+
+
 class PostSteps(BaseModel):
     """Toggles for the post-ingest aggregator commands."""
 
@@ -206,6 +254,11 @@ class PostSteps(BaseModel):
     # Booking-method override for ``banking-pipeline portfolio``. Empty
     # string lets the CLI fall back to its own default (``"FIFO"``).
     booking_method: str = ""
+
+    # Analytical Markdown/CSV reports (income / concentration / net-worth /
+    # allocation / portfolio-allocation). Runs before reconcile so the
+    # reports land even when bean-check later fails. Off by default.
+    reports: ReportsStep = Field(default_factory=ReportsStep)
 
     # Statement-balance reconciliation — runs just before ``check`` so
     # its drift report lands even though bean-check exits nonzero on the
@@ -254,7 +307,10 @@ class BatchConfig(BaseModel):
         # will print "nothing to do") but flag obvious typos by failing
         # when the post-steps are enabled but there's no input.
         if not self.sources and (
-            self.post.prices or self.post.portfolio or self.post.balances
+            self.post.prices
+            or self.post.portfolio
+            or self.post.balances
+            or self.post.reports.enabled
         ):
             raise ValueError(
                 "no [[sources]] declared but [post] steps are enabled; "

@@ -61,6 +61,18 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`[post.reports]` rebuild step** — `rebuild` can now regenerate the
+  analytical reports (income / concentration / net-worth / allocation /
+  portfolio-allocation) into the configured `*_reports_dir`s as part of
+  the run, before reconcile/check so they land even when bean-check exits
+  nonzero. Off by default; per-report toggles, and a `statements` glob
+  that falls back to the balances step's. (`batch_config.py`, `cli.py`)
+- **`portfolio-allocation`** — per-portfolio allocation report. Breaks the
+  latest valuation down per portfolio (each Pictet account, the Vanguard
+  ISA, each property): a cross-portfolio net-worth/share summary plus a
+  per-portfolio asset-class + holdings breakdown. Reuses `concentration`'s
+  per-portfolio valuation (cash netted within a portfolio, not across the
+  book). (`portfolio_allocation.py`)
 - **`allocation`** — asset-allocation-over-time report. Tracks the
   asset-class mix (equity / bond / property / … plus net cash) across the
   statement timeline, so allocation drift is visible. Composes

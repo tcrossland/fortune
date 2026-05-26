@@ -137,6 +137,11 @@ class Settings(BaseSettings):
     # writes ``allocation.md`` and ``allocation.csv`` here.
     allocation_reports_dir: Path = Path("reports/allocation")
 
+    # Output directory for ``portfolio-allocation`` (per-portfolio
+    # breakdown): writes ``portfolio-allocation.md`` and
+    # ``portfolio-allocation.csv`` here.
+    portfolio_allocation_reports_dir: Path = Path("reports/portfolio-allocation")
+
     # Pre-ledger / transferred-in opening positions (ISIN → lots with a
     # GBP cost) seeded into the section 104 pool. Defaults to
     # ``data/opening-positions.toml`` when present. See
