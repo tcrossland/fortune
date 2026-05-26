@@ -7,10 +7,10 @@ from pathlib import Path
 from banking_pipeline import portfolio_aggregate
 
 
-def test_property_ledger_excluded_from_aggregate(tmp_path: Path) -> None:
-    """``data/property.beancount`` is included directly by main.beancount, so
-    the aggregate must neither source it (double-counting holdings) nor
-    re-include it (double-include) — it's ignored entirely."""
+def test_ignored_ledger_excluded_from_aggregate(tmp_path: Path) -> None:
+    """A file passed via ``ignore`` (e.g. the property ledger, which
+    main.beancount includes directly) is neither sourced — double-counting
+    holdings — nor re-included by the aggregate."""
 
     # A per-year ingest source.
     (tmp_path / "2025-K.beancount").write_text(
@@ -27,7 +27,7 @@ def test_property_ledger_excluded_from_aggregate(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    out, _ = portfolio_aggregate.generate(tmp_path)
+    out, _ = portfolio_aggregate.generate(tmp_path, ignore=("property.beancount",))
     text = out.read_text(encoding="utf-8")
 
     assert 'include "2025-K.beancount"' in text

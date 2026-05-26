@@ -686,12 +686,21 @@ advice — verify against HMRC guidance.
 
 ## Configuration
 
-- Runtime config: `Settings` in `config.py`, env-prefixed
-  `BANKPIPE_`. Notable knobs: `anthropic_api_key`, `anthropic_model`,
-  `rule_confidence_threshold`, `default_currency`, plus two dict maps
-  driving payment-routing — `beneficiary_bank_map` (self-to-self
-  destinations like Revolut) and `counterparty_account_map`
-  (third-party named counterparties → account segments).
+- Runtime config: `Settings` in `config.py`. Three sources, highest
+  precedence first: `BANKPIPE_`-prefixed env vars → `.env` → the
+  **`[settings]` table of `banking-pipeline.toml`** → field defaults
+  (see `settings_customise_sources`). The TOML table is the home for
+  structured / personal config (keyed maps, the residence/FIG knobs) —
+  readable TOML instead of JSON-in-env; env still overrides it, and
+  secrets (`anthropic_api_key`) stay env-only. The same
+  `banking-pipeline.toml` carries the `rebuild` BatchConfig in its other
+  tables; `load_config` drops `[settings]` and `Settings` reads only it,
+  so the two schemas don't collide. Notable knobs: `anthropic_api_key`,
+  `anthropic_model`, `rule_confidence_threshold`, `default_currency`,
+  plus two dict maps driving payment-routing — `beneficiary_bank_map`
+  (self-to-self destinations like Revolut) and `counterparty_account_map`
+  (third-party named counterparties → account segments), both set under
+  `[settings.<map>]`.
 - UK-tax knobs (all optional, default to the no-op behaviour):
   `gbp_rate_source` (`"null"` | `"hmrc-monthly"`), `hmrc_rate_path`
   (defaults to `data/fx/hmrc-monthly-average.csv`),
@@ -729,8 +738,10 @@ advice — verify against HMRC guidance.
   command writes. Both consumed by `property` and the valuation reports.
 - Batch config: `banking-pipeline.toml` (gitignored, schema in
   `batch_config.py`). Carries personal Dropbox/iCloud paths, plus
-  `[post.reconcile]` (off by default) and `[post.check]` toggles.
-- `.env.example` lists the env vars; copy to `.env` for local work.
+  `[post.reconcile]` (off by default) and `[post.check]` toggles. Its
+  `[settings]` table feeds `Settings` (above); the rest is BatchConfig.
+- `.env.example` / `banking-pipeline.example.toml` are the committed
+  templates; copy to `.env` / `banking-pipeline.toml` for local work.
 
 ## When working in this repo
 

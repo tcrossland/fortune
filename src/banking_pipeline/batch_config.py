@@ -339,4 +339,8 @@ def load_config(
 
     with target.open("rb") as fh:
         raw = tomllib.load(fh)
+    # The ``[settings]`` table belongs to :class:`banking_pipeline.config.
+    # Settings` (it reads the same file). Drop it here so BatchConfig's
+    # ``extra="forbid"`` doesn't reject the shared namespace.
+    raw.pop("settings", None)
     return BatchConfig.model_validate(raw)

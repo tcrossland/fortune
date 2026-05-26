@@ -192,13 +192,6 @@ def _extract_isin_currencies(files: Sequence[Path]) -> dict[str, str]:
 # from the per-year source-file list.
 _AUX_FILENAMES = ("prices.beancount", "balances.beancount")
 
-# Generated ledgers under ``data/`` that are neither per-year transaction
-# sources nor aggregate-emitted includes. The property ledger owns its own
-# commodity / open directives and is included directly by ``main.beancount``,
-# so the aggregate must ignore it entirely (treating it as a source would
-# double-count holdings; aux-including it would double-include the file).
-_IGNORED_FILENAMES = ("property.beancount",)
-
 # A top-level ``include`` directive — its presence marks a file as an
 # aggregate (it pulls in other ledger files) rather than a per-year
 # ingest source. Indented matches don't occur in practice; anchor to the
@@ -219,14 +212,19 @@ def _is_aggregate(path: Path) -> bool:
     return _INCLUDE_RE.search(path.read_text(encoding="utf-8")) is not None
 
 
-def _source_files(data_dir: Path, output: Path) -> list[Path]:
+def _source_files(
+    data_dir: Path, output: Path, ignore: frozenset[str] = frozenset()
+) -> list[Path]:
     """Per-year ``*.beancount`` ingest files under ``data_dir``.
 
     Excludes the aggregate ``output`` (so re-running is idempotent), the
     auxiliary price / balance files (which are ``include``d but not
-    scanned as transaction sources), and any other aggregate file — a
-    stale or per-account roll-up this generator wrote under a different
-    name — which would otherwise be double-included via its own includes.
+    scanned as transaction sources), any other aggregate file — a stale or
+    per-account roll-up this generator wrote under a different name, which
+    would otherwise be double-included via its own includes — and any
+    ``ignore`` filenames the caller supplies (e.g. the property ledger,
+    which ``main.beancount`` includes directly and which owns its own
+    opens, so sourcing or re-including it would double-count).
     """
 
     return [
@@ -234,7 +232,7 @@ def _source_files(data_dir: Path, output: Path) -> list[Path]:
         for f in sorted(data_dir.glob("*.beancount"))
         if f.resolve() != output.resolve()
         and f.name not in _AUX_FILENAMES
-        and f.name not in _IGNORED_FILENAMES
+        and f.name not in ignore
         and not _is_aggregate(f)
     ]
 
@@ -439,12 +437,16 @@ def generate(
     booking_method: str | None = "FIFO",
     statement_files: Iterable[Path] = (),
     commodities: Mapping[str, CommodityMetadata] | None = None,
+    ignore: Iterable[str] = (),
 ) -> tuple[Path, int]:
     """Write a portfolio aggregate file. Returns ``(output_path, accounts)``.
 
     ``data_dir`` is scanned for ``*.beancount`` files; ``output`` defaults
     to ``<data_dir>/portfolio.beancount``. The output file is excluded
-    from the scan so re-running the generator is idempotent.
+    from the scan so re-running the generator is idempotent. ``ignore`` is
+    a set of filenames to exclude from the scan in addition — the caller
+    passes any generated ledger that ``main.beancount`` includes directly
+    (e.g. the property ledger), so it's neither sourced nor re-included.
 
     ``operating_currencies`` is the list of currencies that show up as
     ``option "operating_currency" "<ccy>"`` directives at the top of
@@ -472,7 +474,7 @@ def generate(
         name for name in _AUX_FILENAMES if (data_dir / name).is_file()
     ]
 
-    files = _source_files(data_dir, output)
+    files = _source_files(data_dir, output, frozenset(ignore))
 
     content, total = _render(
         files,

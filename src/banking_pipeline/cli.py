@@ -1028,6 +1028,7 @@ def portfolio(
         operating_currencies=operating_currency,
         booking_method=booking_method or None,
         commodities=commodities,
+        ignore=(settings.property_ledger_path.name,),
     )
     err_console.print(
         f"Wrote {output_path} ({total} accounts; "
@@ -1395,6 +1396,7 @@ def _do_rebuild(
                 operating_currencies=operating,
                 booking_method=cfg.post.booking_method or None,
                 commodities=_resolve_commodities(),
+                ignore=(settings.property_ledger_path.name,),
             )
             err_console.print(
                 f"  wrote {output_path} ({total} accounts)"

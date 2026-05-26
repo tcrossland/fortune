@@ -5,10 +5,15 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    TomlConfigSettingsSource,
+)
 
 from banking_pipeline.tax.uk.rates import (
     CgtRateSchedule,
@@ -16,6 +21,32 @@ from banking_pipeline.tax.uk.rates import (
     default_cgt_rates,
     default_income_bands,
 )
+
+# Personal / structured runtime config lives in the ``[settings]`` table of
+# this file — the same TOML that drives ``rebuild`` (its other tables are
+# the BatchConfig schema, which ``load_config`` reads and which ignores
+# ``[settings]``). Keeps keyed maps (counterparty / beneficiary routing,
+# tax tables) as readable TOML rather than JSON-in-env. Env vars
+# (``BANKPIPE_*`` / ``.env``) still override it; secrets stay env-only.
+_CONFIG_TOML = Path("banking-pipeline.toml")
+
+
+class _SettingsTomlSource(TomlConfigSettingsSource):
+    """Reads only the ``[settings]`` table of ``banking-pipeline.toml``.
+
+    The rest of the file is the rebuild ``BatchConfig``; scoping to the
+    sub-table keeps the two schemas from colliding. A missing file or
+    missing table contributes no values (env / defaults stand).
+    """
+
+    def __init__(self, settings_cls: type[BaseSettings]) -> None:
+        super().__init__(settings_cls, toml_file=_CONFIG_TOML)
+
+    def _read_file(self, file_path: Path) -> dict[str, Any]:
+        if not file_path.is_file():
+            return {}
+        section = super()._read_file(file_path).get("settings", {})
+        return section if isinstance(section, dict) else {}
 
 
 class Settings(BaseSettings):
@@ -25,6 +56,25 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # Precedence (first wins): explicit init args, then env vars, then
+        # ``.env``, then the ``[settings]`` TOML table, then field defaults.
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            _SettingsTomlSource(settings_cls),
+            file_secret_settings,
+        )
 
     # Where to look for bank-specific template definitions (regex rules, etc.).
     templates_dir: Path = Field(default=Path("src/banking_pipeline/templates"))
@@ -198,9 +248,10 @@ class Settings(BaseSettings):
     #
     # Used by the writer's self-to-self-payment path to route the
     # destination leg to ``Assets:Revolut:<ccy>`` (instead of an elastic
-    # ``Expenses:<prefix>:Other`` posting). Override via
-    # ``BANKPIPE_BENEFICIARY_BANK_MAP`` env var as a JSON-encoded dict,
-    # or by editing this default for project-local conventions.
+    # ``Expenses:<prefix>:Other`` posting). Set under
+    # ``[settings.beneficiary_bank_map]`` in ``banking-pipeline.toml`` (or
+    # override via the ``BANKPIPE_BENEFICIARY_BANK_MAP`` env var as a
+    # JSON-encoded dict).
     beneficiary_bank_map: dict[str, str] = Field(
         default_factory=lambda: {
             # Substring match against Pictet's printed bank field, so a
@@ -229,17 +280,17 @@ class Settings(BaseSettings):
     # covers both directions for a counterparty that flows both ways
     # (rare; most are unidirectional).
     #
-    # Examples::
+    # Set under ``[settings.counterparty_account_map]`` in
+    # ``banking-pipeline.toml`` (readable TOML), e.g.::
     #
-    #     {
-    #         "ACME EMPLOYER": "External:Earnout:Acme",
-    #         "JOHN SMITH LAW FIRM": "External:Legal:Smith",
-    #     }
+    #     [settings.counterparty_account_map]
+    #     "ACME EMPLOYER" = "External:Earnout:Acme"
+    #     "JOHN SMITH LAW FIRM" = "External:Legal:Smith"
     #
     # ``ACME EMPLOYER`` paying you produces ``Income:External:Earnout:Acme``;
     # paying ``JOHN SMITH LAW FIRM`` produces ``Expenses:External:Legal:Smith``.
-    # Override via ``BANKPIPE_COUNTERPARTY_ACCOUNT_MAP`` env var as a
-    # JSON-encoded dict, or by editing this default.
+    # The ``BANKPIPE_COUNTERPARTY_ACCOUNT_MAP`` env var (JSON dict) still
+    # overrides the TOML if set.
     counterparty_account_map: dict[str, str] = Field(
         default_factory=lambda: {
             "AEAT": "External:Tax:AEAT",

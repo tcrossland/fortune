@@ -108,3 +108,31 @@ strict = false   # set true to fail the rebuild on coverage gaps too
 enabled = true
 ledger = "main.beancount"  # resolved relative to project root; "" = data/portfolio.beancount
 strict = false             # set true to treat bean-check warnings as errors
+
+
+# === Runtime settings (banking_pipeline.config.Settings) ===================
+# Optional. The tables above drive `rebuild`; this [settings] table holds
+# the structured / personal runtime config that's awkward as env vars —
+# read by Settings, which ignores the rebuild tables and vice versa.
+# Env vars (BANKPIPE_*) still override these; keep secrets (the Anthropic
+# API key) in .env, not here. Everything below is optional with sensible
+# defaults — delete what you don't need.
+[settings]
+# GBP cost-basis source: "null" (default, no rate stamping) or
+# "hmrc-monthly" (stamp from data/fx/hmrc-monthly-average.csv).
+# gbp_rate_source = "hmrc-monthly"
+
+# UK split-year arrival date + the years a 4-year FIG claim is made.
+# uk_residence_start_date = 2023-07-14
+# fig_claim_years = ["2025-26", "2026-27"]
+
+# Self-to-self destination banks: printed-bank-name substring → account
+# segment (writer routes the leg to Assets:<segment>:<ccy>).
+# [settings.beneficiary_bank_map]
+# "REVOLUT" = "Revolut"
+
+# Third-party counterparty → account segment. Substring match on the
+# printed beneficiary; writer prepends Income: (in) / Expenses: (out).
+# [settings.counterparty_account_map]
+# "ACME EMPLOYER" = "External:Earnout:Acme"
+# "JOHN SMITH LAW FIRM" = "External:Legal:Smith"
