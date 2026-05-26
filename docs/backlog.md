@@ -15,10 +15,10 @@ planning ideas.
 
 - **Separate disallowed losses in the FIG designation.** The
   `fig-designation.csv` / tax-pack table mixes relieved income, relieved
-  gains, and *disallowed* foreign losses, and nets them in the total —
-  which can understate the true cost of a claim (the 2025-26 pack buried
-  a disallowed loss). Split them out (relieved income / relieved
-  gains / disallowed losses) and surface the foregone loss relief.
+  gains, and *disallowed* foreign losses, and nets them in the total — so
+  a disallowed loss is buried silently, understating the true cost of a
+  claim. Split them out (relieved income / relieved gains / disallowed
+  losses) and surface the foregone loss relief.
 - **Flag unclassified holdings that escape FIG relief.** A disposal with
   no `commodities.toml` entry defaults to UK-situs, so under a claim it
   stays taxable (and a genuinely foreign one wrongly lands on SA108).

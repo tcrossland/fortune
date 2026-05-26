@@ -334,6 +334,13 @@ leaks anything itself; `python3 scripts/check_pii.py --all` audits the
 whole tracked tree. Don't put real account numbers in docstrings or test
 inputs — use a placeholder, or the guard will (correctly) reject them.
 
+The guard catches identifiers, not *derived* figures. So also never cite
+real amounts, balances, gains/losses, or holdings taken from the
+gitignored personal data (`data/`, `reports/`) in committed docs,
+commit messages, or backlog/changelog entries — describe the issue
+generically (e.g. "a disallowed foreign loss", not the £ amount). The
+numbers are personal financial data even when no account number appears.
+
 ## Strict-mode dispatch (the failure-mode worth knowing)
 
 `HybridExtractor` has a non-obvious dispatch when a registered
