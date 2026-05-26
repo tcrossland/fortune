@@ -1,0 +1,658 @@
+"""Rebuild orchestration + validation commands.
+
+``rebuild`` (the end-to-end config-driven run), ``check`` (bean-check
+wrapper), and ``reconcile`` (statement-balance drift report), plus the
+rebuild step machinery. Shared helpers (statement discovery, commodity /
+property / sidecar loading, bean-check) come from
+:mod:`banking_pipeline.cli._main`.
+"""
+
+from __future__ import annotations
+
+import csv
+from pathlib import Path
+from typing import Annotated, cast
+
+import typer
+
+from banking_pipeline import (
+    allocation as allocation_mod,
+)
+from banking_pipeline import (
+    balances_extract,
+    bean_check,
+    beancount_writer,
+    portfolio_aggregate,
+    prices_extract,
+)
+from banking_pipeline import (
+    concentration as concentration_mod,
+)
+from banking_pipeline import (
+    income as income_mod,
+)
+from banking_pipeline import (
+    net_worth as net_worth_mod,
+)
+from banking_pipeline import (
+    portfolio_allocation as portfolio_allocation_mod,
+)
+from banking_pipeline import (
+    reconcile as reconcile_mod,
+)
+from banking_pipeline.batch_config import (
+    BatchConfig,
+    ReportsStep,
+    load_config,
+)
+from banking_pipeline.cli._main import (
+    _configure_logging,
+    _expand_globs,
+    _filter_priced_statements,
+    _load_properties,
+    _load_sidecar_transactions,
+    _resolve_commodities,
+    _run_check_or_exit,
+    _statement_text,
+    app,
+    err_console,
+)
+from banking_pipeline.cli_options import (
+    VerboseOpt,
+)
+from banking_pipeline.config import settings
+from banking_pipeline.fields import HybridExtractor, TemplateExtractionError
+from banking_pipeline.fx.gbp_rates import build_rate_source
+from banking_pipeline.models import DocumentType, Transaction
+from banking_pipeline.pipeline import Pipeline
+from banking_pipeline.transaction_sidecar import (
+    dump_transactions,
+    sidecar_path,
+)
+
+
+@app.command()
+def check(
+    ledger: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            readable=True,
+            help="Beancount ledger to validate. Can be the rebuild's "
+            "``portfolio.beancount`` aggregate, a parent ``main.beancount`` "
+            "that includes it, or any individual ``.beancount`` file.",
+        ),
+    ],
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            "-s",
+            help="Treat bean-check warnings as errors. Off by default — "
+            "beancount emits warnings on benign conditions (missing "
+            "prices for stale holdings etc.) that would otherwise noise "
+            "up the output. Turn on for a strict CI gate.",
+        ),
+    ] = False,
+) -> None:
+    """Run ``bean-check`` against a ledger.
+
+    Exits with the same return code as ``bean-check`` itself so cron /
+    CI jobs can branch on success vs. failure. A missing ``bean-check``
+    binary surfaces as a warning rather than a hard error — install
+    with ``uv tool install beancount``. (We shell out rather than link
+    against beancount because beancount is GPL-2.0; the README has
+    the full licence rationale.)
+    """
+
+    _run_check_or_exit(ledger, strict=strict)
+
+
+@app.command()
+def reconcile(
+    ledger: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            readable=True,
+            help="Beancount ledger to reconcile — typically the "
+            "``main.beancount`` root that includes the generated "
+            "aggregate and the balance assertions.",
+        ),
+    ] = Path("main.beancount"),
+    balances: Annotated[
+        Path,
+        typer.Option(
+            "--balances",
+            "-b",
+            exists=True,
+            readable=True,
+            help="Statement-asserted balances file (the expected side). "
+            "Defaults to ``data/balances.beancount``.",
+        ),
+    ] = Path("data/balances.beancount"),
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Directory for ``summary.txt`` / ``drift.csv``. Defaults "
+            "to ``reconciliation_dir`` (``reports/reconciliation``).",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            "-s",
+            help="Escalate coverage gaps (statement months with no "
+            "assertion) to a nonzero exit. Drift always fails regardless "
+            "of this flag.",
+        ),
+    ] = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """Reconcile statement-asserted balances against the ledger.
+
+    Runs ``bean-check`` over the ledger, parses its balance-assertion
+    failures, and writes a full report: every drifted ``balance``
+    directive with its signed difference, the earliest date each account
+    diverged, and coverage gaps (statement months with no assertion).
+    Additive to ``bean-check`` — it reports the whole grid and localises
+    each divergence instead of just listing raw failures, and surfaces
+    missing statement months a checkpoint can't.
+
+    The drift verdict is ``bean-check``'s own, so reconcile agrees with a
+    load by construction (beancount's inferred-from-decimals tolerance is
+    honoured without re-implementing it). Exits nonzero on any drift;
+    with ``--strict`` coverage gaps fail too.
+    """
+
+    _configure_logging(verbose)
+
+    out_dir = output or settings.reconciliation_dir
+    report = _run_reconcile(ledger, balances, out_dir)
+    if report is None:
+        # Nothing to reconcile (no assertions / no bean-check binary);
+        # _run_reconcile already explained why. Not an error.
+        raise typer.Exit(code=0)
+    if report.has_drift or (strict and report.coverage_gaps):
+        raise typer.Exit(code=1)
+
+
+def _run_reconcile(
+    ledger: Path, balances: Path, out_dir: Path
+) -> reconcile_mod.ReconReport | None:
+    """Reconcile statement balances against ``ledger`` and write the report.
+
+    Shared by the ``reconcile`` command and the ``rebuild`` post-step so
+    both behave identically. Runs ``bean-check`` once, parses its
+    balance-assertion failures (matched back to the asserted line),
+    builds the report, writes ``summary.txt`` / ``drift.csv`` under
+    ``out_dir``, and echoes the summary.
+
+    Returns the report, or ``None`` when reconciliation couldn't run —
+    a missing balances file, no assertions in it, or no ``bean-check``
+    binary. The caller treats ``None`` as "nothing to gate on". A
+    missing binary is a warning (the user opted out of validation),
+    consistent with the ``check`` step.
+    """
+
+    if not balances.exists():
+        err_console.print(
+            f"[yellow]reconcile skipped:[/yellow] balances file "
+            f"{balances} doesn't exist"
+        )
+        return None
+    assertions = reconcile_mod.parse_assertions(
+        balances.read_text(encoding="utf-8")
+    )
+    if not assertions:
+        err_console.print(
+            f"[yellow]No balance assertions found in {balances}.[/yellow] "
+            "Run `banking-pipeline balances` to generate them first."
+        )
+        return None
+
+    # bean-check evaluates every assertion in one pass and prints a
+    # failure line per drift. We parse its output regardless of return
+    # code (it exits nonzero on drift, which is exactly the case we want
+    # to report); only a missing binary stops us.
+    result = bean_check.run_bean_check(ledger)
+    if result.binary_missing:
+        err_console.print(f"[yellow]warning:[/yellow] {result.stderr}")
+        return None
+
+    failures = reconcile_mod.parse_bean_check_failures(
+        result.stderr, balances_name=balances.name
+    )
+    report = reconcile_mod.build_report(assertions, failures)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    summary = reconcile_mod.render_summary(
+        report, ledger=str(ledger), balances=str(balances)
+    )
+    (out_dir / "summary.txt").write_text(summary, encoding="utf-8")
+    (out_dir / "drift.csv").write_text(
+        reconcile_mod.render_csv(report), encoding="utf-8"
+    )
+
+    err_console.print(summary, markup=False, highlight=False, soft_wrap=True)
+    err_console.print(f"Wrote {out_dir}/summary.txt and {out_dir}/drift.csv")
+    return report
+
+
+@app.command()
+def rebuild(
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to the rebuild config TOML. Defaults to "
+            "``banking-pipeline.toml`` in the project root.",
+        ),
+    ] = None,
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-root",
+            help="Project root used to resolve relative paths and "
+            "locate the default config. Defaults to the current "
+            "working directory.",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Print what each step would do (delete / ingest / "
+            "prices / portfolio / balances) without executing anything.",
+        ),
+    ] = False,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            "-s",
+            help="Fail on quality issues instead of warning. Two effects: "
+            "(a) when a per-template extractor returns zero transactions "
+            "for a doctype that should produce output, raise instead of "
+            "silently skipping the document; (b) the bean-check post-step "
+            "treats warnings as errors regardless of the [post.check] "
+            "config setting.",
+        ),
+    ] = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """End-to-end rebuild driven by ``banking-pipeline.toml``.
+
+    Replaces the historical ``run.sh`` shell script with a typed,
+    config-driven equivalent. The config lives in
+    ``banking-pipeline.toml`` (gitignored — copy from
+    ``banking-pipeline.example.toml`` and edit for your local folder
+    layout). The command:
+
+    1. Deletes stale outputs under ``<data_dir>/<clean_glob>``.
+    2. Runs ``ingest`` once per ``[[sources]]`` entry, writing to
+       ``<data_dir>/<label>.beancount``.
+    3. Runs ``prices`` / ``portfolio`` / ``balances`` / ``reports`` /
+       ``reconcile`` / ``check`` according to the ``[post]`` toggles.
+
+    Globs that match zero files surface as a non-fatal warning rather
+    than an error — handy when a year-partition hasn't received any
+    documents yet. ``--dry-run`` previews every step without touching
+    the filesystem; useful before the first real run on a new config.
+    """
+
+    _configure_logging(verbose)
+    # Resolve the default here rather than in the signature: ``Path.cwd()``
+    # as a parameter default is evaluated once at import, not per invocation.
+    project_root = project_root or Path.cwd()
+    cfg = load_config(project_root, config_path=config)
+    _do_rebuild(cfg, project_root=project_root, dry_run=dry_run, strict=strict)
+
+
+def _do_rebuild(
+    cfg: BatchConfig,
+    *,
+    project_root: Path,
+    dry_run: bool,
+    strict: bool = False,
+) -> None:
+    """Execute (or preview) the steps described by ``cfg``."""
+
+    data_dir = cfg.resolve_data_dir(project_root)
+    if not dry_run:
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- Step 1: clean ----------------------------------------------------
+    stale = list(cfg.stale_files(project_root))
+    if stale:
+        for path in stale:
+            err_console.print(
+                f"[dim]rm[/dim] {path}" if dry_run else f"Removing {path}"
+            )
+            if not dry_run:
+                path.unlink()
+
+    # --- Step 2: ingest ---------------------------------------------------
+    pipeline: Pipeline | None = None
+    for src in cfg.sources:
+        out_path = data_dir / f"{src.label}.beancount"
+        pdfs = src.expand(project_root)
+        if not pdfs:
+            err_console.print(
+                f"[yellow]warning:[/yellow] source {src.label!r} matched "
+                f"zero files (glob={src.glob!r}); skipping"
+            )
+            continue
+        err_console.print(
+            f"[bold]ingest[/bold] {src.label} → {out_path} "
+            f"({len(pdfs)} PDF{'s' if len(pdfs) != 1 else ''})"
+        )
+        if dry_run:
+            continue
+        # Lazy-init the pipeline on the first ingest that actually runs —
+        # keeps the dry-run path free of any heavy imports. ``strict``
+        # propagates into HybridExtractor so a template returning [] for
+        # a doctype that should produce output raises rather than warns.
+        if pipeline is None:
+            pipeline = Pipeline(extractor=HybridExtractor(strict=strict))
+        chunks: list[str] = []
+        src_txns: list[Transaction] = []
+        for pdf in pdfs:
+            try:
+                result = pipeline.process(pdf)
+            except TemplateExtractionError as exc:
+                err_console.print(
+                    f"[red]extraction error[/red] in source "
+                    f"{src.label!r}: {exc}"
+                )
+                raise typer.Exit(code=1) from exc
+            chunks.append(beancount_writer.render(result))
+            src_txns.extend(result.transactions)
+        out_path.write_text("\n\n".join(chunks), encoding="utf-8")
+        # Structured sidecar next to the per-label ledger (header-only
+        # when the source produced no transactions).
+        dump_transactions(src_txns, sidecar_path(out_path))
+
+    # --- Step 3: post-processing -----------------------------------------
+    if cfg.post.prices:
+        # Expand and pre-filter statement PDFs *before* the dry-run /
+        # real-run branch so the dry-run preview shows how many
+        # documents the prices step would actually consume. ``soft_wrap``
+        # is on for both prints because the data_dir + prices.beancount
+        # paths in this step regularly exceed Rich's default 80-col
+        # width and the default cropping behaviour can swallow useful
+        # diagnostic content (the ``M of N matched`` cell, the leading
+        # ``wrote `` prefix) — soft-wrap keeps the whole line intact.
+        price_doctypes: dict[Path, DocumentType] = {}
+        if cfg.post.price_statements:
+            expanded = _expand_globs(cfg.post.price_statements, project_root)
+            price_doctypes = _filter_priced_statements(expanded)
+            err_console.print(
+                f"[bold]prices[/bold] {data_dir} "
+                f"({len(price_doctypes)} of {len(expanded)} matched "
+                f"statement(s) classified as monthly)",
+                soft_wrap=True,
+            )
+        else:
+            err_console.print(
+                f"[bold]prices[/bold] {data_dir}", soft_wrap=True
+            )
+        if not dry_run:
+            output_path, total = prices_extract.generate(
+                data_dir=data_dir,
+                output=None,
+                statement_files=list(price_doctypes),
+                statement_doctypes=price_doctypes,
+            )
+            extras = (
+                f"; {len(price_doctypes)} statement(s) merged"
+                if price_doctypes
+                else ""
+            )
+            err_console.print(
+                f"  wrote {output_path} ({total} price directive(s){extras})",
+                soft_wrap=True,
+            )
+
+    if cfg.post.portfolio:
+        operating = cfg.post.operating_currencies or ["GBP"]
+        err_console.print(
+            f"[bold]portfolio[/bold] {data_dir} "
+            f"(operating={','.join(operating)})"
+        )
+        if not dry_run:
+            output_path, total = portfolio_aggregate.generate(
+                data_dir=data_dir,
+                output=None,
+                operating_currencies=operating,
+                booking_method=cfg.post.booking_method or None,
+                commodities=_resolve_commodities(),
+                ignore=(settings.property_ledger_path.name,),
+            )
+            err_console.print(
+                f"  wrote {output_path} ({total} accounts)"
+            )
+
+    if cfg.post.balances:
+        statements = _expand_globs(cfg.post.balance_statements, project_root)
+        err_console.print(
+            f"[bold]balances[/bold] {data_dir} "
+            f"({len(statements)} statement{'s' if len(statements) != 1 else ''})"
+        )
+        if not dry_run:
+            output_path, total = balances_extract.generate(
+                data_dir=data_dir,
+                statement_files=statements,
+                output=None,
+            )
+            err_console.print(
+                f"  wrote {output_path} ({total} balance assertion(s))"
+            )
+
+    # --- Step 3.5: reports -----------------------------------------------
+    # Read-only analytical reports. Runs before reconcile/check so the
+    # Markdown/CSV always regenerate even when bean-check later exits
+    # nonzero on drift.
+    if cfg.post.reports.enabled:
+        rep = cfg.post.reports
+        stmt_globs = rep.statements or cfg.post.balance_statements
+        stmt_paths = _expand_globs(stmt_globs, project_root)
+        wanted = [
+            name for name, on in (
+                ("income", rep.income),
+                ("concentration", rep.concentration),
+                ("net-worth", rep.net_worth),
+                ("allocation", rep.allocation),
+                ("portfolio-allocation", rep.portfolio_allocation),
+            ) if on
+        ]
+        err_console.print(
+            f"[bold]reports[/bold] {', '.join(wanted)} "
+            f"({len(stmt_paths)} statement{'s' if len(stmt_paths) != 1 else ''})"
+        )
+        if not dry_run:
+            _run_rebuild_reports(rep, data_dir, stmt_paths, project_root)
+
+    # --- Step 4: reconcile -----------------------------------------------
+    # Runs *before* bean-check: bean-check exits nonzero on a drifted
+    # assertion, so going first guarantees reconcile's localised report
+    # (drift rows + earliest-drift + coverage gaps) is written and
+    # printed. Reconcile is a gate in its own right — drift fails the
+    # rebuild, and coverage gaps fail it under strict (bean-check can't
+    # see a missing assertion).
+    if cfg.post.reconcile.enabled:
+        rec = cfg.post.reconcile
+        rec_ledger = _resolve_ledger(rec.ledger, data_dir)
+        rec_balances = _resolve_balances(rec.balances, data_dir)
+        rec_strict = rec.strict or strict
+        err_console.print(
+            f"[bold]reconcile[/bold] {rec_ledger} vs {rec_balances}"
+            + (" (strict)" if rec_strict else "")
+        )
+        if not dry_run:
+            out_dir = (
+                settings.reconciliation_dir
+                if settings.reconciliation_dir.is_absolute()
+                else project_root / settings.reconciliation_dir
+            )
+            report = _run_reconcile(rec_ledger, rec_balances, out_dir)
+            if report is not None and (
+                report.has_drift or (rec_strict and report.coverage_gaps)
+            ):
+                raise typer.Exit(code=1)
+
+    # --- Step 5: bean-check validation -----------------------------------
+    # Runs last so it sees every freshly-built file. A non-zero exit
+    # from bean-check raises typer.Exit so cron / CI notices.
+    if cfg.post.check.enabled:
+        ledger = _resolve_ledger(cfg.post.check.ledger, data_dir)
+        # CLI ``--strict`` overrides the config — when set, escalate
+        # bean-check warnings to errors regardless of what
+        # ``[post.check] strict`` says.
+        check_strict = cfg.post.check.strict or strict
+        err_console.print(
+            f"[bold]check[/bold] {ledger}"
+            + (" (strict)" if check_strict else "")
+        )
+        if not dry_run:
+            _run_check_or_exit(ledger, strict=check_strict)
+
+
+def _resolve_report_dir(configured: Path, project_root: Path) -> Path:
+    """Resolve a configured ``*_reports_dir`` against the project root.
+
+    The report-dir settings default to repo-relative paths (``reports/…``);
+    rebuild resolves them against ``project_root`` so the output lands in
+    the same place regardless of the process's working directory."""
+
+    if configured.is_absolute():
+        return configured
+    return (project_root / configured).resolve()
+
+
+def _write_report(
+    out_dir: Path, md_name: str, md_text: str, csv_name: str,
+    csv_rows: list[list[str]],
+) -> None:
+    """Write a report's ``.md`` + ``.csv`` to ``out_dir`` (created if absent)."""
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / md_name).write_text(md_text, encoding="utf-8")
+    with (out_dir / csv_name).open("w", newline="", encoding="utf-8") as fh:
+        csv.writer(fh).writerows(csv_rows)
+    err_console.print(f"  wrote {out_dir}/{md_name} + {csv_name}")
+
+
+def _run_rebuild_reports(
+    rep: ReportsStep,
+    data_dir: Path,
+    statement_paths: list[Path],
+    project_root: Path,
+) -> None:
+    """Regenerate the analytical reports for the rebuild's reports step.
+
+    Uses the configured GBP rate source / commodity metadata / property
+    table (no CLI overrides in rebuild). The valuation reports read the
+    statement archive; ``income`` reads the sidecars under ``data_dir``.
+    """
+
+    commodities_map = _resolve_commodities() or {}
+    rates = build_rate_source(settings)
+    properties = _load_properties(None)
+    texts = [(_statement_text(p), p.name) for p in statement_paths]
+
+    if rep.income:
+        report = income_mod.compute_income(
+            _load_sidecar_transactions(data_dir),
+            period=cast(income_mod.PeriodMode, rep.income_period),
+            commodities=commodities_map, source=rates,
+        )
+        _write_report(
+            _resolve_report_dir(settings.income_reports_dir, project_root),
+            "income.md", income_mod.render_markdown(report),
+            "income.csv", income_mod.render_csv_rows(report),
+        )
+    if rep.concentration:
+        creport = concentration_mod.build_report(
+            texts, commodities=commodities_map, rate_source=rates,
+            properties=properties,
+        )
+        _write_report(
+            _resolve_report_dir(settings.concentration_reports_dir, project_root),
+            "concentration.md", concentration_mod.render_markdown(creport),
+            "holdings.csv", concentration_mod.render_csv_rows(creport),
+        )
+    if rep.net_worth:
+        timeline = net_worth_mod.build_timeline(
+            texts, commodities=commodities_map, rate_source=rates,
+            properties=properties,
+        )
+        _write_report(
+            _resolve_report_dir(settings.net_worth_reports_dir, project_root),
+            "net-worth.md", net_worth_mod.render_markdown(timeline),
+            "net-worth.csv", net_worth_mod.render_csv_rows(timeline),
+        )
+    if rep.allocation:
+        atimeline = allocation_mod.build_timeline(
+            texts, commodities=commodities_map, rate_source=rates,
+            properties=properties,
+        )
+        _write_report(
+            _resolve_report_dir(settings.allocation_reports_dir, project_root),
+            "allocation.md", allocation_mod.render_markdown(atimeline),
+            "allocation.csv", allocation_mod.render_csv_rows(atimeline),
+        )
+    if rep.portfolio_allocation:
+        preport = portfolio_allocation_mod.build_report(
+            texts, commodities=commodities_map, rate_source=rates,
+            properties=properties,
+        )
+        _write_report(
+            _resolve_report_dir(
+                settings.portfolio_allocation_reports_dir, project_root
+            ),
+            "portfolio-allocation.md",
+            portfolio_allocation_mod.render_markdown(preport),
+            "portfolio-allocation.csv",
+            portfolio_allocation_mod.render_csv_rows(preport),
+        )
+
+
+def _resolve_ledger(ledger: str, data_dir: Path) -> Path:
+    """Resolve a rebuild ledger setting (``[post.check]`` / ``[post.reconcile]``).
+
+    Empty string defaults to ``<data_dir>/portfolio.beancount`` (the
+    aggregate the ``portfolio`` step writes — it ``include``s everything
+    else, so checking it transitively checks the whole rebuild). An
+    explicit value overrides — useful when you have a parent
+    ``main.beancount`` that ``include``s the rebuild output alongside
+    hand-curated opens / commodities / metadata. Relative paths resolve
+    against the project root (``data_dir``'s parent).
+    """
+
+    if not ledger:
+        return data_dir / "portfolio.beancount"
+    explicit = Path(ledger).expanduser()
+    if explicit.is_absolute():
+        return explicit
+    return (data_dir.parent / explicit).resolve()
+
+
+def _resolve_balances(balances: str, data_dir: Path) -> Path:
+    """Resolve a ``[post.reconcile] balances`` setting to a path.
+
+    Empty string defaults to ``<data_dir>/balances.beancount`` (what the
+    ``balances`` step writes). Otherwise resolved like
+    :func:`_resolve_ledger`.
+    """
+
+    if not balances:
+        return data_dir / "balances.beancount"
+    explicit = Path(balances).expanduser()
+    if explicit.is_absolute():
+        return explicit
+    return (data_dir.parent / explicit).resolve()

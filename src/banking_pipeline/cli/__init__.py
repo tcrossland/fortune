@@ -12,7 +12,14 @@ from __future__ import annotations
 
 # Importing the command submodules registers their ``@app.command``s on the
 # shared ``app`` (defined in ``_main``). Side-effect import only.
-from banking_pipeline.cli import ingest, inspect, reports, tax  # noqa: F401
+from banking_pipeline.cli import (  # noqa: F401
+    ingest,
+    inspect,
+    rebuild,
+    reports,
+    statements,
+    tax,
+)
 from banking_pipeline.cli._main import app, console, err_console
 from banking_pipeline.cli.tax import _write_tax_summary
 from banking_pipeline.config import settings
