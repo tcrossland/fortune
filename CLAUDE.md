@@ -150,7 +150,9 @@ src/banking_pipeline/
 │                            <date>" valuation parser (date, account,
 │                            net-per-ticker holdings, cash) consumed by
 │                            balances_extract + prices_extract
-├── portfolio_aggregate.py Central account opens + per-year includes
+├── portfolio_aggregate.py Central account opens + closes + per-year
+│                         includes (closes ISIN accounts that net to zero
+│                         across the full history — see below)
 ├── commodities_metadata.py  TOML loader for `data/commodities.toml`
 │                              (ISIN → domicile, reporting status,
 │                              asset class, `deeply_discounted`,
@@ -409,9 +411,20 @@ of `[post.reconcile] strict`.
   commodities deliberately don't set a default — beancount's
   inferred-from-decimals picks the right value per fund.
 - `data/portfolio.beancount` is **generated** (by `portfolio_aggregate`):
-  it owns `option "operating_currency"`, the booking method, and the
-  central account opens. Don't hand-edit it. Hand-curated overrides
-  go in `main.beancount`, which `include`s the aggregate.
+  it owns `option "operating_currency"`, the booking method, the
+  central account opens, and the `close` directives. Don't hand-edit it.
+  Hand-curated overrides go in `main.beancount`, which `include`s the
+  aggregate.
+  - **Close directives are aggregate-only.** The per-source `ingest` /
+    `rebuild` output carries *no* closes — a per-batch close can't see a
+    *later* source re-acquiring a wound-down holding, and beancount can't
+    reopen a closed account (re-buy → "Invalid reference to inactive
+    account"). The aggregate reads every source file, sums each ISIN
+    asset account across the full history, and closes only those that net
+    to exactly zero (dated the day after the account's last posting,
+    which is by construction after any re-buy). Don't re-add a close call
+    to `ingest`; it reuses `writer.render_close_directives` over the
+    combined source text.
   - `main.beancount` (the `bean-check` root) must itself declare
     `option "booking_method" "FIFO"` and `operating_currency`:
     beancount reads those options **only from the root file**, not

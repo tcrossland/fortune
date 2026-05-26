@@ -68,16 +68,6 @@ not tax advice" framing.
   confidence and which rule fired into a queryable index, so the
   lowest-confidence documents in a run can be surfaced for manual review
   rather than trusted silently.
-- **Reconcile `close`-directive emission between `ingest` and `rebuild`.**
-  `ingest` appends `render_close_directives` (closing ISIN accounts that
-  net to zero in the batch); `rebuild` renders per-document and emits
-  *none*. So a ledger built via `rebuild` has no closes, but re-running a
-  single source through `ingest` introduces them — and the per-batch
-  detection can't see a *later* batch re-acquiring the holding. beancount
-  can't reopen a closed account, so a re-acquired ISIN then fails
-  bean-check ("Invalid reference to inactive account"). Either drop closes
-  from `ingest` too, or make close emission aggregate-aware (the aggregate
-  sees the full history and can close only holdings never re-acquired).
 
 ## Accounting
 

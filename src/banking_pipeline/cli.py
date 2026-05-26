@@ -184,13 +184,11 @@ def ingest(
 
     rendered = "\n\n".join(chunks)
 
-    # Append ``close`` directives for ISIN-keyed asset accounts whose
-    # final units balance across the batch is exactly zero. Detection
-    # is conservative — if a position closes here but reopens in a
-    # later run, no close is emitted (this batch's net would be > 0).
-    closes = beancount_writer.render_close_directives(rendered)
-    if closes:
-        rendered = f"{rendered}\n\n{closes}\n"
+    # No ``close`` directives here. ingest output is a partial slice of
+    # history that the portfolio aggregate ``include``s; a per-batch close
+    # can't see a later source re-acquiring the holding, and beancount
+    # can't reopen a closed account. Close emission is aggregate-aware
+    # (see ``portfolio_aggregate``), which sees the full history.
 
     if output is None:
         console.print(rendered)

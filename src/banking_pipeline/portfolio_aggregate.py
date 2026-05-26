@@ -9,6 +9,10 @@ a single ``portfolio.beancount`` file that:
     posting that isn't already opened inline by the writer (the writer
     emits an inline open for first-time security buys; redeclaring
     those centrally would double-open and beancount errors on that),
+  - emits a ``close`` directive for every ISIN asset account whose units
+    net to exactly zero across the *full* history (the per-source ingest
+    output deliberately carries no closes — only the aggregate sees a
+    later source re-acquiring a holding, so only it can close safely),
   - then ``include``s the per-year files in lexicographic order.
 
 The earliest posting that touches each account becomes the open's
@@ -33,6 +37,7 @@ from datetime import date
 from pathlib import Path
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
+from banking_pipeline.writer import render_close_directives
 
 # A posting line's account is the indented token at the start of the line.
 # Account segments are letters, digits, and hyphens — beancount's grammar.
@@ -410,6 +415,22 @@ def _render(
     for account, entry_date in rows:
         c = _constraint(account, isin_currencies, currencies)
         lines.append(f"{entry_date} open {account}" + (f" {c}" if c else ""))
+
+    # Aggregate-aware ``close`` directives. Per-source ingest output carries
+    # no closes — a per-batch close can't see a *later* source re-acquiring a
+    # holding, and beancount can't reopen a closed account. The aggregate sees
+    # every source file, so it sums each ISIN asset account across the full
+    # history and closes only those that net to exactly zero. The close date is
+    # the day after that account's last posting, which is by construction after
+    # any re-buy, so a re-acquired-then-resold position closes cleanly and a
+    # still-held one is never closed.
+    closes = render_close_directives(
+        "\n".join(path.read_text(encoding="utf-8") for path in files)
+    )
+    if closes:
+        lines.append("")
+        lines.append(";; Closed accounts (ISIN positions wound down to zero).")
+        lines.extend(closes.splitlines())
 
     lines.append("")
     lines.append(";; Per-year ingest output.")

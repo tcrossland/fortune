@@ -89,6 +89,13 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Bookkeeping & accounting
 
+- **Aggregate-aware `close` directives** — close emission moved off the
+  per-batch `ingest` path (which couldn't see a later source re-acquiring
+  a wound-down holding, breaking bean-check on the re-buy) and onto the
+  portfolio aggregate, which sums each ISIN asset account across the full
+  history and closes only those that net to zero. `ingest` / `rebuild`
+  now agree, and the aggregate owns both the central opens and closes.
+  (`portfolio_aggregate.py`)
 - **Vanguard UK Stocks & Shares ISA** — a second bank wired through the
   writer-profile / ruleset / template seams (two-segment account prefix,
   ticker-keyed commodities, NoOp templates).
