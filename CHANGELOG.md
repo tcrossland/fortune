@@ -61,6 +61,13 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`income`** — income-by-source report. Aggregates dividend + interest
+  income *received* from the JSONL sidecars by period (UK tax year or
+  calendar year) and paying source, valued in GBP. Reuses SA106's
+  bond-fund distribution→interest reclassification; unlike the tax
+  pipeline it includes ISA income (flagged tax-free, not dropped) and
+  counts UK + foreign alike. Credit-balance interest only — overdraft
+  interest the user pays is an expense and excluded. (`income.py`)
 - **Residential property on the ledger (`property`)** — off-ledger
   residential property (a user-maintained `data/property.toml`) is brought
   onto the beancount ledger: each property is a commodity held at cost

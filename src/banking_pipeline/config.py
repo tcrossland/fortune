@@ -129,6 +129,10 @@ class Settings(BaseSettings):
     # ``net-worth.md`` and ``net-worth.csv`` here.
     net_worth_reports_dir: Path = Path("reports/net-worth")
 
+    # Output directory for ``income`` (income-by-source): writes
+    # ``income.md`` and ``income.csv`` here.
+    income_reports_dir: Path = Path("reports/income")
+
     # Pre-ledger / transferred-in opening positions (ISIN → lots with a
     # GBP cost) seeded into the section 104 pool. Defaults to
     # ``data/opening-positions.toml`` when present. See

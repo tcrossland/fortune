@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 
 import structlog
 import typer
@@ -26,6 +26,9 @@ from banking_pipeline import (
 )
 from banking_pipeline import (
     concentration as concentration_mod,
+)
+from banking_pipeline import (
+    income as income_mod,
 )
 from banking_pipeline import (
     net_worth as net_worth_mod,
@@ -736,6 +739,115 @@ def net_worth(
     err_console.print(
         f"Wrote net-worth report to {out_dir} ({n} point(s){latest})"
     )
+
+
+@app.command()
+def income(
+    source: Annotated[
+        Path,
+        typer.Option(
+            "--source",
+            help="Directory walked recursively for *.transactions.jsonl "
+            "sidecars (the same substrate tax-report reads). Defaults to "
+            "``data``.",
+        ),
+    ] = Path("data"),
+    period: Annotated[
+        str,
+        typer.Option(
+            "--period",
+            help="Grouping period: ``tax-year`` (6 Apr–5 Apr, YYYY-YY) or "
+            "``calendar`` (Jan–Dec). Defaults to ``tax-year``.",
+        ),
+    ] = "tax-year",
+    commodities: Annotated[
+        Path | None,
+        typer.Option(
+            "--commodities",
+            help="Commodity-metadata TOML (drives the bond-fund "
+            "distribution→interest reclassification + holding names). "
+            "Defaults to the configured ``commodities_metadata_path``.",
+        ),
+    ] = None,
+    rate_source: Annotated[
+        str | None,
+        typer.Option(
+            "--rate-source",
+            help="GBP rate source for non-GBP income "
+            "(``null`` | ``hmrc-monthly``). Defaults to the configured source.",
+        ),
+    ] = None,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``income_reports_dir`` (``reports/income``).",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict", "-s",
+            help="Exit non-zero if any income amount lacked a GBP rate "
+            "(and so was excluded from the totals).",
+        ),
+    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Income by source (dividends + interest received).
+
+    Reads the JSONL sidecars under ``--source``, aggregates dividend and
+    interest income by period and paying source, converts to GBP, and
+    writes ``income.md`` + ``income.csv``. Unlike the tax reports this
+    *includes* ISA income (flagged tax-free), since it's genuine income.
+    A reporting aid, not advice.
+    """
+
+    _configure_logging(verbose)
+    if period not in ("tax-year", "calendar"):
+        err_console.print(
+            "[red]error:[/red] --period must be 'tax-year' or 'calendar'"
+        )
+        raise typer.Exit(code=2)
+
+    cpath = commodities or settings.commodities_metadata_path
+    commodities_map = (
+        load_commodities(cpath) if cpath is not None and cpath.is_file() else {}
+    )
+    eff_settings = (
+        settings.model_copy(update={"gbp_rate_source": rate_source})
+        if rate_source is not None
+        else settings
+    )
+    rates = build_rate_source(eff_settings)
+
+    # No ISA filter here (cf. tax-report): an ISA's income is real income,
+    # just tax-free — the report flags the wrapper instead of dropping it.
+    txns = _load_sidecar_transactions(source)
+    report = income_mod.compute_income(
+        txns, period=cast(income_mod.PeriodMode, period),
+        commodities=commodities_map, source=rates,
+    )
+
+    out_dir = out or settings.income_reports_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "income.md").write_text(
+        income_mod.render_markdown(report), encoding="utf-8"
+    )
+    with (out_dir / "income.csv").open("w", newline="", encoding="utf-8") as fh:
+        csv.writer(fh).writerows(income_mod.render_csv_rows(report))
+
+    err_console.print(
+        f"Wrote income report to {out_dir} ({len(report.rows)} source-row(s))"
+    )
+    if report.missing_rates:
+        err_console.print(
+            f"[yellow]{len(report.missing_rates)} income amount(s) excluded "
+            "(no GBP rate) — see the report.[/yellow]"
+        )
+        if strict:
+            raise typer.Exit(code=1)
 
 
 @app.command()

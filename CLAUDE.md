@@ -96,7 +96,7 @@ src/banking_pipeline/
 │                         classify | scan | extract-text | revolut |
 │                         dedup-check |
 │                         prices | balances | portfolio | concentration |
-│                         net-worth | property | check | reconcile |
+│                         net-worth | income | property | check | reconcile |
 │                         rebuild | tax-report | tax-forecast | tax-pack |
 │                         fig-advice)
 ├── pipeline.py         Top-level Pipeline orchestration
@@ -122,6 +122,17 @@ src/banking_pipeline/
 │                         by currency and reported separately (the
 │                         `concentration` command). `_value_holdings` /
 │                         `_raw_from_statement` are shared with net_worth
+├── income.py           Income-by-source report: aggregates dividends +
+│                         interest *received* from the JSONL sidecars by
+│                         period (UK tax year or calendar year) and paying
+│                         source, valued in GBP. Reuses SA106's bond-fund
+│                         distribution→interest reclassification; unlike the
+│                         tax pipeline it *includes* ISA income (flagged via
+│                         a wrapper column, not dropped) and counts UK +
+│                         foreign alike (the `income` command). Cash interest
+│                         counts only credit-balance payments (positive
+│                         amount); overdraft interest the user pays is an
+│                         expense and excluded
 ├── net_worth.py        Net-worth-over-time: values each statement
 │                         snapshot at its date (reusing concentration's
 │                         valuation) and builds a combined timeline across
@@ -589,6 +600,18 @@ and reads the JSONL sidecars, not the ledger:
   net cash / net worth per date + Δ) + `net-worth.csv` to
   `<net_worth_reports_dir>/` (default `reports/net-worth/`). Reuses
   `concentration._value_holdings` for the per-snapshot valuation.
+- `income` — income-by-source report. Reads the `*.transactions.jsonl`
+  sidecars under `--source` (default `data`, same loader as `tax-report`),
+  aggregates dividend + interest income by `--period` (`tax-year` default,
+  or `calendar`) and paying source, converts to GBP (`--rate-source`), and
+  writes `income.md` + `income.csv` to `<income_reports_dir>/` (default
+  `reports/income/`). Income = `DIVIDEND_TYPES` advices (bond-fund
+  distributions reclassified to interest via `distributions_as_interest`,
+  as SA106 does) + credit-balance current-account interest + Vanguard ISA
+  "Cash Account Interest". Unlike `tax-report` it does **not** apply the
+  ISA tax-exempt filter — ISA income is real income, flagged in a wrapper
+  column instead — and counts UK + foreign alike. An amount with no GBP
+  rate is excluded + flagged; `--strict` exits non-zero on any such gap.
 - `property` — generate the residential-property ledger from
   `data/property.toml`. Each property becomes a commodity held at cost
   (`1 <COMMODITY> {price ccy}`) revalued by `price` directives, funded
@@ -745,6 +768,8 @@ advice — verify against HMRC guidance.
   `holdings.csv`.
 - `net_worth_reports_dir` (defaults to `reports/net-worth`) — output
   directory for the `net-worth` command's `net-worth.md` / `net-worth.csv`.
+- `income_reports_dir` (defaults to `reports/income`) — output directory
+  for the `income` command's `income.md` / `income.csv`.
 - `property_path` (defaults to `data/property.toml` when present) — the
   off-ledger residential-property table; `property_ledger_path` (defaults
   to `data/property.beancount`) is the generated ledger the `property`
