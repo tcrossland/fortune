@@ -72,7 +72,10 @@ not tax advice" framing.
 ## Accounting
 
 - **FX revaluation vs. price P&L separation** on holdings — useful for
-  accounting clarity and as an input to CGT.
+  accounting clarity and as an input to CGT. Note: Pictet's tax reports
+  already compute this split, so it may come for free with the
+  P&L-report-by-parsing item under "Financial reporting" rather than
+  needing independent derivation.
 
 ## Financial reporting
 
@@ -80,7 +83,27 @@ not tax advice" framing.
   (`net-worth`), income-by-source (`income`, by tax or calendar year),
   asset-allocation-over-time (`allocation`), and per-portfolio allocation
   (`portfolio-allocation`) shipped; still open: realised/unrealised P&L
-  summaries rendered from the sidecars (Markdown/CSV).
+  summaries (Markdown/CSV).
+- **Realised / unrealised P&L by parsing Pictet's tax reports.** Pictet
+  issues Spanish-locale IRPF reports ("Informe fiscal personas físicas")
+  in two flavours — realised ("Ganancias y pérdidas patrimoniales") and
+  unrealised ("…no realizadas"). Both give per-lot cost, proceeds /
+  market value, dates, and — crucially — already split the gain into a
+  price-driven component ("Total por alteración patrimonial") and a pure
+  FX component ("Total por tipo de cambio"). *Parsing* these (a new
+  Spanish doctype + multi-page table parser, like `balances_extract` /
+  `prices_extract`, feeding a new `pnl` report module/command) is far
+  lower-risk than computing P&L ourselves — it sidesteps re-implementing
+  cost-basis matching, and the FX/price split also satisfies the
+  Accounting item below. Caveats: (a) the figures are **Spanish rules,
+  EUR, FIFO** — a management/performance view that will *not* equal UK
+  CGT, so it must be positioned separately from the tax pipeline and must
+  not feed it; (b) parsing risk — the tables use spaces as both column
+  *and* thousands separators (e.g. `12 345,67` = 12,345.67) with EU
+  decimal commas and
+  multi-line ISIN/header wrapping, so robust number tokenisation is the
+  bulk of the work. An example of each was inspected 2026-05-26;
+  structure confirmed viable.
 
 ## Financial planning & budgeting
 
