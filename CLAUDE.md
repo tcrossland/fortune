@@ -96,8 +96,8 @@ src/banking_pipeline/
 │                         classify | scan | extract-text | revolut |
 │                         dedup-check |
 │                         prices | balances | portfolio | concentration |
-│                         check | reconcile | rebuild | tax-report |
-│                         tax-forecast | tax-pack | fig-advice)
+│                         net-worth | check | reconcile | rebuild |
+│                         tax-report | tax-forecast | tax-pack | fig-advice)
 ├── pipeline.py         Top-level Pipeline orchestration
 ├── models.py           Domain models — DocumentType, BankId, Language,
 │                         RawDocument, Classification, Transaction,
@@ -119,7 +119,13 @@ src/banking_pipeline/
 │                         — weights are a share of gross long holdings and
 │                         negative cash (a margin/Lombard loan) is netted
 │                         by currency and reported separately (the
-│                         `concentration` command)
+│                         `concentration` command). `_value_holdings` /
+│                         `_raw_from_statement` are shared with net_worth
+├── net_worth.py        Net-worth-over-time: values each statement
+│                         snapshot at its date (reusing concentration's
+│                         valuation) and builds a combined timeline across
+│                         portfolios via as-of forward-fill, deduping
+│                         same-date statements (the `net-worth` command)
 ├── beancount_writer.py Back-compat re-export of `writer.*`
 ├── balances_extract.py Statement → balance assertions. Dispatches by
 │                         bank: Pictet monthly statement + Vanguard ISA
@@ -547,6 +553,15 @@ and reads the JSONL sidecars, not the ledger:
   any such gap. Domicile stands in for issuer (no issuer field on the
   metadata yet); Vanguard ISA tickers carry no `commodities.toml` entry so
   land in an `unknown` bucket.
+- `net-worth` — net-worth-over-time. Same statement discovery /
+  `--rate-source` as `concentration`, but values *every* statement at its
+  own date and builds a combined timeline: at each statement date, each
+  portfolio contributes its latest valuation on or before that date (as-of
+  forward-fill), with same-date duplicate statements deduped per commodity
+  so a holding isn't double-counted. Writes `net-worth.md` (gross long /
+  net cash / net worth per date + Δ) + `net-worth.csv` to
+  `<net_worth_reports_dir>/` (default `reports/net-worth/`). Reuses
+  `concentration._value_holdings` for the per-snapshot valuation.
 - `check` — standalone `bean-check` wrapper.
 - `reconcile` — statement-balance reconciliation. Runs `bean-check`
   over the ledger, parses its balance-assertion failures, and writes a
@@ -678,6 +693,8 @@ advice — verify against HMRC guidance.
 - `concentration_reports_dir` (defaults to `reports/concentration`) —
   output directory for the `concentration` command's `concentration.md` /
   `holdings.csv`.
+- `net_worth_reports_dir` (defaults to `reports/net-worth`) — output
+  directory for the `net-worth` command's `net-worth.md` / `net-worth.csv`.
 - Batch config: `banking-pipeline.toml` (gitignored, schema in
   `batch_config.py`). Carries personal Dropbox/iCloud paths, plus
   `[post.reconcile]` (off by default) and `[post.check]` toggles.

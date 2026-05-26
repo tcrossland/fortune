@@ -157,18 +157,31 @@ def _build_from_raw(
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
 ) -> ConcentrationReport:
-    """Value + aggregate raw holdings into a report (the testable core)."""
+    """Value + aggregate raw holdings into a report (the testable core).
 
-    # Keep only the latest statement date seen for each portfolio.
+    Only the latest statement per portfolio contributes — older snapshots
+    are superseded — so the result is the current position.
+    """
+
     latest: dict[str, date] = {}
     for r in raws:
         if r.portfolio not in latest or r.on_date > latest[r.portfolio]:
             latest[r.portfolio] = r.on_date
-    current = {
-        (r.portfolio, r.key): r
-        for r in raws
-        if r.on_date == latest[r.portfolio]
-    }
+    current = [r for r in raws if r.on_date == latest[r.portfolio]]
+    return _value_holdings(current, commodities=commodities, rate_source=rate_source)
+
+
+def _value_holdings(
+    raws: list[_RawHolding],
+    *,
+    commodities: dict[str, CommodityMetadata],
+    rate_source: GbpRateSource,
+) -> ConcentrationReport:
+    """Value a set of raw holdings to GBP and aggregate (no latest-per-
+    portfolio filtering — the caller decides what to pass). Securities are
+    valued at ``qty × mark``; cash is netted by currency; everything is
+    converted at each holding's statement date. Shared by the concentration
+    report and the net-worth timeline."""
 
     securities: list[Holding] = []
     # Cash is netted across portfolios by currency (a Lombard loan on one
@@ -179,7 +192,7 @@ def _build_from_raw(
     rate_gaps: list[RateGap] = []
     unclassified: list[str] = []
 
-    for r in current.values():
+    for r in raws:
         if r.is_cash:
             value_gbp = to_gbp(
                 r.quantity, currency=r.currency, on_date=r.on_date,
@@ -234,7 +247,7 @@ def _build_from_raw(
     gross_long = sum((h.value_gbp for h in securities if h.value_gbp > _ZERO), _ZERO)
     net_cash = sum(cash_gbp.values(), _ZERO)
     net_worth = sum((h.value_gbp for h in securities), _ZERO) + net_cash
-    as_of = max(latest.values()) if latest else None
+    as_of = max((r.on_date for r in raws), default=None)
     return ConcentrationReport(
         as_of=as_of,
         gross_long_gbp=gross_long,

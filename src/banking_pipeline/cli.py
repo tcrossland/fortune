@@ -28,6 +28,9 @@ from banking_pipeline import (
     concentration as concentration_mod,
 )
 from banking_pipeline import (
+    net_worth as net_worth_mod,
+)
+from banking_pipeline import (
     reconcile as reconcile_mod,
 )
 from banking_pipeline.batch_config import BatchConfig, Source, load_config
@@ -40,7 +43,7 @@ from banking_pipeline.commodities_metadata import CommodityMetadata, load_commod
 from banking_pipeline.config import settings
 from banking_pipeline.extractors import extract_pages, load_pdf
 from banking_pipeline.fields import HybridExtractor, TemplateExtractionError
-from banking_pipeline.fx.gbp_rates import build_rate_source
+from banking_pipeline.fx.gbp_rates import GbpRateSource, build_rate_source
 from banking_pipeline.models import Classification, DocumentType, Transaction
 from banking_pipeline.opening_positions import load_opening_positions
 from banking_pipeline.pipeline import Pipeline
@@ -479,6 +482,47 @@ def _statement_text(path: Path) -> str:
     return load_pdf(path).text
 
 
+def _load_statement_context(
+    statements: list[Path],
+    statements_dir: Path | None,
+    statements_recursive: bool,
+    commodities: Path | None,
+    rate_source: str | None,
+) -> tuple[list[tuple[str, str]], dict[str, CommodityMetadata], GbpRateSource]:
+    """Resolve the inputs shared by the statement-valuation reports
+    (``concentration`` / ``net-worth``): discover + load statement texts,
+    the commodity metadata, and the GBP rate source. Exits (code 2) when no
+    statements are given."""
+
+    paths = list(statements)
+    if statements_dir is not None:
+        discovered = _discover_priced_statements(
+            statements_dir, recursive=statements_recursive
+        )
+        paths += list(discovered)
+        err_console.print(
+            f"[dim]Discovered {len(discovered)} statement(s) under "
+            f"{statements_dir}[/dim]"
+        )
+    if not paths:
+        err_console.print(
+            "[red]No statements given — pass --statement or --statements-dir.[/red]"
+        )
+        raise typer.Exit(code=2)
+
+    texts = [(_statement_text(p), p.name) for p in paths]
+    cpath = commodities or settings.commodities_metadata_path
+    commodities_map = (
+        load_commodities(cpath) if cpath is not None and cpath.is_file() else {}
+    )
+    eff_settings = (
+        settings.model_copy(update={"gbp_rate_source": rate_source})
+        if rate_source is not None
+        else settings
+    )
+    return texts, commodities_map, build_rate_source(eff_settings)
+
+
 @app.command()
 def concentration(
     statements: Annotated[
@@ -551,36 +595,9 @@ def concentration(
     """
 
     _configure_logging(verbose)
-
-    paths = list(statements)
-    if statements_dir is not None:
-        discovered = _discover_priced_statements(
-            statements_dir, recursive=statements_recursive
-        )
-        paths += list(discovered)
-        err_console.print(
-            f"[dim]Discovered {len(discovered)} statement(s) under "
-            f"{statements_dir}[/dim]"
-        )
-    if not paths:
-        err_console.print(
-            "[red]No statements given — pass --statement or --statements-dir.[/red]"
-        )
-        raise typer.Exit(code=2)
-
-    texts = [(_statement_text(p), p.name) for p in paths]
-
-    cpath = commodities or settings.commodities_metadata_path
-    commodities_map = (
-        load_commodities(cpath) if cpath is not None and cpath.is_file() else {}
+    texts, commodities_map, rates = _load_statement_context(
+        statements, statements_dir, statements_recursive, commodities, rate_source
     )
-    eff_settings = (
-        settings.model_copy(update={"gbp_rate_source": rate_source})
-        if rate_source is not None
-        else settings
-    )
-    rates = build_rate_source(eff_settings)
-
     report = concentration_mod.build_report(
         texts, commodities=commodities_map, rate_source=rates
     )
@@ -607,6 +624,91 @@ def concentration(
         )
         if strict:
             raise typer.Exit(code=1)
+
+
+@app.command("net-worth")
+def net_worth(
+    statements: Annotated[
+        list[Path],
+        typer.Option(
+            "--statement",
+            help="Statement PDF (or ``.txt`` dump) — Pictet monthly or "
+            "Vanguard ISA regular statement. Repeat / pass a history: each "
+            "statement date becomes a point on the timeline.",
+        ),
+    ] = [],  # noqa: B006 — Typer's documented list-option default; not mutated
+    statements_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--statements-dir",
+            help="Directory to scan for valuation-bearing statements "
+            "(same classifier filter as ``prices``). Point it at the whole "
+            "statement archive to get the full history.",
+        ),
+    ] = None,
+    statements_recursive: Annotated[
+        bool,
+        typer.Option(
+            "--statements-recursive",
+            "-R",
+            help="Descend into subdirectories under ``--statements-dir``.",
+        ),
+    ] = False,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``net_worth_reports_dir`` (``reports/net-worth``).",
+        ),
+    ] = None,
+    commodities: Annotated[
+        Path | None,
+        typer.Option(
+            "--commodities",
+            help="Commodity-metadata TOML. Defaults to the configured "
+            "``commodities_metadata_path``.",
+        ),
+    ] = None,
+    rate_source: Annotated[
+        str | None,
+        typer.Option(
+            "--rate-source",
+            help="GBP rate source for non-GBP valuations "
+            "(``null`` | ``hmrc-monthly``). Defaults to the configured source.",
+        ),
+    ] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Net worth over time.
+
+    Values each statement's valuation at its own date and builds a combined
+    timeline across portfolios (each contributes its latest valuation on or
+    before each date), writing ``net-worth.md`` + ``net-worth.csv``. A
+    reporting aid: values are statement marks converted to GBP.
+    """
+
+    _configure_logging(verbose)
+    texts, commodities_map, rates = _load_statement_context(
+        statements, statements_dir, statements_recursive, commodities, rate_source
+    )
+    timeline = net_worth_mod.build_timeline(
+        texts, commodities=commodities_map, rate_source=rates
+    )
+
+    out_dir = out or settings.net_worth_reports_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "net-worth.md").write_text(
+        net_worth_mod.render_markdown(timeline), encoding="utf-8"
+    )
+    with (out_dir / "net-worth.csv").open("w", newline="", encoding="utf-8") as fh:
+        csv.writer(fh).writerows(net_worth_mod.render_csv_rows(timeline))
+
+    n = len(timeline.points)
+    latest = f", latest £{timeline.points[-1].net_worth_gbp:,.2f}" if n else ""
+    err_console.print(
+        f"Wrote net-worth report to {out_dir} ({n} point(s){latest})"
+    )
 
 
 def _discover_priced_statements(

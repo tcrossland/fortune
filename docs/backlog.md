@@ -76,10 +76,10 @@ not tax advice" framing.
 
 ## Financial reporting
 
-- **Period reports beyond beancount/Fava.** Net-worth-over-time,
-  per-portfolio allocation, income-by-source, and realised/unrealised
-  P&L summaries rendered from the sidecars (Markdown/CSV). Would
-  formalise the ad-hoc `data/*.md` artifacts into a `report` command.
+- **Period reports beyond beancount/Fava.** Net-worth-over-time shipped
+  (the `net-worth` command); still open: per-portfolio allocation,
+  income-by-source, and realised/unrealised P&L summaries rendered from
+  the sidecars (Markdown/CSV).
 - **Asset-allocation snapshot** driven by the asset-class metadata
   already in `commodities.toml` (equity/bond/cash mix over time).
 

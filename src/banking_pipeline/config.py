@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     # breakdown): writes ``concentration.md`` and ``holdings.csv`` here.
     concentration_reports_dir: Path = Path("reports/concentration")
 
+    # Output directory for ``net-worth`` (net-worth-over-time): writes
+    # ``net-worth.md`` and ``net-worth.csv`` here.
+    net_worth_reports_dir: Path = Path("reports/net-worth")
+
     # Pre-ledger / transferred-in opening positions (ISIN → lots with a
     # GBP cost) seeded into the section 104 pool. Defaults to
     # ``data/opening-positions.toml`` when present. See

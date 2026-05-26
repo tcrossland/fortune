@@ -61,6 +61,13 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`net-worth`** — net-worth-over-time report. Values each statement's
+  valuation at its own date (reusing the concentration valuation) and
+  builds a combined timeline across portfolios — each contributes its
+  latest valuation on or before each date (as-of forward-fill), and
+  same-date duplicate statements are deduped so a holding isn't
+  double-counted. Writes `net-worth.md` (gross long / net cash / net worth
+  per date + period delta) + `net-worth.csv`. (`net_worth.py`)
 - **`concentration`** — portfolio concentration / exposure report. Reads
   the latest statement valuation per portfolio (Pictet + Vanguard ISA),
   values every holding in GBP, and breaks the total down by holding,
