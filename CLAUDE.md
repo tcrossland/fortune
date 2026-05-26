@@ -475,8 +475,14 @@ and reads the JSONL sidecars, not the ledger:
   absorbs relief against the higher-rate (`post`) bucket first so the
   taxable remainder sits in the lower-rate (`pre`) bucket. AEA values are
   `cgt_annual_exempt_amount` (statutory; a year missing there is treated
-  as 0 and flagged in `summary.txt`). Losses are claimed automatically —
-  the 4-year claim time limit is not enforced.
+  as 0 and flagged in `summary.txt`). Losses are claimed automatically.
+  The pool is tracked by arising year (FIFO); a brought-forward loss
+  relieved more than 4 years after it arose is flagged
+  (`WARN_LOSS_CLAIM_WINDOW` / `expired_loss_claims`) since it's allowable
+  only if it was notified to HMRC within the statutory window — but the
+  figures are *not* adjusted (a loss notified in-year carries forward
+  indefinitely, and the tool can't tell). Pre-ledger losses aren't dated,
+  so they aren't flagged.
 - `tax-report --year 2025-26` writes, under `reports/uk-tax/<year>/`:
   `sa108-disposals.csv` (CGT; `period` splits gains pre / on-or-after
   the year's CGT rate-change date from `cgt_rate_change_dates`),

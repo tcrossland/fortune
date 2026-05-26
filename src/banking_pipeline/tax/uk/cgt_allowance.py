@@ -24,7 +24,7 @@ placement is.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 
@@ -41,6 +41,25 @@ from banking_pipeline.tax.uk.tax_year import date_to_tax_year
 CGT_STATUSES = frozenset({"reporting", "uk-domestic"})
 
 _ZERO = Decimal(0)
+
+# A capital loss must be notified to HMRC within 4 years of the end of the
+# tax year it arose in (TCGA 1992 s16(2A) + the TMA 1970 s43 time limit);
+# once notified in time it carries forward indefinitely.
+LOSS_CLAIM_WINDOW_YEARS = 4
+
+
+@dataclass(frozen=True)
+class LossClaimWarning:
+    """A brought-forward loss relieved in a year beyond its statutory
+    4-year notification window. The figures are *not* adjusted (a loss
+    notified in its arising year is allowable forever, and we can't tell
+    whether it was) — this only flags the loss to confirm it was notified
+    in time before relying on it."""
+
+    arising_year: str
+    deadline: date
+    amount_used: Decimal
+    used_in_year: str
 
 
 @dataclass(frozen=True)
@@ -70,6 +89,9 @@ class CgtAllowanceResult:
     taxable_post: Decimal
     # Total allowable losses carried into the next tax year.
     losses_carried_forward: Decimal
+    # Brought-forward losses relieved this year past their 4-year claim
+    # window (empty when none — figures are unaffected, see LossClaimWarning).
+    expired_loss_claims: tuple[LossClaimWarning, ...] = ()
 
     @property
     def taxable_total(self) -> Decimal:
@@ -167,6 +189,13 @@ def loss_carryforward_chain(
     ``fig_claim_years`` the foreign (non-UK-situs) gains are relieved and
     their losses disallowed — only UK-situs disposals participate — and
     the annual exempt amount is forfeited (forced to nil).
+
+    The loss pool is tracked by arising year (oldest-first, consumed FIFO)
+    so a brought-forward loss relieved more than four years after it arose
+    can be flagged on the result's ``expired_loss_claims`` — it must have
+    been notified to HMRC within the window to be allowable, which this
+    tool can't verify. Pre-ledger losses have no arising year and aren't
+    flagged. The flagging never changes the figures.
     """
 
     cgt_rows = [
@@ -187,7 +216,11 @@ def loss_carryforward_chain(
         start_label = through_year
 
     results: dict[str, CgtAllowanceResult] = {}
-    carried = pre_ledger_losses
+    # Loss pool as (arising-year label | None for pre-ledger, amount),
+    # oldest-first. Its total always equals the prior year's carry-forward.
+    pool: list[tuple[str | None, Decimal]] = (
+        [(None, pre_ledger_losses)] if pre_ledger_losses > _ZERO else []
+    )
     label = start_label
     while True:
         fig_claimed = label in fig_claim_years
@@ -218,14 +251,59 @@ def loss_carryforward_chain(
             gains_pre=gains_pre,
             gains_post=gains_post,
             current_year_losses=losses,
-            brought_forward=carried,
+            brought_forward=sum((amt for _, amt in pool), _ZERO),
             annual_exempt_amount=aea,
             rate_split=rate_split,
         )
+
+        # Consume the brought-forward losses used this year FIFO (oldest
+        # first), flagging any drawn from a vintage past its 4-year window.
+        pool, warnings = _consume_pool(pool, result.brought_forward_used, label)
+        if result.current_year_loss_carried > _ZERO:
+            pool.append((label, result.current_year_loss_carried))
+        if warnings:
+            result = replace(result, expired_loss_claims=tuple(warnings))
+
         results[label] = result
-        carried = result.losses_carried_forward
         if label == through_year:
             break
         label = _next_year_label(label)
 
     return results
+
+
+def _consume_pool(
+    pool: list[tuple[str | None, Decimal]], used: Decimal, year: str
+) -> tuple[list[tuple[str | None, Decimal]], list[LossClaimWarning]]:
+    """Draw ``used`` of brought-forward loss from ``pool`` oldest-first.
+
+    Returns the remaining pool and a warning per dated vintage drawn on
+    more than four years after it arose (its notification window having
+    closed). The total drawn equals ``used`` by construction, so the
+    remaining pool's total is unchanged from the carry-forward figure.
+    """
+
+    remaining: list[tuple[str | None, Decimal]] = []
+    warnings: list[LossClaimWarning] = []
+    to_consume = used
+    for vintage, amount in pool:
+        if to_consume <= _ZERO:
+            remaining.append((vintage, amount))
+            continue
+        drawn = min(amount, to_consume)
+        to_consume -= drawn
+        leftover = amount - drawn
+        if leftover > _ZERO:
+            remaining.append((vintage, leftover))
+        if vintage is not None:
+            arose = int(vintage[:4])
+            if int(year[:4]) - arose > LOSS_CLAIM_WINDOW_YEARS:
+                warnings.append(
+                    LossClaimWarning(
+                        arising_year=vintage,
+                        deadline=date(arose + LOSS_CLAIM_WINDOW_YEARS + 1, 4, 5),
+                        amount_used=drawn,
+                        used_in_year=year,
+                    )
+                )
+    return remaining, warnings

@@ -8,6 +8,15 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## UK tax
 
+- **CGT 4-year loss-claim window warning** — the loss-carry-forward chain
+  now tracks the allowable-loss pool by arising year (FIFO) and flags a
+  brought-forward loss relieved more than four years after it arose, since
+  it is allowable only if it was notified to HMRC within the statutory
+  window (which the tool can't verify). Surfaced as `WARN_LOSS_CLAIM_WINDOW`
+  in the summary and a note in the tax-pack; figures are left unchanged
+  (a loss notified in its arising year carries forward indefinitely).
+  Pre-ledger losses have no arising year and aren't flagged.
+  (`tax/uk/cgt_allowance.py`)
 - **Unclassified-holding FIG-relief warning** — under a FIG claim a
   disposal with no `commodities.toml` entry defaults to UK situs, so it is
   neither taxed nor relieved; a genuinely foreign one silently misses

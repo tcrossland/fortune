@@ -14,6 +14,44 @@ from banking_pipeline.models import DocumentType, Transaction
 from banking_pipeline.transaction_sidecar import dump_transactions, load_transactions
 
 
+def test_summary_flags_expired_loss_claim(tmp_path: Path) -> None:
+    """The summary renders a WARN_LOSS_CLAIM_WINDOW block when a
+    brought-forward loss was relieved past its 4-year notification window."""
+
+    import dataclasses
+
+    from banking_pipeline.tax.uk.cgt_allowance import (
+        LossClaimWarning,
+        apply_cgt_allowances,
+    )
+    from banking_pipeline.tax.uk.eri import EriResult
+    from banking_pipeline.tax.uk.sa106 import Sa106Report
+    from banking_pipeline.tax.uk.sa108 import Sa108Report
+
+    allowance = dataclasses.replace(
+        apply_cgt_allowances(
+            tax_year="2025-26", gains_pre=Decimal("8000"), gains_post=Decimal(0),
+            current_year_losses=Decimal(0), brought_forward=Decimal("5000"),
+            annual_exempt_amount=Decimal(0), rate_split=False,
+        ),
+        expired_loss_claims=(
+            LossClaimWarning(
+                arising_year="2020-21", deadline=date(2025, 4, 5),
+                amount_used=Decimal("5000"), used_in_year="2025-26",
+            ),
+        ),
+    )
+    out = tmp_path / "summary.txt"
+    cli._write_tax_summary(
+        out, "2025-26", Sa108Report(rows=[]), Sa106Report(dividends=[]),
+        EriResult(rows=[]), allowance,
+    )
+    summary = out.read_text(encoding="utf-8")
+    assert "WARN_LOSS_CLAIM_WINDOW" in summary
+    assert "loss from 2020-21" in summary
+    assert "5 Apr 2025" in summary
+
+
 def _tx(**kw: object) -> Transaction:
     base: dict[str, object] = dict(
         trade_date=date(2025, 6, 1),

@@ -125,6 +125,16 @@ def _capital_gains_section(
         f"- Losses carried forward: {_gbp(allowance.losses_carried_forward)}",
         "",
     ]
+    for w in allowance.expired_loss_claims:
+        deadline = f"{w.deadline.day} {w.deadline:%b %Y}"
+        lines.append(
+            f"> ⚠️ **Loss-claim window:** the {_gbp(w.amount_used)} loss from "
+            f"{w.arising_year} relieved here arose over 4 years ago — it is "
+            f"allowable only if it was notified to HMRC by {deadline}. Confirm "
+            "before relying on it (the figures above are unadjusted)."
+        )
+    if allowance.expired_loss_claims:
+        lines.append("")
     return lines
 
 

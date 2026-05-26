@@ -2102,6 +2102,20 @@ def _write_tax_summary(
                 "before filing."
             )
         lines.append("")
+    if allowance.expired_loss_claims:
+        lines.append(
+            "WARN_LOSS_CLAIM_WINDOW brought-forward losses relieved more than "
+            "4 years after they arose — each must have been notified to HMRC "
+            "by its deadline below, or it is not allowable for "
+            f"{allowance.tax_year} (figures above are unadjusted; confirm "
+            "before relying on them):"
+        )
+        for w in allowance.expired_loss_claims:
+            lines.append(
+                f"  loss from {w.arising_year} ({_money(w.amount_used)} GBP) "
+                f"— notify-by deadline {w.deadline.day} {w.deadline:%b %Y}"
+            )
+        lines.append("")
     if sa108.unmatched_isins:
         lines.append(
             "WARN disposed more than acquired — add opening positions to "

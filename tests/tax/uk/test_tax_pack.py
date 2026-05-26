@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import date
 from decimal import Decimal
 
-from banking_pipeline.tax.uk.cgt_allowance import apply_cgt_allowances
+from banking_pipeline.tax.uk.cgt_allowance import (
+    LossClaimWarning,
+    apply_cgt_allowances,
+)
 from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.tax.uk.eri import EriResult
 from banking_pipeline.tax.uk.residence import FigDesignationRow
@@ -138,6 +142,28 @@ def test_unclassified_holding_flagged_as_missing_relief_under_claim() -> None:
     assert "## ⚠️ Unclassified holdings — may be missing FIG relief" in md
     assert "- XS9999999999 — Mystery Bond" in md
     assert "missing relief" in md.lower()
+
+
+def test_expired_loss_claim_flagged_in_capital_gains_section() -> None:
+    allowance = dataclasses.replace(
+        _allowance(),
+        expired_loss_claims=(
+            LossClaimWarning(
+                arising_year="2020-21",
+                deadline=date(2025, 4, 5),
+                amount_used=D(5000),
+                used_in_year="2025-26",
+            ),
+        ),
+    )
+    md = render_tax_pack(
+        year="2025-26", sa108=Sa108Report(rows=[_cgt_row()]),
+        sa106=Sa106Report(dividends=[]), eri=EriResult(rows=[]),
+        allowance=allowance, designation=[], fig_claimed=False,
+    )
+    assert "Loss-claim window" in md
+    assert "loss from 2020-21" in md
+    assert "5 Apr 2025" in md
 
 
 def test_unclassified_holding_not_flagged_without_claim() -> None:

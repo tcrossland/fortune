@@ -200,3 +200,88 @@ def test_chain_ignores_non_cgt_statuses() -> None:
     # Only the 4k reporting gain counts; the offshore gain is not CGT.
     assert chain["2025-26"].net_gain == D(4000)
     assert chain["2025-26"].taxable_total == D(1000)
+
+
+# --- 4-year loss-claim window -----------------------------------------------
+
+
+def _aea_zero(*years: str) -> dict[str, Decimal]:
+    return {y: D(0) for y in years}
+
+
+def test_loss_relieved_past_4_year_window_is_flagged() -> None:
+    """A 2020-21 loss relieved against a 2025-26 gain is more than 4 years
+    old → flagged (but still used; the figures are unchanged)."""
+
+    rows = [
+        _row(gain=D(-5000), on=date(2020, 6, 1)),   # 2020-21 loss
+        _row(gain=D(8000), on=date(2025, 6, 1)),    # 2025-26 gain
+    ]
+    chain = loss_carryforward_chain(
+        rows,
+        through_year="2025-26",
+        aea_by_year=_aea_zero(*[f"{y}-{(y + 1) % 100:02d}" for y in range(2020, 2026)]),
+        rate_change_dates={},
+        pre_ledger_losses=D(0),
+    )
+    final = chain["2025-26"]
+    # Figures unchanged: the loss is still fully relieved against the gain.
+    assert final.brought_forward_used == D(5000)
+    assert final.taxable_total == D(3000)
+    # ...but flagged as past its notification window.
+    assert len(final.expired_loss_claims) == 1
+    w = final.expired_loss_claims[0]
+    assert w.arising_year == "2020-21"
+    assert w.amount_used == D(5000)
+    assert w.used_in_year == "2025-26"
+    assert w.deadline == date(2025, 4, 5)
+
+
+def test_loss_relieved_within_window_is_not_flagged() -> None:
+    """A loss relieved exactly 4 years later is still in time → no flag."""
+
+    rows = [
+        _row(gain=D(-5000), on=date(2020, 6, 1)),   # 2020-21 loss
+        _row(gain=D(8000), on=date(2024, 6, 1)),    # 2024-25 gain (4 yrs)
+    ]
+    chain = loss_carryforward_chain(
+        rows,
+        through_year="2024-25",
+        aea_by_year=_aea_zero("2020-21", "2021-22", "2022-23", "2023-24", "2024-25"),
+        rate_change_dates={},
+        pre_ledger_losses=D(0),
+    )
+    assert chain["2024-25"].brought_forward_used == D(5000)
+    assert chain["2024-25"].expired_loss_claims == ()
+
+
+def test_pre_ledger_losses_are_not_flagged() -> None:
+    """Pre-ledger losses have no arising year, so they can't be dated and
+    are never flagged even when relieved in a much later year."""
+
+    rows = [_row(gain=D(8000), on=date(2025, 6, 1))]
+    chain = loss_carryforward_chain(
+        rows,
+        through_year="2025-26",
+        aea_by_year=_aea_zero("2025-26"),
+        rate_change_dates={},
+        pre_ledger_losses=D(5000),
+    )
+    assert chain["2025-26"].brought_forward_used == D(5000)
+    assert chain["2025-26"].expired_loss_claims == ()
+
+
+def test_unused_old_loss_carried_forward_is_not_flagged() -> None:
+    """Carrying an old loss forward unused doesn't trigger the flag — only
+    *relieving* it past the window does."""
+
+    rows = [_row(gain=D(-5000), on=date(2020, 6, 1))]  # never offset
+    chain = loss_carryforward_chain(
+        rows,
+        through_year="2025-26",
+        aea_by_year=_aea_zero(*[f"{y}-{(y + 1) % 100:02d}" for y in range(2020, 2026)]),
+        rate_change_dates={},
+        pre_ledger_losses=D(0),
+    )
+    assert chain["2025-26"].losses_carried_forward == D(5000)
+    assert chain["2025-26"].expired_loss_claims == ()

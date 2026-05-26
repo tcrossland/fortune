@@ -21,8 +21,6 @@ planning ideas.
   in-progress year, and Scottish income-tax bands (England/Wales/NI
   only today).
 - **Tax-pack PDF** — Markdown only for now, to stay dependency-light.
-- **CGT 4-year loss-claim time limit** — losses are currently claimed
-  automatically; the time limit isn't enforced.
 - **Pension (SIPP) wrapper** — the tax-exempt-wrapper choke point covers
   ISAs; a SIPP would slot in the same way if one is ever held.
 
