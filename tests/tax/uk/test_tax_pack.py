@@ -8,6 +8,7 @@ from decimal import Decimal
 from banking_pipeline.tax.uk.cgt_allowance import apply_cgt_allowances
 from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.tax.uk.eri import EriResult
+from banking_pipeline.tax.uk.residence import FigDesignationRow
 from banking_pipeline.tax.uk.sa106 import Sa106DividendRow, Sa106Report
 from banking_pipeline.tax.uk.sa108 import Sa108Report, Sa108Row
 from banking_pipeline.tax.uk.tax_pack import render_tax_pack
@@ -93,13 +94,25 @@ def test_fig_section_and_coverage_warning() -> None:
     md = render_tax_pack(
         year="2025-26", sa108=sa108, sa106=Sa106Report(dividends=[]),
         eri=EriResult(rows=[]), allowance=_allowance(),
-        designation=[("capital gain", "IE", "IE00B3VWN518", "World ETF", D(4000))],
+        designation=[
+            FigDesignationRow(
+                "gain", "capital gain", "IE", "IE00B3VWN518", "World ETF", D(4000)
+            ),
+            FigDesignationRow(
+                "loss", "capital gain", "LU", "LU0000000001", "Euro ETF", D(-1500)
+            ),
+        ],
         fig_claimed=True,
         rate_gaps=[RateGap(isin="LU1287023185", currency="EUR", month="2025-06")],
     )
     assert "## Foreign Income & Gains (FIG) claim — SA109" in md
     assert "personal allowance and the CGT annual exempt amount are forfeited" in md
-    assert "| capital gain | IE | IE00B3VWN518 | £4,000.00 |" in md
+    assert "| gain | capital gain | IE | IE00B3VWN518 | £4,000.00 |" in md
+    assert "| loss | capital gain | LU | LU0000000001 | £-1,500.00 |" in md
+    # The disallowed loss is surfaced as its own subtotal, not netted away.
+    assert "- Non-UK gains relieved: £4,000.00" in md
+    assert "Disallowed foreign losses (loss relief forfeited): £-1,500.00" in md
+    assert "loss relief forfeited" in md
     # Coverage warning naming the missing rate.
     assert "missing GBP rates" in md
     assert "EUR 2025-06 (LU1287023185)" in md

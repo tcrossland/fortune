@@ -23,6 +23,8 @@ whenever they happened (including while non-resident); only the taxable
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
+from typing import Literal, NamedTuple
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.tax.uk.tax_year import date_to_tax_year, tax_year_bounds
@@ -30,6 +32,50 @@ from banking_pipeline.tax.uk.tax_year import date_to_tax_year, tax_year_bounds
 # The 4-year FIG regime applies from 6 April 2025 (tax year 2025-26).
 FIG_REGIME_FIRST_YEAR = "2025-26"
 FIG_MAX_YEARS = 4
+
+FigKind = Literal["income", "gain", "loss"]
+
+
+class FigDesignationRow(NamedTuple):
+    """One foreign item relieved under a FIG claim.
+
+    ``kind`` buckets the row so the designation can show relieved income,
+    relieved gains, and *disallowed* foreign losses separately rather than
+    silently netting a loss into a single total: ``"income"`` (foreign
+    dividends, interest, ERI), ``"gain"`` (a non-UK chargeable gain ≥ 0),
+    or ``"loss"`` (a non-UK disposal at a loss — its loss relief is
+    forfeited by the claim). ``category`` keeps the finer HMRC label
+    (e.g. ``"offshore income gain"``); ``amount_gbp`` is signed, so a
+    ``"loss"`` row is negative.
+    """
+
+    kind: FigKind
+    category: str
+    country: str
+    isin: str
+    name: str
+    amount_gbp: Decimal
+
+
+class FigSubtotals(NamedTuple):
+    """The FIG designation split three ways plus the net. ``losses`` is
+    signed (≤ 0); its magnitude is the loss relief forfeited by the claim.
+    ``net = income + gains + losses``."""
+
+    income: Decimal
+    gains: Decimal
+    losses: Decimal
+    net: Decimal
+
+
+def fig_subtotals(rows: list[FigDesignationRow]) -> FigSubtotals:
+    """Bucket the designation rows into relieved income / relieved gains /
+    disallowed losses (and their net) by ``kind``."""
+
+    income = sum((r.amount_gbp for r in rows if r.kind == "income"), Decimal(0))
+    gains = sum((r.amount_gbp for r in rows if r.kind == "gain"), Decimal(0))
+    losses = sum((r.amount_gbp for r in rows if r.kind == "loss"), Decimal(0))
+    return FigSubtotals(income, gains, losses, income + gains + losses)
 
 
 def _next_year_label(label: str) -> str:

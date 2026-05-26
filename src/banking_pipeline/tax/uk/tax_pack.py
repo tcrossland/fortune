@@ -20,6 +20,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from banking_pipeline.tax.uk.cgt_allowance import CGT_STATUSES, CgtAllowanceResult
 from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.tax.uk.eri import EriResult
+from banking_pipeline.tax.uk.residence import FigDesignationRow, fig_subtotals
 from banking_pipeline.tax.uk.sa106 import Sa106Report
 from banking_pipeline.tax.uk.sa108 import Sa108Report
 
@@ -41,16 +42,16 @@ def render_tax_pack(
     sa106: Sa106Report,
     eri: EriResult,
     allowance: CgtAllowanceResult,
-    designation: list[tuple[str, str, str, str, Decimal]],
+    designation: list[FigDesignationRow],
     fig_claimed: bool,
     rate_change_date: date | None = None,
     rate_gaps: list[RateGap] | None = None,
 ) -> str:
     """Render the per-year tax pack as Markdown.
 
-    ``designation`` is the FIG-relieved ``(category, country, isin, name,
-    gbp)`` rows (empty unless ``fig_claimed``); ``rate_gaps`` are amounts
-    that couldn't be converted to GBP (so the figures understate).
+    ``designation`` is the FIG-relieved rows (empty unless
+    ``fig_claimed``); ``rate_gaps`` are amounts that couldn't be converted
+    to GBP (so the figures understate).
     """
 
     lines: list[str] = [
@@ -214,10 +215,8 @@ def _deep_discounted_section(sa108: Sa108Report) -> list[str]:
     ]
 
 
-def _fig_section(
-    designation: list[tuple[str, str, str, str, Decimal]],
-) -> list[str]:
-    total = _sum([row[4] for row in designation])
+def _fig_section(designation: list[FigDesignationRow]) -> list[str]:
+    sub = fig_subtotals(designation)
     lines = [
         "## Foreign Income & Gains (FIG) claim — SA109",
         "",
@@ -226,13 +225,29 @@ def _fig_section(
         "annual exempt amount are forfeited for the year. Claim on the "
         "residence pages (SA109) and designate the amounts.",
         "",
-        f"- Total foreign income + non-UK gains relieved: {_gbp(total)}",
+        f"- Foreign income relieved: {_gbp(sub.income)}",
+        f"- Non-UK gains relieved: {_gbp(sub.gains)}",
+        f"- Disallowed foreign losses (loss relief forfeited): {_gbp(sub.losses)}",
+        f"- Net foreign income + gains relieved: {_gbp(sub.net)}",
         "",
-        "| Category | Country | ISIN | Amount |",
-        "| --- | --- | --- | --- |",
     ]
-    for category, country, isin, _name, gbp in designation:
-        lines.append(f"| {category} | {country} | {isin} | {_gbp(gbp)} |")
+    if sub.losses < _ZERO:
+        lines += [
+            "A FIG claim relieves foreign gains but **also forfeits relief "
+            "for foreign losses** in the year — the disallowed losses above "
+            "cannot be set against other gains or carried forward. Weigh "
+            "this against the income/gains relieved.",
+            "",
+        ]
+    lines += [
+        "| Kind | Category | Country | ISIN | Amount |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for r in designation:
+        lines.append(
+            f"| {r.kind} | {r.category} | {r.country} | {r.isin} "
+            f"| {_gbp(r.amount_gbp)} |"
+        )
     lines.append("")
     return lines
 

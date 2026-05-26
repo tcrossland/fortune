@@ -188,13 +188,85 @@ def test_tax_report_fig_claim_relieves_foreign_to_designation(
     designation = _read_csv(out_dir / "fig-designation.csv")
     by_isin = {r["isin"]: r for r in designation}
     assert by_isin["IE00B3VWN518"]["category"] == "capital gain"
+    assert by_isin["IE00B3VWN518"]["kind"] == "gain"
     assert by_isin["IE00B3VWN518"]["amount_gbp"] == "500.00"
     assert by_isin["LU1287023185"]["category"] == "offshore income gain"
+    assert by_isin["LU1287023185"]["kind"] == "gain"
     assert by_isin["LU1287023185"]["amount_gbp"] == "150.00"
     assert by_isin["US0378331005"]["category"] == "foreign dividend"
+    assert by_isin["US0378331005"]["kind"] == "income"
 
     summary = (out_dir / "summary.txt").read_text(encoding="utf-8")
     assert "Foreign Income & Gains (FIG) claim" in summary
+    # 80 dividend income, 500 + 150 gains, no foreign loss here.
+    assert "foreign income relieved: 80.00 GBP" in summary
+    assert "non-UK gains relieved: 650.00 GBP" in summary
+    assert "disallowed foreign losses (loss relief forfeited): 0.00 GBP" in summary
+
+
+def test_tax_report_fig_claim_surfaces_disallowed_loss(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    """A foreign disposal at a loss is *disallowed* under a FIG claim (its
+    loss relief is forfeited). It must be bucketed ``kind="loss"`` in the
+    designation and reported as a separate subtotal in the summary, not
+    netted silently into the relieved-gains figure."""
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    rep = "IE00B3VWN518"  # foreign (IE), reporting
+    txns = [
+        # buy 100 @ 1000 (pre-residence), sell 100 @ 700 in-year → loss -300
+        _tx(document_type=DocumentType.BUY_ETF, isin=rep, quantity=Decimal("100"),
+            amount=Decimal("-1000"), trade_date=date(2024, 5, 1)),
+        _tx(document_type=DocumentType.SELL_ETF, isin=rep, quantity=Decimal("-100"),
+            amount=Decimal("700"), trade_date=date(2025, 6, 1)),
+        # a foreign WHT dividend so there's relieved income alongside
+        _tx(document_type=DocumentType.DIVIDEND_NOTICE, isin="US0378331005",
+            title="Dividend", currency="USD", amount=Decimal("85.00"),
+            booking_date=date(2025, 9, 1), trade_date=date(2025, 9, 1),
+            gbp_rate=Decimal("0.80"), gross_income=Decimal("100.00"),
+            withholding_tax=Decimal("15.00"), withholding_country="US"),
+    ]
+    dump_transactions(txns, data_dir / "2025.transactions.jsonl")
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text(_COMMODITIES, encoding="utf-8")
+    out_dir = tmp_path / "report"
+
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        cli.settings, "uk_residence_start_date", date(2025, 4, 6)
+    )
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        cli.settings, "fig_claim_years", frozenset({"2025-26"})
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.app,
+        [
+            "tax-report", "--year", "2025-26", "--source", str(data_dir),
+            "--out", str(out_dir), "--commodities", str(commodities),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    designation = _read_csv(out_dir / "fig-designation.csv")
+    by_isin = {r["isin"]: r for r in designation}
+    loss = by_isin[rep]
+    assert loss["kind"] == "loss"
+    assert loss["category"] == "capital gain"
+    assert loss["amount_gbp"] == "-300.00"
+    assert by_isin["US0378331005"]["kind"] == "income"
+
+    summary = (out_dir / "summary.txt").read_text(encoding="utf-8")
+    # The loss is surfaced separately, not netted into income or gains.
+    assert "foreign income relieved: 80.00 GBP" in summary
+    assert "non-UK gains relieved: 0.00 GBP" in summary
+    assert (
+        "disallowed foreign losses (loss relief forfeited): -300.00 GBP"
+        in summary
+    )
+    assert "net foreign income + gains relieved: -220.00 GBP" in summary
 
 
 def test_isa_wrapped_transactions_excluded_from_tax_report(tmp_path: Path) -> None:

@@ -8,6 +8,12 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## UK tax
 
+- **FIG designation loss split** — the `fig-designation.csv` / tax-pack
+  table now buckets each relieved item as income / gain / *disallowed
+  loss* (a `kind` column) instead of netting a forfeited foreign loss
+  silently into one total. The summary and pack report relieved income,
+  relieved gains, and disallowed losses as separate subtotals so the
+  foregone loss relief is visible. (`tax/uk/residence.py`)
 - **`fig-advice`** — multi-year Foreign Income & Gains claim optimiser.
   Brute-forces every claim subset across the eligible window, threading
   the loss-carry-forward chain per subset so disallowed foreign losses

@@ -59,7 +59,10 @@ from banking_pipeline.tax.uk.fig_advice import (
 from banking_pipeline.tax.uk.liability import LiabilityResult, compute_liability
 from banking_pipeline.tax.uk.rates import CgtRateSchedule, IncomeTaxBands
 from banking_pipeline.tax.uk.residence import (
+    FigDesignationRow,
+    FigKind,
     fig_eligible_years,
+    fig_subtotals,
     ineligible_claims,
     is_pre_residence_year,
 )
@@ -1854,15 +1857,17 @@ def _partition_fig_relief(
     Sa108Report,
     Sa106Report,
     EriResult,
-    list[tuple[str, str, str, str, Decimal]],
+    list[FigDesignationRow],
 ]:
     """Split foreign (FIG-relievable) items out of the SA schedules.
 
     Under a FIG claim, foreign income and non-UK gains move off SA108 /
     SA106 onto the FIG designation pages. Returns the UK-only schedules to
-    file plus the relieved items as ``(category, country, isin, name,
-    gbp)`` rows for the designation CSV. SA106 income is foreign by
-    construction (UK income goes to SA100), so it's relieved in full.
+    file plus the relieved items as :class:`FigDesignationRow`s for the
+    designation CSV. SA106 income is foreign by construction (UK income
+    goes to SA100), so it's relieved in full. Disposal-derived rows are
+    bucketed ``"gain"`` / ``"loss"`` by the sign of the gain so a
+    forfeited foreign loss isn't netted away silently.
     """
 
     uk_rows = [r for r in sa108.rows if not r.is_foreign]
@@ -1885,20 +1890,28 @@ def _partition_fig_relief(
         missing_rates=eri.missing_rates,
     )
 
-    designation: list[tuple[str, str, str, str, Decimal]] = []
+    designation: list[FigDesignationRow] = []
     for d in sa106.dividends:
         designation.append(
-            ("foreign dividend", d.country, d.isin, d.commodity_name, d.gross_gbp)
+            FigDesignationRow(
+                "income", "foreign dividend", d.country, d.isin,
+                d.commodity_name, d.gross_gbp,
+            )
         )
     for i in sa106.interest:
         designation.append(
-            ("foreign interest", i.country, i.isin, i.commodity_name, i.gross_gbp)
+            FigDesignationRow(
+                "income", "foreign interest", i.country, i.isin,
+                i.commodity_name, i.gross_gbp,
+            )
         )
     for e in eri.rows:
         if e.country != "GB":
             designation.append(
-                (f"ERI ({e.income_type})", e.country, e.isin,
-                 e.commodity_name, e.gross_gbp)
+                FigDesignationRow(
+                    "income", f"ERI ({e.income_type})", e.country, e.isin,
+                    e.commodity_name, e.gross_gbp,
+                )
             )
     for r in sa108.rows:
         if r.is_foreign:
@@ -1907,28 +1920,41 @@ def _partition_fig_relief(
                 if r.reporting_status == "non-reporting"
                 else "capital gain"
             )
+            kind: FigKind = "gain" if r.gain_gbp >= 0 else "loss"
             designation.append(
-                (category, r.isin[:2], r.isin, r.commodity_name, r.gain_gbp)
+                FigDesignationRow(
+                    kind, category, r.isin[:2], r.isin, r.commodity_name,
+                    r.gain_gbp,
+                )
             )
     for r in sa108.dds_disposals:
         if r.is_foreign:
+            kind = "gain" if r.gain_gbp >= 0 else "loss"
             designation.append(
-                ("deep-discounted", r.isin[:2], r.isin, r.commodity_name, r.gain_gbp)
+                FigDesignationRow(
+                    kind, "deep-discounted", r.isin[:2], r.isin,
+                    r.commodity_name, r.gain_gbp,
+                )
             )
     return sa108_uk, sa106_uk, eri_uk, designation
 
 
-def _write_fig_designation_csv(
-    path: Path, rows: list[tuple[str, str, str, str, Decimal]]
-) -> int:
+def _write_fig_designation_csv(path: Path, rows: list[FigDesignationRow]) -> int:
     """Write the foreign income / gains relieved under a FIG claim (the
-    amounts to declare on the FIG pages). Returns the row count."""
+    amounts to declare on the FIG pages). The ``kind`` column buckets each
+    row as relieved income / relieved gain / disallowed loss so a forfeited
+    foreign loss is visible rather than netted away. Returns the row count."""
 
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
-        writer.writerow(["category", "country", "isin", "name", "amount_gbp"])
-        for category, country, isin, name, gbp in rows:
-            writer.writerow([category, country, isin, name, _money(gbp)])
+        writer.writerow(
+            ["kind", "category", "country", "isin", "name", "amount_gbp"]
+        )
+        for r in rows:
+            writer.writerow([
+                r.kind, r.category, r.country, r.isin, r.name,
+                _money(r.amount_gbp),
+            ])
     return len(rows)
 
 
@@ -1942,7 +1968,7 @@ def _write_tax_summary(
     rate_change_date: date | None = None,
     aea_missing: bool = False,
     fig_claimed: bool = False,
-    fig_relieved_total: Decimal | None = None,
+    fig_designation: list[FigDesignationRow] | None = None,
 ) -> None:
     cgt = [r for r in sa108.rows if r.reporting_status in CGT_STATUSES]
     offshore = [r for r in sa108.rows if r.reporting_status == "non-reporting"]
@@ -2084,10 +2110,16 @@ def _write_tax_summary(
         lines += gap_lines
         lines.append("")
     if fig_claimed:
-        total = fig_relieved_total if fig_relieved_total is not None else Decimal(0)
+        sub = fig_subtotals(fig_designation or [])
         lines.append("Foreign Income & Gains (FIG) claim:")
+        lines.append(f"  foreign income relieved: {_money(sub.income)} GBP")
+        lines.append(f"  non-UK gains relieved: {_money(sub.gains)} GBP")
         lines.append(
-            f"  foreign income + non-UK gains relieved: {_money(total)} GBP "
+            "  disallowed foreign losses (loss relief forfeited): "
+            f"{_money(sub.losses)} GBP"
+        )
+        lines.append(
+            f"  net foreign income + gains relieved: {_money(sub.net)} GBP "
             "(see fig-designation.csv)"
         )
         lines.append(
@@ -2223,13 +2255,11 @@ def tax_report(
 
     # Under a FIG claim, foreign income and non-UK gains move off the SA
     # schedules onto the FIG designation pages; only UK-situs items remain.
-    designation: list[tuple[str, str, str, str, Decimal]] = []
-    fig_relieved_total: Decimal | None = None
+    designation: list[FigDesignationRow] = []
     if fig_claimed:
         sa108, sa106, eri_result, designation = _partition_fig_relief(
             sa108, sa106, eri_result
         )
-        fig_relieved_total = sum((row[4] for row in designation), Decimal(0))
 
     out_dir.mkdir(parents=True, exist_ok=True)
     n_cgt = _write_sa108_csv(out_dir / "sa108-disposals.csv", sa108)
@@ -2250,7 +2280,7 @@ def tax_report(
         rate_change_date=settings.cgt_rate_change_dates.get(year),
         aea_missing=aea_missing,
         fig_claimed=fig_claimed,
-        fig_relieved_total=fig_relieved_total,
+        fig_designation=designation,
     )
 
     fig_note = (
@@ -2709,7 +2739,7 @@ def tax_pack(
     allowance = chain[year]
 
     gaps = comp.rate_gaps
-    designation: list[tuple[str, str, str, str, Decimal]] = []
+    designation: list[FigDesignationRow] = []
     if fig_claimed:
         sa108, sa106, eri_result, designation = _partition_fig_relief(
             sa108, sa106, eri_result
