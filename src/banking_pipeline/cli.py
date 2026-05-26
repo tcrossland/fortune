@@ -25,6 +25,9 @@ from banking_pipeline import (
     prices_extract,
 )
 from banking_pipeline import (
+    concentration as concentration_mod,
+)
+from banking_pipeline import (
     reconcile as reconcile_mod,
 )
 from banking_pipeline.batch_config import BatchConfig, Source, load_config
@@ -464,6 +467,146 @@ def prices(
     err_console.print(
         f"Wrote {output_path} ({total} price directive(s){extras})"
     )
+
+
+def _statement_text(path: Path) -> str:
+    """Read a statement path to text — a ``.txt`` dump verbatim, else the
+    PDF extractor (deferred import, as elsewhere, so the txt path stays
+    pypdfium2-free)."""
+
+    if path.suffix.lower() == ".txt":
+        return path.read_text(encoding="utf-8")
+    return load_pdf(path).text
+
+
+@app.command()
+def concentration(
+    statements: Annotated[
+        list[Path],
+        typer.Option(
+            "--statement",
+            help="Statement PDF (or pre-extracted ``.txt`` dump) whose "
+            "valuation snapshot to read — a Pictet monthly statement or a "
+            "Vanguard ISA regular statement. Repeat for multiple; the "
+            "latest per portfolio wins so passing a whole history is fine.",
+        ),
+    ] = [],  # noqa: B006 — Typer's documented list-option default; not mutated
+    statements_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--statements-dir",
+            help="Directory to scan for valuation-bearing statements "
+            "(same classifier filter as ``prices``).",
+        ),
+    ] = None,
+    statements_recursive: Annotated[
+        bool,
+        typer.Option(
+            "--statements-recursive",
+            "-R",
+            help="Descend into subdirectories under ``--statements-dir``.",
+        ),
+    ] = False,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``concentration_reports_dir`` (``reports/concentration``).",
+        ),
+    ] = None,
+    commodities: Annotated[
+        Path | None,
+        typer.Option(
+            "--commodities",
+            help="Commodity-metadata TOML (asset class / domicile). "
+            "Defaults to the configured ``commodities_metadata_path``.",
+        ),
+    ] = None,
+    rate_source: Annotated[
+        str | None,
+        typer.Option(
+            "--rate-source",
+            help="GBP rate source for non-GBP valuations "
+            "(``null`` | ``hmrc-monthly``). Defaults to the configured "
+            "source; non-GBP holdings with no rate are excluded + flagged.",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="Exit non-zero if any holding can't be valued (no "
+            "statement mark or no GBP rate).",
+        ),
+    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Portfolio concentration / exposure breakdown.
+
+    Reads the latest statement valuation per portfolio and breaks the
+    total down by holding, asset class, currency, and domicile, writing
+    ``concentration.md`` + ``holdings.csv``. A reporting aid: values are
+    the statement marks converted to GBP at the configured rate.
+    """
+
+    _configure_logging(verbose)
+
+    paths = list(statements)
+    if statements_dir is not None:
+        discovered = _discover_priced_statements(
+            statements_dir, recursive=statements_recursive
+        )
+        paths += list(discovered)
+        err_console.print(
+            f"[dim]Discovered {len(discovered)} statement(s) under "
+            f"{statements_dir}[/dim]"
+        )
+    if not paths:
+        err_console.print(
+            "[red]No statements given — pass --statement or --statements-dir.[/red]"
+        )
+        raise typer.Exit(code=2)
+
+    texts = [(_statement_text(p), p.name) for p in paths]
+
+    cpath = commodities or settings.commodities_metadata_path
+    commodities_map = (
+        load_commodities(cpath) if cpath is not None and cpath.is_file() else {}
+    )
+    eff_settings = (
+        settings.model_copy(update={"gbp_rate_source": rate_source})
+        if rate_source is not None
+        else settings
+    )
+    rates = build_rate_source(eff_settings)
+
+    report = concentration_mod.build_report(
+        texts, commodities=commodities_map, rate_source=rates
+    )
+
+    out_dir = out or settings.concentration_reports_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "concentration.md").write_text(
+        concentration_mod.render_markdown(report), encoding="utf-8"
+    )
+    with (out_dir / "holdings.csv").open("w", newline="", encoding="utf-8") as fh:
+        csv.writer(fh).writerows(concentration_mod.render_csv_rows(report))
+
+    err_console.print(
+        f"Wrote concentration report to {out_dir} "
+        f"({len(report.securities)} holding(s), gross long "
+        f"£{report.gross_long_gbp:,.2f}, net worth "
+        f"£{report.net_worth_gbp:,.2f})"
+    )
+    gap_n = len(report.missing_prices) + len(report.rate_gaps)
+    if gap_n:
+        err_console.print(
+            f"[yellow]{gap_n} holding(s) excluded (no mark / no GBP "
+            "rate) — see the report.[/yellow]"
+        )
+        if strict:
+            raise typer.Exit(code=1)
 
 
 def _discover_priced_statements(

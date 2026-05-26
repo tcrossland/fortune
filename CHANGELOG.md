@@ -59,6 +59,17 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 - **`tax-report`** — SA106 / SA108 CSV inputs from the JSONL sidecars,
   with section 104 / same-day / 30-day matching in GBP.
 
+## Reporting
+
+- **`concentration`** — portfolio concentration / exposure report. Reads
+  the latest statement valuation per portfolio (Pictet + Vanguard ISA),
+  values every holding in GBP, and breaks the total down by holding,
+  asset class, quotation currency, and domicile. Leverage-aware: weights
+  are a share of gross long holdings and a negative cash balance (a
+  margin / Lombard loan) is netted by currency and reported separately,
+  so weights don't blow past 100%. Writes `concentration.md` +
+  `holdings.csv`. (`concentration.py`)
+
 ## Bookkeeping & accounting
 
 - **Vanguard UK Stocks & Shares ISA** — a second bank wired through the

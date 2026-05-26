@@ -82,10 +82,6 @@ not tax advice" framing.
   formalise the ad-hoc `data/*.md` artifacts into a `report` command.
 - **Asset-allocation snapshot** driven by the asset-class metadata
   already in `commodities.toml` (equity/bond/cash mix over time).
-- **Concentration / exposure report.** Single-holding, per-issuer,
-  per-currency, and per-asset-class concentration over time, from
-  holdings + `commodities.toml`. Cheap given the metadata and directly
-  useful for spotting over-weight positions.
 
 ## Financial planning & budgeting
 

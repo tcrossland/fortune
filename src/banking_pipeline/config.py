@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # ``drift.csv`` here.
     reconciliation_dir: Path = Path("reports/reconciliation")
 
+    # Output directory for ``concentration`` (portfolio exposure
+    # breakdown): writes ``concentration.md`` and ``holdings.csv`` here.
+    concentration_reports_dir: Path = Path("reports/concentration")
+
     # Pre-ledger / transferred-in opening positions (ISIN → lots with a
     # GBP cost) seeded into the section 104 pool. Defaults to
     # ``data/opening-positions.toml`` when present. See

@@ -95,9 +95,9 @@ src/banking_pipeline/
 ├── cli.py              Typer entrypoint (ingest | dump-transactions |
 │                         classify | scan | extract-text | revolut |
 │                         dedup-check |
-│                         prices | balances | portfolio | check |
-│                         reconcile | rebuild | tax-report | tax-forecast |
-│                         tax-pack | fig-advice)
+│                         prices | balances | portfolio | concentration |
+│                         check | reconcile | rebuild | tax-report |
+│                         tax-forecast | tax-pack | fig-advice)
 ├── pipeline.py         Top-level Pipeline orchestration
 ├── models.py           Domain models — DocumentType, BankId, Language,
 │                         RawDocument, Classification, Transaction,
@@ -111,6 +111,15 @@ src/banking_pipeline/
 │                         bean-check assertion failures into a drift
 │                         report (drift rows + earliest-drift +
 │                         coverage gaps)
+├── concentration.py    Portfolio concentration / exposure report: reads
+│                         the latest statement valuation per portfolio
+│                         (via extract_balances/prices_from_statement),
+│                         values holdings in GBP, breaks down by holding /
+│                         asset class / currency / domicile. Leverage-aware
+│                         — weights are a share of gross long holdings and
+│                         negative cash (a margin/Lombard loan) is netted
+│                         by currency and reported separately (the
+│                         `concentration` command)
 ├── beancount_writer.py Back-compat re-export of `writer.*`
 ├── balances_extract.py Statement → balance assertions. Dispatches by
 │                         bank: Pictet monthly statement + Vanguard ISA
@@ -525,6 +534,19 @@ and reads the JSONL sidecars, not the ledger:
   statement PDFs passed via `--statement` / discovered by glob; both
   handle Pictet monthly statements and the Vanguard ISA regular
   statement (the parsers self-select on the document's text).
+- `concentration` — portfolio concentration / exposure report. Reads the
+  latest statement valuation per portfolio (`--statement` /
+  `--statements-dir`, same discovery as `prices`), values holdings in GBP
+  (FX via `--rate-source`), and writes `concentration.md` + `holdings.csv`
+  to `<concentration_reports_dir>/` (default `reports/concentration/`):
+  breakdowns by holding / asset class / currency / domicile. Weights are a
+  share of **gross long holdings**; a negative cash balance (margin /
+  Lombard loan) is netted by currency and reported separately, so a
+  leveraged book doesn't read as >100%. Non-GBP holdings with no rate (or
+  no statement mark) are excluded + flagged; `--strict` exits non-zero on
+  any such gap. Domicile stands in for issuer (no issuer field on the
+  metadata yet); Vanguard ISA tickers carry no `commodities.toml` entry so
+  land in an `unknown` bucket.
 - `check` — standalone `bean-check` wrapper.
 - `reconcile` — statement-balance reconciliation. Runs `bean-check`
   over the ledger, parses its balance-assertion failures, and writes a
@@ -653,6 +675,9 @@ advice — verify against HMRC guidance.
   section above.
 - `reconciliation_dir` (defaults to `reports/reconciliation`) — output
   directory for the `reconcile` command's `summary.txt` / `drift.csv`.
+- `concentration_reports_dir` (defaults to `reports/concentration`) —
+  output directory for the `concentration` command's `concentration.md` /
+  `holdings.csv`.
 - Batch config: `banking-pipeline.toml` (gitignored, schema in
   `batch_config.py`). Carries personal Dropbox/iCloud paths, plus
   `[post.reconcile]` (off by default) and `[post.check]` toggles.
