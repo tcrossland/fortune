@@ -1,5 +1,6 @@
 """Ingestion + import commands.
 
+``import`` (the first pipeline stage: file raw PDFs into a dated tree),
 ``ingest`` (classify/extract/render PDFs to beancount), ``dump-transactions``
 (print the JSONL sidecar), ``dedup-check`` (duplicate audit), and ``revolut``
 (the CSV side path). Shared helpers (logging, bean-check) come from
@@ -14,6 +15,7 @@ from typing import Annotated
 import typer
 
 from banking_pipeline import (
+    archive,
     beancount_writer,
     dedup,
 )
@@ -27,6 +29,7 @@ from banking_pipeline.cli._main import (
 from banking_pipeline.cli_options import (
     VerboseOpt,
 )
+from banking_pipeline.config import settings
 from banking_pipeline.fields import HybridExtractor, TemplateExtractionError
 from banking_pipeline.models import Transaction
 from banking_pipeline.pipeline import Pipeline
@@ -226,6 +229,140 @@ def dedup_check(
 
     if groups:
         raise typer.Exit(code=1)
+
+
+@app.command("import")
+def import_documents(
+    source: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Folder of incoming PDFs (top level only) or a .zip of them "
+            "(the bank's bulk-download shape). Defaults to the "
+            "``import_source_dir`` setting.",
+        ),
+    ] = None,
+    dest: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Archive root to file into, as "
+            "``<root>/<year>/<account>/<YYYYMMDD>-<reference>.pdf``. "
+            "Defaults to the ``import_archive_dir`` setting.",
+        ),
+    ] = None,
+    pattern: Annotated[
+        str,
+        typer.Option(
+            "--pattern",
+            help="Glob for files to file. Case-insensitive on the extension; "
+            "the default picks up both .pdf and .PDF.",
+        ),
+    ] = "*.pdf",
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            "-n",
+            help="Print the planned moves without touching any file.",
+        ),
+    ] = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """File raw bank PDFs into a dated ``<year>/<account>/`` archive tree.
+
+    The first stage of the pipeline: it organises a folder (or a .zip, the
+    shape the bank's bulk download arrives in) of fresh downloads so the
+    later ingest / report stages read from a stable tree.
+    Bank and document type come from the shared classifier; the account
+    number, per-document reference and publication date are scraped to build
+    ``<dest>/<year>/<account>/<YYYYMMDD>-<reference>.pdf``. Two documents that
+    share a reference within the batch (e.g. an invoice and its debit-of-fees
+    advice) are filed with a doctype suffix so neither clobbers the other. A
+    file whose destination already exists is left in place (never
+    overwritten); a PDF the classifier can't place is reported as unmatched
+    and skipped. Pictet documents (both locales) are recognised today.
+    ``source`` / ``dest`` fall back to the ``import_source_dir`` /
+    ``import_archive_dir`` settings when omitted.
+    """
+
+    _configure_logging(verbose)
+
+    dest = dest or settings.import_archive_dir
+
+    # Resolve the import source(s): an explicit argument wins; else the
+    # configured glob (typically the bank's periodic zips, filed as one
+    # batch); else the configured single directory / zip.
+    from_glob = False
+    sources: list[Path] | None
+    if source is not None:
+        sources = [source]
+    elif settings.import_source_glob:
+        from_glob = True
+        sources = archive.expand_source_glob(settings.import_source_glob)
+        if not sources:
+            err_console.print(
+                f"[yellow]warning:[/yellow] no files matched "
+                f"{settings.import_source_glob}"
+            )
+    elif settings.import_source_dir is not None:
+        sources = [settings.import_source_dir]
+    else:
+        sources = None
+
+    if sources is None or dest is None:
+        err_console.print(
+            "[red]error:[/red] an import source and archive are required — "
+            "pass them as arguments or set import_source_glob / "
+            "import_source_dir and import_archive_dir."
+        )
+        raise typer.Exit(code=2)
+
+    # A user-named single source (argument or import_source_dir) must be an
+    # existing directory or .zip — catch typos early. Glob matches are valid
+    # by construction (and may include loose PDFs).
+    if not from_glob:
+        named = sources[0]
+        is_zip = named.is_file() and named.suffix.lower() == ".zip"
+        if not named.is_dir() and not is_zip:
+            err_console.print(
+                f"[red]error:[/red] source {named} must be an existing "
+                "directory or a .zip file"
+            )
+            raise typer.Exit(code=2)
+
+    # ``source_pdfs`` resolves each source (directory glob, .zip extraction,
+    # or loose PDF) and keeps every zip extraction alive for the one block.
+    with archive.source_pdfs(sources, pattern) as pdfs:
+        plans = archive.file_documents(pdfs, dest, dry_run=dry_run)
+
+    # Show the source as its bare filename: the source root is already known
+    # (the user passed it), and for a .zip it's the temp-extraction path
+    # whose basename is the original zip entry. The destination stays a full
+    # archive path so the year/account placement is visible.
+    moved = skipped = unmatched = errored = 0
+    for plan in plans:
+        if plan.status == "move":
+            moved += 1
+            verb = "would file" if dry_run else "filed"
+            line = f"{verb}: {plan.source.name} -> {plan.destination}"
+        elif plan.status == "skip":
+            skipped += 1
+            line = f"skip (exists): {plan.source.name} -> {plan.destination}"
+        elif plan.status == "no-match":
+            unmatched += 1
+            line = f"no match: {plan.source.name}"
+        else:  # error
+            errored += 1
+            line = f"error: {plan.source.name}: {plan.detail}"
+        console.print(line, markup=False, highlight=False, soft_wrap=True)
+
+    prefix = "[dry-run] " if dry_run else ""
+    err_console.print(
+        f"{prefix}{moved} {'to file' if dry_run else 'filed'}, "
+        f"{skipped} skipped, {unmatched} unmatched, {errored} error(s).",
+        markup=False,
+        highlight=False,
+        soft_wrap=True,
+    )
 
 
 @app.command()

@@ -24,8 +24,12 @@ PDF ──► extractors/pdf_text.py ──► RawDocument
                     fields/hybrid.py ──► [Transaction, …]
                                       │
                                       ▼
-                    beancount_writer.py ──► text
+                    writer/ ──► beancount text
 ```
+
+This is the per-document transformation. Upstream of it, the `import`
+command files raw downloads (a folder or the bank's `.zip`) into the dated
+`<year>/<account>/` archive these stages then read.
 
 Each stage is a module with a narrow interface (see `models.py`).
 Classification is **layered**: the detected language narrows the vocabulary,
@@ -37,8 +41,11 @@ expose three facades — `HybridClassifier` (single-stage rules+LLM),
 `TwoStageClassifier` (bank → doctype), and `LayeredClassifier` (the
 three-stage default wired into `Pipeline`).
 
-Rules themselves live in `classifiers/rules.py` as `PICTET_EN_RULES`,
-`PICTET_ES_RULES`, and `GENERIC_RULES`. Each `Rule` is a bag of compiled
+Rules themselves live in `classifiers/rules.py`: per-bank rulesets
+(`PICTET_EN_RULES` + `PICTET_ES_RULES`, combined as `PICTET_RULES`, and
+`VANGUARD_UK_RULES`) registered in `RULESETS_BY_BANK`, plus the
+bank-agnostic `GENERIC_RULES`. For a document the classifier runs
+`RULESETS_BY_BANK[bank] + GENERIC_RULES`. Each `Rule` is a bag of compiled
 regexes; a document scores `weight * hits / len(patterns)` against each
 rule, and the first rule to reach the highest score wins.
 
@@ -129,6 +136,14 @@ uv run banking-pipeline scan path/to/inbox/              # top-level only
 uv run banking-pipeline scan -r path/to/inbox/           # recursive
 uv run banking-pipeline scan -r path/to/inbox/ --json    # JSONL output
 uv run banking-pipeline scan -r path/to/inbox/ --json -o results.jsonl
+
+# First stage: file fresh downloads (a folder or the bank's .zip) into a
+# dated archive tree (<dest>/<year>/<account>/<YYYYMMDD>-<reference>.pdf)
+uv run banking-pipeline import path/to/inbox/ path/to/archive/ --dry-run  # preview
+uv run banking-pipeline import path/to/inbox/ path/to/archive/            # move
+uv run banking-pipeline import ~/Downloads/files-20260528.zip path/to/archive/
+# Or configure import_source_glob = "~/Downloads/files-*.zip" (+ archive
+# dir) in banking-pipeline.toml and just run: banking-pipeline import
 
 # End-to-end: classify, extract transactions, emit beancount
 uv run banking-pipeline ingest path/to/statement.pdf --output out.beancount
@@ -498,7 +513,7 @@ fixture it broke on.
 
 ```
 src/banking_pipeline/
-├── cli.py              Typer entrypoint (classify | scan | ingest |
+├── cli.py              Typer entrypoint (import | classify | scan | ingest |
 │                         dump-transactions | dedup-check | extract-text |
 │                         revolut | prices | balances | portfolio | check |
 │                         reconcile | rebuild | tax-report | tax-forecast |
@@ -514,6 +529,7 @@ src/banking_pipeline/
 ├── transaction_sidecar.py   JSONL *.transactions.jsonl reader/writer
 ├── reconcile.py        Statement-balance reconciliation (drift report)
 ├── dedup.py            Duplicate-transaction audit (dedup-check)
+├── archive.py          File raw bank PDFs into a dated archive tree (import)
 ├── extractors/
 │   └── pdf_text.py     pypdfium2-based PDF → text
 ├── classifiers/

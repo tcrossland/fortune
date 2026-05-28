@@ -151,6 +151,15 @@ strict = false             # set true to treat bean-check warnings as errors
 # uk_residence_start_date = 2023-07-14
 # fig_claim_years = ["2025-26", "2026-27"]
 
+# Defaults for `banking-pipeline import` (the first stage: file raw downloads
+# into a dated <year>/<account>/ archive tree). Archive = the tree root. The
+# source resolves in order: positional arg → import_source_glob (a glob, ~
+# allowed, selecting several sources — e.g. the bank's periodic zips — filed
+# as one batch) → import_source_dir (a single folder or .zip).
+# import_source_glob = "~/Downloads/files-*.zip"
+# import_source_dir = "~/Downloads"
+# import_archive_dir = "~/Dropbox/Finance/Accounts/Pictet"
+
 # Self-to-self destination banks: printed-bank-name substring → account
 # segment (writer routes the leg to Assets:<segment>:<ccy>).
 # [settings.beneficiary_bank_map]

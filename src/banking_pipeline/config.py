@@ -171,6 +171,23 @@ class Settings(BaseSettings):
     # ledger, included by ``main.beancount``).
     property_ledger_path: Path = Path("data/property.beancount")
 
+    # Defaults for ``banking-pipeline import`` (the first pipeline stage:
+    # file raw downloads into a dated tree). ``import_archive_dir`` is the
+    # archive root the command files into as
+    # ``<root>/<year>/<account>/<YYYYMMDD>-<reference>.pdf``.
+    #
+    # The source is resolved in order: an explicit ``SOURCE`` argument, else
+    # ``import_source_glob`` (a glob — ``~`` allowed — selecting the import
+    # sources, typically the bank's periodic zip downloads, e.g.
+    # ``~/Downloads/files-*.zip``; every match is a source and they're filed
+    # as one batch, so a reference shared across two zips is disambiguated),
+    # else ``import_source_dir`` (a single incoming download folder or zip).
+    # When none is set the command errors. See
+    # :mod:`banking_pipeline.archive`.
+    import_source_glob: str | None = None
+    import_source_dir: Path | None = None
+    import_archive_dir: Path | None = None
+
     # Excess reportable income (ERI) table for accumulating reporting
     # funds (per-unit deemed income + equalisation, by fund period).
     # Defaults to ``data/eri.toml`` when present. See

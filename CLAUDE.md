@@ -65,7 +65,7 @@ PDF ──► extractors/pdf_text.py ──► RawDocument
                     classifiers/language.py   (en | es | unknown)
                                       │
                                       ▼
-                    classifiers/bank.py       (pictet | unknown)
+                    classifiers/bank.py       (pictet | vanguard_uk | unknown)
                                       │
                                       ▼
                     classifiers/rules.py      (doctype, per-bank ruleset)
@@ -76,6 +76,11 @@ PDF ──► extractors/pdf_text.py ──► RawDocument
                                       ▼
                     writer/ ──► beancount text
 ```
+
+Upstream of this per-document flow, the `import` command files raw PDFs
+(a folder or the bank's `.zip`) into the dated `<year>/<account>/` archive
+these stages then read — it reuses the language→bank→doctype classifier but
+stops before field extraction (see the `import` CLI entry below).
 
 Three facade classifiers live in `classifiers/hybrid.py`:
 `HybridClassifier` (single-stage rules+LLM), `TwoStageClassifier`
@@ -99,7 +104,8 @@ src/banking_pipeline/
 │   ├── _main.py          Shared hub: ``app`` + cross-cutting helpers
 │   │                       (logging, statement discovery, commodity /
 │   │                       property / sidecar loading, bean-check runner)
-│   ├── ingest.py         ingest | dump-transactions | dedup-check | revolut
+│   ├── ingest.py         import | ingest | dump-transactions |
+│   │                       dedup-check | revolut
 │   ├── inspect.py        classify | scan | extract-text
 │   ├── statements.py     prices | balances | portfolio | property
 │   ├── reports.py        concentration | net-worth | allocation |
@@ -118,6 +124,22 @@ src/banking_pipeline/
 │                         / .is_tax_exempt — the ISA tax-shelter flag)
 ├── config.py           Pydantic settings (env_prefix=BANKPIPE_)
 ├── batch_config.py     `banking-pipeline.toml` schema for `rebuild`
+├── archive.py          Files raw bank PDFs into a dated archive tree (the
+│                         `import` command — the first pipeline stage). Source
+│                         is a folder or a `.zip` (`source_pdfs` extracts the
+│                         latter to a temp dir). Bank + doctype come from the
+│                         shared `LayeredClassifier`;
+│                         only the account / per-document reference /
+│                         publication date are scraped, by a bank parser
+│                         keyed on `BankId` in `FIELD_PARSERS` (Pictet EN+ES
+│                         today). Moves each to
+│                         `<root>/<year>/<account>/<YYYYMMDD>-<ref>.pdf`;
+│                         when two docs in a batch share a reference (e.g. an
+│                         invoice + its debit-of-fees advice) each gets a
+│                         title-cased doctype suffix so neither clobbers the
+│                         other. Uses the pypdfium2 extractor — the
+│                         standalone precursor used PyMuPDF/fitz (AGPL,
+│                         banned here)
 ├── bean_check.py       Shells out to the bean-check binary
 ├── reconcile.py        Statement-balance reconciliation: parses
 │                         bean-check assertion failures into a drift
@@ -609,6 +631,29 @@ and reads the JSONL sidecars, not the ledger:
   collide as suspected double-counts — `EXACT` (same ref → same
   document ingested twice) vs `POSSIBLE` (review). `--output` writes
   a CSV; exits nonzero when any duplicate is found.
+- `import` — the first pipeline stage: file a folder of raw downloads (or a
+  `.zip` of them — the bank's bulk-download shape, extracted to a temp dir
+  transparently) into a dated archive tree. Bank + doctype come from the
+  shared `LayeredClassifier` (same classifier the rest of the pipeline
+  uses); the
+  account number, per-document reference and publication date are scraped to
+  build `<dest>/<year>/<account>/<YYYYMMDD>-<reference>.pdf`. When two docs
+  in the batch share a reference (e.g. an invoice and its debit-of-fees
+  advice — both quote the same `N° de transacción`), each is filed with a
+  title-cased doctype suffix (`…-<reference>-<DocType>.pdf`) so neither
+  clobbers the other; a unique reference keeps the bare name. A destination
+  that already exists is left untouched (never overwritten); a PDF the
+  classifier can't place (or a bank with no filing parser) is reported as
+  unmatched and skipped; an unreadable PDF is reported and the run
+  continues. `--dry-run` prints the planned moves without touching disk.
+  `source` / `dest` are positional; the source falls back (in order) to
+  `import_source_glob` (a glob — `~` allowed — selecting several sources,
+  e.g. the bank's periodic `~/Downloads/files-*.zip`; every match is filed
+  as **one batch**, so a reference shared across two zips is still
+  disambiguated) then `import_source_dir`, and `dest` to
+  `import_archive_dir`. Pictet (both locales) is recognised today via the
+  `archive.FIELD_PARSERS` registry (keyed on `BankId`); a second bank is a
+  data-only addition.
 - `classify` — just print the language/bank/doctype verdict.
 - `scan` — walk a directory; one row per PDF; `--json` for JSONL.
 - `extract-text` — dump PDF text; `--show-rules` shows which rules
@@ -846,6 +891,14 @@ advice — verify against HMRC guidance.
   off-ledger residential-property table; `property_ledger_path` (defaults
   to `data/property.beancount`) is the generated ledger the `property`
   command writes. Both consumed by `property` and the valuation reports.
+- `import_source_glob` / `import_source_dir` / `import_archive_dir` (all
+  default unset) — the `import` command's source and destination (archive
+  root). The source is resolved in order: positional `source` arg →
+  `import_source_glob` (a glob, `~` allowed, selecting several sources —
+  e.g. `~/Downloads/files-*.zip`, the bank's periodic zips — filed as one
+  batch) → `import_source_dir` (a single folder or zip). The positional
+  `dest` arg overrides `import_archive_dir`. When no source or no archive
+  resolves, the command errors.
 - Batch config: `banking-pipeline.toml` (gitignored, schema in
   `batch_config.py`). Carries personal Dropbox/iCloud paths, plus
   `[post.reports]`, `[post.reconcile]` (both off by default) and
