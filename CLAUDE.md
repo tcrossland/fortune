@@ -641,7 +641,10 @@ and reads the JSONL sidecars, not the ledger:
   in the batch share a reference (e.g. an invoice and its debit-of-fees
   advice — both quote the same `N° de transacción`), each is filed with a
   title-cased doctype suffix (`…-<reference>-<DocType>.pdf`) so neither
-  clobbers the other; a unique reference keeps the bare name. A destination
+  clobbers the other; a unique reference keeps the bare name. Interest
+  advices are always suffixed with their currency (`…-Interest <CCY>.pdf` /
+  `…-Interest scale <CCY>.pdf`) — Pictet's payment + scale pair per currency
+  share a reference, and the currency keeps the period's advices distinct. A destination
   that already exists is left untouched (never overwritten); a PDF the
   classifier can't place (or a bank with no filing parser) is reported as
   unmatched and skipped; an unreadable PDF is reported and the run

@@ -37,12 +37,15 @@ def test_pictet_filing_fields_on_real_fixtures(fixtures_dir: Path) -> None:
         "P-999999.999",
         "1129889269",
         date(2025, 10, 21),
+        "EUR",
     )
+    # A switch advice has no current-account leg → no currency.
     es = (fixtures_dir / "es" / "pictet" / "switch_salida.txt").read_text()
     assert archive.pictet_filing_fields(es) == (
         "P-999999.999",
         "889193120",
         date(2023, 8, 1),
+        None,
     )
     # On an invoice the transaction number sits on its own line, away from
     # the invoice number (80) and date — the reference must be the txn no.
@@ -51,6 +54,24 @@ def test_pictet_filing_fields_on_real_fixtures(fixtures_dir: Path) -> None:
         "P-999999.999",
         "1177002958",
         date(2026, 3, 23),
+        None,
+    )
+
+
+def test_pictet_filing_fields_reads_interest_currency(fixtures_dir: Path) -> None:
+    payment = (fixtures_dir / "en" / "pictet" / "interest_payment.txt").read_text()
+    assert archive.pictet_filing_fields(payment) == (
+        "P-999999.999",
+        "1180262700",
+        date(2026, 3, 31),
+        "GBP",
+    )
+    scale = (fixtures_dir / "en" / "pictet" / "interest_scale.txt").read_text()
+    assert archive.pictet_filing_fields(scale) == (
+        "P-999999.999",
+        "1180263452",
+        date(2026, 3, 31),
+        "USD",
     )
 
 
@@ -74,6 +95,36 @@ def test_destination_for_bare_and_disambiguated() -> None:
     )
     assert archive.destination_for(Path("/arch"), fees, disambiguate=True).name == (
         "20240101-5-DebitOfFees.pdf"
+    )
+
+
+def test_destination_for_interest_uses_currency_suffix() -> None:
+    pay = archive.FilingInfo(
+        "P-999999.999",
+        "1180262700",
+        date(2026, 3, 31),
+        DocumentType.INTEREST_PAYMENT,
+        currency="GBP",
+    )
+    assert archive.destination_for(Path("/arch"), pay, disambiguate=True).name == (
+        "20260331-1180262700-Interest GBP.pdf"
+    )
+    scale = archive.FilingInfo(
+        "P-999999.999",
+        "1180264049",
+        date(2026, 3, 31),
+        DocumentType.INTEREST_SCALE,
+        currency="HKD",
+    )
+    assert archive.destination_for(Path("/arch"), scale, disambiguate=True).name == (
+        "20260331-1180264049-Interest scale HKD.pdf"
+    )
+    # Falls back to the doctype label when an interest advice has no currency.
+    nocur = archive.FilingInfo(
+        "P-1", "9", date(2026, 1, 1), DocumentType.INTEREST_PAYMENT
+    )
+    assert archive.destination_for(Path("/arch"), nocur, disambiguate=True).name == (
+        "20260101-9-InterestPayment.pdf"
     )
 
 
@@ -233,6 +284,36 @@ def test_import_disambiguates_shared_reference(
     # The unique third document keeps the bare name.
     assert (dest / "2025" / "P-999999.999" / "20251021-1129889269.pdf").is_file()
     assert "3 filed, 0 skipped, 0 unmatched, 0 error(s)." in result.output
+
+
+def test_import_interest_advices_get_currency_suffix(
+    tmp_path: Path, fixtures_dir: Path
+) -> None:
+    """Interest payment + scale are always filed with a currency suffix,
+    matching the archive convention (``Interest GBP`` / ``Interest scale
+    USD``), even though their references differ (no collision)."""
+
+    src = tmp_path / "downloads"
+    src.mkdir()
+    shutil.copy(
+        fixtures_dir / "en" / "pictet" / "interest_payment.txt", src / "pay.pdf"
+    )
+    shutil.copy(
+        fixtures_dir / "en" / "pictet" / "interest_scale.txt", src / "scale.pdf"
+    )
+    dest = tmp_path / "archive"
+
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["import", str(src), str(dest)])
+
+    assert result.exit_code == 0, result.output
+    base = dest / "2026" / "P-999999.999"
+    assert (base / "20260331-1180262700-Interest GBP.pdf").is_file()
+    assert (base / "20260331-1180263452-Interest scale USD.pdf").is_file()
+    # Never the bare names.
+    assert not (base / "20260331-1180262700.pdf").exists()
+    assert not (base / "20260331-1180263452.pdf").exists()
+    assert "2 filed, 0 skipped, 0 unmatched, 0 error(s)." in result.output
 
 
 def test_import_uses_config_defaults(

@@ -26,6 +26,13 @@ batch the bare ``<date>-<ref>.pdf`` name would collide, so every member of
 the colliding group is filed with a title-cased doctype suffix
 (``<date>-<ref>-<DocType>.pdf``) instead. A reference that's unique in the
 batch keeps the bare name.
+
+Interest advices are a special case: Pictet issues an interest payment and
+an interest scale per currency that share a transaction number, so they
+always collide — and they're filed with a currency-bearing suffix
+(``-Interest <CCY>`` / ``-Interest scale <CCY>``) rather than the plain
+doctype, applied to every interest advice so the currency is always in the
+name.
 """
 
 from __future__ import annotations
@@ -49,10 +56,13 @@ from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.extractors import load_pdf
 from banking_pipeline.models import BankId, Classification, DocumentType
 
-# A bank parser pulls the three filing fields from the document text, or
-# returns ``None`` when they aren't present (so a misrouted document fails
-# closed rather than filing under a garbage name).
-FilingFields = tuple[str, str, date]  # (account, reference, published)
+# A bank parser pulls the filing fields from the document text, or returns
+# ``None`` when the required ones aren't present (so a misrouted document
+# fails closed rather than filing under a garbage name). ``currency`` is the
+# document's account currency when discernible (used in interest suffixes),
+# else ``None``.
+FilingFields = tuple[str, str, date, str | None]
+#                    (account, reference, published, currency)
 
 
 @dataclass(frozen=True)
@@ -63,6 +73,7 @@ class FilingInfo:
     reference: str
     published: date
     document_type: DocumentType
+    currency: str | None = None
 
 
 # Pictet prints the account on one header line and the per-document
@@ -81,10 +92,16 @@ _PICTET_PUBLISHED = re.compile(
     r"(?:Publication date|Fecha de publicaci.n)\s*:\s*"
     r"(\d{2})\.(\d{2})\.(\d{4})"
 )
+# The account currency, read from the current-account leg the advice quotes
+# (``Current account <acct>.00.<CCY>/Ordinary``) — present on both interest
+# locales and other current-account advices. ``None`` when absent (most
+# security advices); only interest filenames use it.
+_PICTET_CURRENCY = re.compile(r"Current account\b[^\n]*?\.00\.([A-Z]{3})/")
 
 
 def pictet_filing_fields(text: str) -> FilingFields | None:
-    """Scrape Pictet's account / reference / publication date from ``text``."""
+    """Scrape Pictet's account / reference / publication date (and the
+    account currency when present) from ``text``."""
 
     account = _PICTET_ACCOUNT.search(text)
     reference = _PICTET_REFERENCE.search(text)
@@ -92,10 +109,12 @@ def pictet_filing_fields(text: str) -> FilingFields | None:
     if account is None or reference is None or published is None:
         return None
     day, month, year = published.group(1, 2, 3)
+    currency = _PICTET_CURRENCY.search(text)
     return (
         account.group(1),
         reference.group(1),
         date(int(year), int(month), int(day)),
+        currency.group(1) if currency is not None else None,
     )
 
 
@@ -120,12 +139,13 @@ def filing_info(classification: Classification, text: str) -> FilingInfo | None:
     fields = parser(text)
     if fields is None:
         return None
-    account, reference, published = fields
+    account, reference, published, currency = fields
     return FilingInfo(
         account=account,
         reference=reference,
         published=published,
         document_type=classification.document_type,
+        currency=currency,
     )
 
 
@@ -134,6 +154,31 @@ def _doctype_suffix(doc_type: DocumentType) -> str:
     ``Factura``; ``debit_of_fees`` -> ``DebitOfFees``)."""
 
     return "".join(part.capitalize() for part in doc_type.value.split("_"))
+
+
+# Interest advices are filed with a currency-bearing suffix: Pictet issues an
+# interest payment + interest scale per currency that share a transaction
+# number (so the bare name collides), and the currency keeps a period's
+# several advices distinct and readable (``Interest GBP`` /
+# ``Interest scale HKD``). Maps each interest doctype to its label stem.
+_INTEREST_LABELS: dict[DocumentType, str] = {
+    DocumentType.INTEREST_PAYMENT: "Interest",
+    DocumentType.INTEREST_SCALE: "Interest scale",
+}
+
+
+def _suffix_label(info: FilingInfo) -> str:
+    """The filename suffix that distinguishes documents sharing a reference.
+
+    Interest advices carry their currency (``Interest GBP`` / ``Interest
+    scale HKD``); everything else uses the title-cased doctype. Falls back to
+    the doctype if an interest advice has no currency (shouldn't happen — the
+    current-account leg always names it)."""
+
+    label = _INTEREST_LABELS.get(info.document_type)
+    if label is not None and info.currency is not None:
+        return f"{label} {info.currency}"
+    return _doctype_suffix(info.document_type)
 
 
 def destination_for(
@@ -147,7 +192,7 @@ def destination_for(
 
     stem = f"{info.published:%Y%m%d}-{info.reference}"
     if disambiguate:
-        stem += f"-{_doctype_suffix(info.document_type)}"
+        stem += f"-{_suffix_label(info)}"
     return dest_root / f"{info.published:%Y}" / info.account / f"{stem}.pdf"
 
 
@@ -223,7 +268,13 @@ def file_documents(
             continue
         info = infos[pdf]
         key = (info.account, info.published, info.reference)
-        disambiguate = len(doctypes_by_key[key]) > 1
+        # Interest advices always carry a currency suffix (payment + scale
+        # share a reference, and the currency belongs in the name); other
+        # doctypes only when a reference is shared by more than one doctype.
+        disambiguate = (
+            info.document_type in _INTEREST_LABELS
+            or len(doctypes_by_key[key]) > 1
+        )
         dest = destination_for(dest_root, info, disambiguate=disambiguate)
         if dest.exists():
             plans.append(FilingPlan(pdf, dest, "skip"))
