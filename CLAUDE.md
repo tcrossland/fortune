@@ -130,14 +130,22 @@ src/banking_pipeline/
 │                         latter to a temp dir). Bank + doctype come from the
 │                         shared `LayeredClassifier`;
 │                         only the account / per-document reference /
-│                         publication date are scraped, by a bank parser
-│                         keyed on `BankId` in `FIELD_PARSERS` (Pictet EN+ES
-│                         today). Moves each to
-│                         `<root>/<year>/<account>/<YYYYMMDD>-<ref>.pdf`;
-│                         when two docs in a batch share a reference (e.g. an
-│                         invoice + its debit-of-fees advice) each gets a
+│                         publication date / as-of date are scraped, by a bank
+│                         parser keyed on `BankId` in `FIELD_PARSERS` (Pictet
+│                         EN+ES today). Two filing shapes: transaction advices
+│                         move to
+│                         `<root>/<year>/<account>/<YYYYMMDD>-<ref>.pdf` (when
+│                         two docs in a batch share a reference — e.g. an
+│                         invoice + its debit-of-fees advice — each gets a
 │                         title-cased doctype suffix so neither clobbers the
-│                         other. Uses the pypdfium2 extractor — the
+│                         other); periodic valuation statements (monthly /
+│                         quarterly / annual, both locales) carry no reference
+│                         so they file by their as-of date into the account's
+│                         `reports/` subfolder —
+│                         `<root>/<as-of-year>/<account>/reports/Valuation
+│                         <period> <YYYYMMDD>.pdf`, the convention the ingest /
+│                         valuation stages already glob. Uses the pypdfium2
+│                         extractor — the
 │                         standalone precursor used PyMuPDF/fitz (AGPL,
 │                         banned here)
 ├── bean_check.py       Shells out to the bean-check binary
@@ -636,15 +644,22 @@ and reads the JSONL sidecars, not the ledger:
   transparently) into a dated archive tree. Bank + doctype come from the
   shared `LayeredClassifier` (same classifier the rest of the pipeline
   uses); the
-  account number, per-document reference and publication date are scraped to
-  build `<dest>/<year>/<account>/<YYYYMMDD>-<reference>.pdf`. When two docs
+  account number, per-document reference, publication date and as-of date are
+  scraped to file each document. **Transaction advices** build
+  `<dest>/<year>/<account>/<YYYYMMDD>-<reference>.pdf`; when two docs
   in the batch share a reference (e.g. an invoice and its debit-of-fees
   advice — both quote the same `N° de transacción`), each is filed with a
   title-cased doctype suffix (`…-<reference>-<DocType>.pdf`) so neither
   clobbers the other; a unique reference keeps the bare name. Interest
   advices are always suffixed with their currency (`…-Interest <CCY>.pdf` /
   `…-Interest scale <CCY>.pdf`) — Pictet's payment + scale pair per currency
-  share a reference, and the currency keeps the period's advices distinct. A destination
+  share a reference, and the currency keeps the period's advices distinct.
+  **Periodic valuation statements** (monthly / quarterly / annual, both
+  locales) carry no transaction reference, so they file by their as-of
+  (period-end) date into the account's `reports/` subfolder —
+  `<dest>/<as-of-year>/<account>/reports/Valuation <period> <YYYYMMDD>.pdf`,
+  the convention the ingest / valuation stages already glob (the as-of date
+  makes the name unique per account, so statements are never disambiguated). A destination
   that already exists is left untouched (never overwritten); a PDF the
   classifier can't place (or a bank with no filing parser) is reported as
   unmatched and skipped; an unreadable PDF is reported and the run

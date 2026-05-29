@@ -31,9 +31,19 @@ from banking_pipeline.models import (
 # --- Pure helpers -----------------------------------------------------------
 
 
+def _advice_tuple(
+    fields: archive.ParsedFields | None,
+) -> tuple[str | None, str | None, date | None, str | None]:
+    """The advice-relevant fields of a parse (ignoring the statement-only
+    ``as_of``), for terse equality assertions."""
+
+    assert fields is not None
+    return (fields.account, fields.reference, fields.published, fields.currency)
+
+
 def test_pictet_filing_fields_on_real_fixtures(fixtures_dir: Path) -> None:
     en = (fixtures_dir / "en" / "pictet" / "subscription_notice.txt").read_text()
-    assert archive.pictet_filing_fields(en) == (
+    assert _advice_tuple(archive.pictet_filing_fields(en)) == (
         "P-999999.999",
         "1129889269",
         date(2025, 10, 21),
@@ -41,7 +51,7 @@ def test_pictet_filing_fields_on_real_fixtures(fixtures_dir: Path) -> None:
     )
     # A switch advice has no current-account leg → no currency.
     es = (fixtures_dir / "es" / "pictet" / "switch_salida.txt").read_text()
-    assert archive.pictet_filing_fields(es) == (
+    assert _advice_tuple(archive.pictet_filing_fields(es)) == (
         "P-999999.999",
         "889193120",
         date(2023, 8, 1),
@@ -50,7 +60,7 @@ def test_pictet_filing_fields_on_real_fixtures(fixtures_dir: Path) -> None:
     # On an invoice the transaction number sits on its own line, away from
     # the invoice number (80) and date — the reference must be the txn no.
     factura = (fixtures_dir / "es" / "pictet" / "factura.txt").read_text()
-    assert archive.pictet_filing_fields(factura) == (
+    assert _advice_tuple(archive.pictet_filing_fields(factura)) == (
         "P-999999.999",
         "1177002958",
         date(2026, 3, 23),
@@ -60,14 +70,14 @@ def test_pictet_filing_fields_on_real_fixtures(fixtures_dir: Path) -> None:
 
 def test_pictet_filing_fields_reads_interest_currency(fixtures_dir: Path) -> None:
     payment = (fixtures_dir / "en" / "pictet" / "interest_payment.txt").read_text()
-    assert archive.pictet_filing_fields(payment) == (
+    assert _advice_tuple(archive.pictet_filing_fields(payment)) == (
         "P-999999.999",
         "1180262700",
         date(2026, 3, 31),
         "GBP",
     )
     scale = (fixtures_dir / "en" / "pictet" / "interest_scale.txt").read_text()
-    assert archive.pictet_filing_fields(scale) == (
+    assert _advice_tuple(archive.pictet_filing_fields(scale)) == (
         "P-999999.999",
         "1180263452",
         date(2026, 3, 31),
@@ -77,6 +87,32 @@ def test_pictet_filing_fields_reads_interest_currency(fixtures_dir: Path) -> Non
 
 def test_pictet_filing_fields_none_when_missing() -> None:
     assert archive.pictet_filing_fields("a grocery receipt, no header") is None
+
+
+def test_pictet_filing_fields_scrapes_statement_as_of(fixtures_dir: Path) -> None:
+    """A monthly statement has no transaction reference but does carry an
+    ``As at`` period-end date — the field statements file by."""
+
+    text = (fixtures_dir / "en" / "pictet" / "monthly_statement.txt").read_text()
+    fields = archive.pictet_filing_fields(text)
+    assert fields is not None
+    assert fields.account == "K-123456.789"
+    assert fields.reference is None
+    assert fields.as_of == date(2025, 12, 31)
+
+
+def test_pictet_as_of_parses_both_locales() -> None:
+    # English "As at <day> <Month> <year>".
+    assert archive._pictet_as_of("As at 30 April 2026 (GBP)") == date(2026, 4, 30)
+    # Spanish monthly "AL <day> <Mes> <year>" (case-insensitive).
+    assert archive._pictet_as_of("AL 31 ENERO 2026") == date(2026, 1, 31)
+    # Spanish quarterly/annual banner range — the period *end* is what "AL"
+    # precedes, so the range start is ignored.
+    banner = "ESTADO FINANCIERO DEL 1 JULIO 2025 AL 30 SEPTIEMBRE 2025"
+    assert archive._pictet_as_of(banner) == date(2025, 9, 30)
+    # An anonymised placeholder day (99) is out of range → None, not a raise.
+    assert archive._pictet_as_of("As at 99 December 9999") is None
+    assert archive._pictet_as_of("nothing date-like here") is None
 
 
 def test_destination_for_bare_and_disambiguated() -> None:
@@ -128,6 +164,40 @@ def test_destination_for_interest_uses_currency_suffix() -> None:
     )
 
 
+def test_destination_for_statement_uses_reports_subfolder() -> None:
+    """A periodic statement files by as-of date into ``reports/``, named in
+    Pictet's ``Valuation <period> <YYYYMMDD>`` convention — not by reference,
+    and never disambiguated."""
+
+    info = archive.FilingInfo(
+        account="K-999999.999",
+        reference=None,
+        published=date(2026, 5, 4),  # publication date is ignored for statements
+        document_type=DocumentType.MONTHLY_STATEMENT,
+        as_of=date(2026, 4, 30),
+        period="monthly",
+    )
+    assert archive.destination_for(Path("/arch"), info) == Path(
+        "/arch/2026/K-999999.999/reports/Valuation monthly 20260430.pdf"
+    )
+    # disambiguate is moot for statements — the as-of name is already unique.
+    assert (
+        archive.destination_for(Path("/arch"), info, disambiguate=True)
+        == archive.destination_for(Path("/arch"), info)
+    )
+    quarterly = archive.FilingInfo(
+        account="P-999999.999",
+        reference=None,
+        published=None,
+        document_type=DocumentType.ESTADO_TRIMESTRAL,
+        as_of=date(2026, 3, 31),
+        period="quarterly",
+    )
+    assert archive.destination_for(Path("/arch"), quarterly).name == (
+        "Valuation quarterly 20260331.pdf"
+    )
+
+
 def _classification(doc_type: DocumentType, bank: BankId | None) -> Classification:
     return Classification(
         document_type=doc_type,
@@ -148,6 +218,21 @@ def test_filing_info_combines_classifier_and_fields(fixtures_dir: Path) -> None:
     )
     assert info == archive.FilingInfo(
         "P-999999.999", "1177002958", date(2026, 3, 23), DocumentType.FACTURA
+    )
+
+
+def test_filing_info_statement_carries_as_of_and_period(fixtures_dir: Path) -> None:
+    text = (fixtures_dir / "en" / "pictet" / "monthly_statement.txt").read_text()
+    info = archive.filing_info(
+        _classification(DocumentType.MONTHLY_STATEMENT, BankId.PICTET), text
+    )
+    assert info is not None
+    assert info.is_statement
+    assert (info.account, info.as_of, info.period, info.reference) == (
+        "K-123456.789",
+        date(2025, 12, 31),
+        "monthly",
+        None,
     )
 
 
@@ -313,6 +398,36 @@ def test_import_interest_advices_get_currency_suffix(
     # Never the bare names.
     assert not (base / "20260331-1180262700.pdf").exists()
     assert not (base / "20260331-1180263452.pdf").exists()
+    assert "2 filed, 0 skipped, 0 unmatched, 0 error(s)." in result.output
+
+
+def test_import_files_statement_into_reports_subfolder(
+    tmp_path: Path, fixtures_dir: Path
+) -> None:
+    """A periodic valuation statement (no transaction reference) files by its
+    as-of date into the account's ``reports/`` subfolder, alongside an advice
+    filed the usual way in the same batch."""
+
+    src = tmp_path / "downloads"
+    src.mkdir()
+    shutil.copy(
+        fixtures_dir / "en" / "pictet" / "monthly_statement.txt", src / "stmt.pdf"
+    )
+    shutil.copy(
+        fixtures_dir / "en" / "pictet" / "subscription_notice.txt", src / "sub.pdf"
+    )
+    dest = tmp_path / "archive"
+
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["import", str(src), str(dest)])
+
+    assert result.exit_code == 0, result.output
+    assert (
+        dest / "2025" / "K-123456.789" / "reports" / "Valuation monthly 20251231.pdf"
+    ).is_file()
+    # The advice in the same batch still files the reference way.
+    assert (dest / "2025" / "P-999999.999" / "20251021-1129889269.pdf").is_file()
+    assert not (src / "stmt.pdf").exists()
     assert "2 filed, 0 skipped, 0 unmatched, 0 error(s)." in result.output
 
 

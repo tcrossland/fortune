@@ -116,6 +116,14 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Bookkeeping & accounting
 
+- **`import` files periodic statements** — the `import` command now files
+  Pictet monthly / quarterly / annual valuation statements (both locales),
+  not just transaction advices. Statements carry no transaction reference,
+  so they file by their as-of (period-end) date into the account's
+  `reports/` subfolder — `<year>/<account>/reports/Valuation <period>
+  <YYYYMMDD>.pdf`, the convention the ingest / valuation stages already
+  glob. Previously they were reported as unmatched and left for manual
+  filing. (`archive.py`)
 - **Aggregate-aware `close` directives** — close emission moved off the
   per-batch `ingest` path (which couldn't see a later source re-acquiring
   a wound-down holding, breaking bean-check on the re-buy) and onto the

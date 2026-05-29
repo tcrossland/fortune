@@ -2,9 +2,16 @@
 
 This is the first stage of the pipeline: it takes a folder (or a ``.zip``,
 the shape the bank's bulk download arrives in) of freshly downloaded PDFs
-and files each into ``<root>/<year>/<account>/<YYYYMMDD>-<reference>.pdf`` so
-the later ingest / report stages have a stable, organised source tree to
-read from.
+and files each into the archive tree so the later ingest / report stages
+have a stable, organised source tree to read from. Two filing shapes:
+
+* **Transaction advices** (buys, sells, FX, interest, …) file by their
+  per-document reference: ``<root>/<year>/<account>/<YYYYMMDD>-<reference>.pdf``.
+* **Periodic valuation statements** (monthly / quarterly / annual, both
+  locales) carry no transaction reference, so they file by their as-of
+  (period-end) date into the account's ``reports/`` subfolder:
+  ``<root>/<as-of-year>/<account>/reports/Valuation <period> <YYYYMMDD>.pdf``
+  — the convention the ingest / valuation stages already glob for.
 
 Bank and document type come from the shared :class:`LayeredClassifier` (the
 same language → bank → doctype classifier the rest of the pipeline uses), so
@@ -56,24 +63,53 @@ from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.extractors import load_pdf
 from banking_pipeline.models import BankId, Classification, DocumentType
 
-# A bank parser pulls the filing fields from the document text, or returns
-# ``None`` when the required ones aren't present (so a misrouted document
-# fails closed rather than filing under a garbage name). ``currency`` is the
-# document's account currency when discernible (used in interest suffixes),
-# else ``None``.
-FilingFields = tuple[str, str, date, str | None]
-#                    (account, reference, published, currency)
+
+@dataclass(frozen=True)
+class ParsedFields:
+    """The raw filing fields a bank parser scrapes from a document's text.
+
+    A parser returns ``None`` only when the text isn't its bank's document at
+    all (no account header); every other field is optional, because different
+    document shapes carry different ones. A transaction advice has a
+    ``reference`` + ``published`` date; a periodic valuation statement has an
+    ``as_of`` (period-end) date instead. :func:`filing_info` validates that
+    the right fields are present for the document's shape. ``currency`` is the
+    account currency when discernible (used in interest suffixes).
+    """
+
+    account: str | None
+    reference: str | None = None
+    published: date | None = None
+    currency: str | None = None
+    as_of: date | None = None
 
 
 @dataclass(frozen=True)
 class FilingInfo:
-    """Everything needed to file one document into the archive tree."""
+    """Everything needed to file one document into the archive tree.
+
+    Two filing shapes share this struct. A **transaction advice** carries a
+    ``reference`` + ``published`` date and files to
+    ``<year>/<account>/<date>-<reference>.pdf``. A **periodic valuation
+    statement** carries an ``as_of`` date + ``period`` instead and files to
+    ``<year>/<account>/reports/Valuation <period> <as-of>.pdf`` —
+    :attr:`is_statement` tells them apart.
+    """
 
     account: str
-    reference: str
-    published: date
+    reference: str | None
+    published: date | None
     document_type: DocumentType
     currency: str | None = None
+    as_of: date | None = None
+    period: str | None = None
+
+    @property
+    def is_statement(self) -> bool:
+        """True for a periodic valuation statement (filed by as-of date into
+        ``reports/``), false for a transaction advice."""
+
+        return self.period is not None
 
 
 # Pictet prints the account on one header line and the per-document
@@ -98,30 +134,97 @@ _PICTET_PUBLISHED = re.compile(
 # security advices); only interest filenames use it.
 _PICTET_CURRENCY = re.compile(r"Current account\b[^\n]*?\.00\.([A-Z]{3})/")
 
+# Periodic valuation statements print their period-end (``as-of``) date in
+# prose: English ``As at <day> <Month> <year>`` (also on the cover as ``As at
+# <day> <Month> <year> (CCY)``), Spanish ``AL <day> <Mes> <year>``. The
+# Spanish pattern also catches the *end* of a quarterly/annual banner range
+# (``ESTADO FINANCIERO DEL <start> AL <end>``): ``AL`` only precedes the end
+# date, so the first match is the period end. Month names map per locale.
+_EN_MONTH_NAMES = (
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+)
+_ES_MONTH_NAMES = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)
+_EN_MONTHS = {name: n for n, name in enumerate(_EN_MONTH_NAMES, start=1)}
+_ES_MONTHS = {name: n for n, name in enumerate(_ES_MONTH_NAMES, start=1)}
+_EN_AS_AT = re.compile(r"As at\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})", re.IGNORECASE)
+_ES_AL = re.compile(r"\bAL\s+(\d{1,2})\s+([A-Za-zÁÉÍÓÚáéíóúñ]+)\s+(\d{4})", re.IGNORECASE)
 
-def pictet_filing_fields(text: str) -> FilingFields | None:
-    """Scrape Pictet's account / reference / publication date (and the
-    account currency when present) from ``text``."""
+
+def _pictet_as_of(text: str) -> date | None:
+    """The period-end date of a Pictet valuation statement, or ``None``.
+
+    Tries the English ``As at`` phrasing first, then the Spanish ``AL``; an
+    unrecognised month name or an out-of-range day (e.g. an anonymised ``99``
+    placeholder) yields ``None`` rather than raising."""
+
+    en = _EN_AS_AT.search(text)
+    if en is not None:
+        day, name, year = en.group(1, 2, 3)
+        month = _EN_MONTHS.get(name.lower())
+    else:
+        es = _ES_AL.search(text)
+        if es is None:
+            return None
+        day, name, year = es.group(1, 2, 3)
+        month = _ES_MONTHS.get(name.lower())
+    if month is None:
+        return None
+    try:
+        return date(int(year), month, int(day))
+    except ValueError:
+        return None
+
+
+def pictet_filing_fields(text: str) -> ParsedFields | None:
+    """Scrape Pictet's filing fields from ``text``, or ``None`` when the text
+    carries no account header (not a Pictet document).
+
+    Every field but the account is optional: a transaction advice yields a
+    ``reference`` + ``published`` date; a periodic valuation statement yields
+    an ``as_of`` date instead. :func:`filing_info` enforces which are required
+    for the document's shape."""
 
     account = _PICTET_ACCOUNT.search(text)
+    if account is None:
+        return None
     reference = _PICTET_REFERENCE.search(text)
     published = _PICTET_PUBLISHED.search(text)
-    if account is None or reference is None or published is None:
-        return None
-    day, month, year = published.group(1, 2, 3)
     currency = _PICTET_CURRENCY.search(text)
-    return (
-        account.group(1),
-        reference.group(1),
-        date(int(year), int(month), int(day)),
-        currency.group(1) if currency is not None else None,
+    pub_date: date | None = None
+    if published is not None:
+        day, month, year = published.group(1, 2, 3)
+        pub_date = date(int(year), int(month), int(day))
+    return ParsedFields(
+        account=account.group(1),
+        reference=reference.group(1) if reference is not None else None,
+        published=pub_date,
+        currency=currency.group(1) if currency is not None else None,
+        as_of=_pictet_as_of(text),
     )
 
 
 # Filing-field parsers keyed by the classifier's bank verdict. Add a bank by
 # registering its parser here (and the classifier already knowing the bank).
-FIELD_PARSERS: dict[BankId, Callable[[str], FilingFields | None]] = {
+FIELD_PARSERS: dict[BankId, Callable[[str], ParsedFields | None]] = {
     BankId.PICTET: pictet_filing_fields,
+}
+
+# Periodic valuation statements file differently from transaction advices:
+# they carry no transaction reference, so they're keyed on the statement's
+# as-of (period-end) date and filed into a ``reports/`` subfolder, named in
+# Pictet's own convention — ``Valuation <period> <YYYYMMDD>.pdf``. Maps each
+# periodic-statement doctype (both locales) to its period word.
+_STATEMENT_PERIODS: dict[DocumentType, str] = {
+    DocumentType.MONTHLY_STATEMENT: "monthly",
+    DocumentType.QUARTERLY_STATEMENT: "quarterly",
+    DocumentType.ANNUAL_STATEMENT: "annual",
+    DocumentType.ESTADO_MENSUAL: "monthly",
+    DocumentType.ESTADO_TRIMESTRAL: "quarterly",
+    DocumentType.ESTADO_ANUAL: "annual",
 }
 
 
@@ -129,7 +232,10 @@ def filing_info(classification: Classification, text: str) -> FilingInfo | None:
     """Combine the classifier verdict with the scraped fields, or ``None``.
 
     ``None`` when no bank was identified, the bank has no filing parser, or
-    the parser couldn't find the fields — the document is then left unfiled.
+    the required fields for the document's shape are missing — the document is
+    then left unfiled. A periodic valuation statement needs an account + an
+    as-of date; a transaction advice needs an account + a reference +
+    publication date.
     """
 
     bank = classification.bank.bank if classification.bank else BankId.UNKNOWN
@@ -137,15 +243,32 @@ def filing_info(classification: Classification, text: str) -> FilingInfo | None:
     if parser is None:
         return None
     fields = parser(text)
-    if fields is None:
+    if fields is None or fields.account is None:
         return None
-    account, reference, published, currency = fields
+    doc_type = classification.document_type
+    period = _STATEMENT_PERIODS.get(doc_type)
+    if period is not None:
+        # Periodic valuation statement — keyed on the as-of date, no reference.
+        if fields.as_of is None:
+            return None
+        return FilingInfo(
+            account=fields.account,
+            reference=None,
+            published=fields.published,
+            document_type=doc_type,
+            currency=fields.currency,
+            as_of=fields.as_of,
+            period=period,
+        )
+    # Transaction advice — keyed on the reference + publication date.
+    if fields.reference is None or fields.published is None:
+        return None
     return FilingInfo(
-        account=account,
-        reference=reference,
-        published=published,
-        document_type=classification.document_type,
-        currency=currency,
+        account=fields.account,
+        reference=fields.reference,
+        published=fields.published,
+        document_type=doc_type,
+        currency=fields.currency,
     )
 
 
@@ -186,10 +309,20 @@ def destination_for(
 ) -> Path:
     """The archive path a document with ``info`` files to under ``dest_root``.
 
-    With ``disambiguate`` the doctype is appended to the stem so two
-    documents sharing a reference don't claim the same name.
+    A periodic valuation statement files into the account's ``reports/``
+    subfolder under its as-of year, named ``Valuation <period> <YYYYMMDD>.pdf``
+    (the as-of date makes it unique per account, so ``disambiguate`` is moot).
+    A transaction advice files to ``<pub-year>/<account>/<date>-<ref>.pdf``;
+    with ``disambiguate`` the doctype is appended to the stem so two documents
+    sharing a reference don't claim the same name.
     """
 
+    if info.is_statement:
+        assert info.as_of is not None  # guaranteed by filing_info for statements
+        stem = f"Valuation {info.period} {info.as_of:%Y%m%d}"
+        return (
+            dest_root / f"{info.as_of:%Y}" / info.account / "reports" / f"{stem}.pdf"
+        )
     stem = f"{info.published:%Y%m%d}-{info.reference}"
     if disambiguate:
         stem += f"-{_suffix_label(info)}"
@@ -253,10 +386,14 @@ def file_documents(
 
     # Pass 2: a (account, date, reference) claimed by more than one distinct
     # doctype is a within-batch collision — its members file with a suffix.
+    # Statements don't participate (no reference; their as-of name is unique).
     doctypes_by_key: dict[tuple[str, date, str], set[DocumentType]] = defaultdict(
         set
     )
     for info in infos.values():
+        if info.is_statement:
+            continue
+        assert info.published is not None and info.reference is not None
         key = (info.account, info.published, info.reference)
         doctypes_by_key[key].add(info.document_type)
 
@@ -267,14 +404,18 @@ def file_documents(
             plans.append(early[pdf])
             continue
         info = infos[pdf]
-        key = (info.account, info.published, info.reference)
         # Interest advices always carry a currency suffix (payment + scale
         # share a reference, and the currency belongs in the name); other
-        # doctypes only when a reference is shared by more than one doctype.
-        disambiguate = (
-            info.document_type in _INTEREST_LABELS
-            or len(doctypes_by_key[key]) > 1
-        )
+        # advices only when a reference is shared by more than one doctype.
+        # Statements are never disambiguated.
+        disambiguate = False
+        if not info.is_statement:
+            assert info.published is not None and info.reference is not None
+            key = (info.account, info.published, info.reference)
+            disambiguate = (
+                info.document_type in _INTEREST_LABELS
+                or len(doctypes_by_key[key]) > 1
+            )
         dest = destination_for(dest_root, info, disambiguate=disambiguate)
         if dest.exists():
             plans.append(FilingPlan(pdf, dest, "skip"))
