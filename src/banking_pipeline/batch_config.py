@@ -10,6 +10,9 @@ Schema is intentionally narrow:
 
 * ``data_dir`` — where per-batch beancount outputs are written.
 * ``clean_glob`` — glob of stale outputs deleted before rebuild.
+* ``[import]`` — optional pre-ingest archive step (off by default):
+  files fresh downloads into the dated archive tree before the
+  ``[[sources]]`` globs read from it.
 * ``[[sources]]`` — one entry per ingest call. Each entry has a
   ``label`` (becomes ``<data_dir>/<label>.beancount``) and a
   ``glob`` resolved against the project root.
@@ -271,10 +274,54 @@ class PostSteps(BaseModel):
     check: CheckStep = Field(default_factory=CheckStep)
 
 
+class ImportStep(BaseModel):
+    """Configuration for the optional pre-ingest archive step.
+
+    Files raw bank downloads (a folder, a ``.zip``, or a glob of zips)
+    into the dated ``<year>/<account>/`` archive tree *before* the
+    ``[[sources]]`` ingest globs read from it — so a single ``rebuild``
+    takes fresh downloads all the way to a checked ledger. Mirrors the
+    standalone ``import`` command (see :mod:`banking_pipeline.archive`).
+
+    Off by default: most rebuilds re-run against an archive that's
+    already populated, and keeping import opt-in keeps ``rebuild``
+    idempotent — a re-run with the step off moves no files. When enabled,
+    the source / archive resolve from these fields first, then fall back
+    to the matching ``import_*`` settings (the same fallback the
+    ``import`` command uses), so a config that already sets those settings
+    only needs ``enabled = true`` here.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Whether to file fresh downloads into the archive before ingest.
+    enabled: bool = False
+
+    # Glob selecting one or more sources (folders / ``.zip`` files / loose
+    # PDFs), filed as one batch — e.g. the bank's periodic
+    # ``~/Downloads/files-*.zip``. ``~`` is expanded. Empty falls back to
+    # the ``import_source_glob`` setting. Takes precedence over
+    # :attr:`source_dir` when it resolves to anything.
+    source_glob: str = ""
+
+    # A single source folder or ``.zip``. ``~`` is expanded. Empty falls
+    # back to the ``import_source_dir`` setting. Used only when no
+    # source glob (here or in settings) is set.
+    source_dir: str = ""
+
+    # Archive root to file into. ``~`` is expanded. Empty falls back to
+    # the ``import_archive_dir`` setting.
+    archive_dir: str = ""
+
+    # Glob for files to file within each source (case-insensitive on the
+    # extension). Matches the ``import`` command's ``--pattern`` default.
+    pattern: str = "*.pdf"
+
+
 class BatchConfig(BaseModel):
     """Top-level rebuild config loaded from ``banking-pipeline.toml``."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
 
     # Where per-batch beancount outputs are written. Relative paths are
     # resolved against the project root by the caller.
@@ -284,6 +331,11 @@ class BatchConfig(BaseModel):
     # rebuilding. Defaults to ``"20*.beancount"`` to wipe every yearly
     # output. Empty string skips the cleanup step.
     clean_glob: str = "20*.beancount"
+
+    # Optional pre-ingest archive step. ``import`` is a Python keyword, so
+    # the attribute is ``import_step`` with the TOML key ``[import]`` as an
+    # alias (BatchConfig sets ``populate_by_name=True`` so both resolve).
+    import_step: ImportStep = Field(default_factory=ImportStep, alias="import")
 
     sources: list[Source] = Field(default_factory=list)
     post: PostSteps = Field(default_factory=PostSteps)

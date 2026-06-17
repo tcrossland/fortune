@@ -19,6 +19,7 @@ from banking_pipeline import (
     allocation as allocation_mod,
 )
 from banking_pipeline import (
+    archive,
     balances_extract,
     bean_check,
     beancount_writer,
@@ -42,6 +43,7 @@ from banking_pipeline import (
 )
 from banking_pipeline.batch_config import (
     BatchConfig,
+    ImportStep,
     ReportsStep,
     load_config,
 )
@@ -180,6 +182,88 @@ def reconcile(
         raise typer.Exit(code=1)
 
 
+def _missing_source_guard(
+    cfg: BatchConfig,
+    project_root: Path,
+    data_dir: Path,
+    stale: set[Path],
+) -> list[tuple[str, str, Path]]:
+    """Sources that match zero PDFs but whose output ``clean`` would delete.
+
+    Returns ``(label, glob, output_path)`` for each ``[[sources]]`` entry
+    in the data-loss case: the glob currently resolves to nothing *and*
+    its ``<label>.beancount`` is in the clean step's delete set — so a
+    rebuild would wipe a ledger it then can't regenerate. A source whose
+    output doesn't exist yet (a new, not-yet-populated year) is not in
+    ``stale`` and so is never flagged. An empty result means it's safe to
+    clean.
+    """
+
+    offenders: list[tuple[str, str, Path]] = []
+    for src in cfg.sources:
+        out_path = data_dir / f"{src.label}.beancount"
+        if out_path in stale and not src.expand(project_root):
+            offenders.append((src.label, src.glob, out_path))
+    return offenders
+
+
+def _run_import(cfg_import: ImportStep, *, dry_run: bool) -> None:
+    """File fresh downloads into the dated archive before ingest.
+
+    Resolves the source(s) and archive root from the ``[import]`` config,
+    falling back to the ``import_*`` settings exactly as the ``import``
+    command does, then runs the same ``archive.file_documents`` filing
+    pass. A no-op (warning, not an error) when no source or archive
+    resolves, so an ``enabled``-but-unconfigured step doesn't abort the
+    whole rebuild. Honours ``dry_run`` (plans are computed but no file
+    is moved).
+    """
+
+    archive_dir = (
+        Path(cfg_import.archive_dir).expanduser()
+        if cfg_import.archive_dir
+        else settings.import_archive_dir
+    )
+
+    # Source resolution mirrors the ``import`` command: a glob (config,
+    # then settings) wins over a single dir (config, then settings),
+    # since a glob is how the bank's periodic zips arrive.
+    if cfg_import.source_glob:
+        sources = archive.expand_source_glob(cfg_import.source_glob)
+    elif settings.import_source_glob:
+        sources = archive.expand_source_glob(settings.import_source_glob)
+    elif cfg_import.source_dir:
+        sources = [Path(cfg_import.source_dir).expanduser()]
+    elif settings.import_source_dir is not None:
+        sources = [settings.import_source_dir]
+    else:
+        sources = []
+
+    if not sources or archive_dir is None:
+        err_console.print(
+            "[yellow]import skipped:[/yellow] no source/archive resolved "
+            "([import] source_glob / source_dir / archive_dir or the "
+            "import_* settings)"
+        )
+        return
+
+    err_console.print(
+        f"[bold]import[/bold] {len(sources)} source(s) → {archive_dir}"
+    )
+
+    with archive.source_pdfs(sources, cfg_import.pattern) as pdfs:
+        plans = archive.file_documents(pdfs, archive_dir, dry_run=dry_run)
+
+    moved = sum(1 for p in plans if p.status == "move")
+    skipped = sum(1 for p in plans if p.status == "skip")
+    unmatched = sum(1 for p in plans if p.status == "no-match")
+    errored = sum(1 for p in plans if p.status == "error")
+    err_console.print(
+        f"  {moved} {'to file' if dry_run else 'filed'}, {skipped} skipped, "
+        f"{unmatched} unmatched, {errored} error(s)"
+    )
+
+
 def _run_reconcile(
     ledger: Path, balances: Path, out_dir: Path
 ) -> reconcile_mod.ReconReport | None:
@@ -283,6 +367,17 @@ def rebuild(
             "config setting.",
         ),
     ] = False,
+    allow_missing_sources: Annotated[
+        bool,
+        typer.Option(
+            "--allow-missing-sources",
+            help="Proceed even when a [[sources]] glob matches zero files "
+            "and the clean step would delete its existing output. Off by "
+            "default: a moved or unsynced source is the likely cause, and "
+            "cleaning would wipe data that can't be regenerated. Set this "
+            "only when you really do mean to drop that output.",
+        ),
+    ] = False,
     verbose: VerboseOpt = False,
 ) -> None:
     """End-to-end rebuild driven by ``banking-pipeline.toml``.
@@ -293,16 +388,23 @@ def rebuild(
     ``banking-pipeline.example.toml`` and edit for your local folder
     layout). The command:
 
+    0. (Optional, ``[import] enabled = true``) files fresh downloads
+       into the dated archive tree the ``[[sources]]`` globs read from.
     1. Deletes stale outputs under ``<data_dir>/<clean_glob>``.
     2. Runs ``ingest`` once per ``[[sources]]`` entry, writing to
        ``<data_dir>/<label>.beancount``.
     3. Runs ``prices`` / ``portfolio`` / ``balances`` / ``reports`` /
        ``reconcile`` / ``check`` according to the ``[post]`` toggles.
 
-    Globs that match zero files surface as a non-fatal warning rather
-    than an error — handy when a year-partition hasn't received any
-    documents yet. ``--dry-run`` previews every step without touching
-    the filesystem; useful before the first real run on a new config.
+    A source glob that matches zero files surfaces as a non-fatal
+    warning — handy when a year-partition hasn't received any documents
+    yet — *unless* the clean step would also delete that source's
+    existing output: that's the moved / unsynced-source case (a wiped
+    ledger the ingest step can't regenerate), so the rebuild aborts
+    before deleting anything. Pass ``--allow-missing-sources`` to drop
+    such outputs deliberately. ``--dry-run`` previews every step without
+    touching the filesystem; useful before the first real run on a new
+    config.
     """
 
     _configure_logging(verbose)
@@ -310,7 +412,13 @@ def rebuild(
     # as a parameter default is evaluated once at import, not per invocation.
     project_root = project_root or Path.cwd()
     cfg = load_config(project_root, config_path=config)
-    _do_rebuild(cfg, project_root=project_root, dry_run=dry_run, strict=strict)
+    _do_rebuild(
+        cfg,
+        project_root=project_root,
+        dry_run=dry_run,
+        strict=strict,
+        allow_missing_sources=allow_missing_sources,
+    )
 
 
 def _do_rebuild(
@@ -319,6 +427,7 @@ def _do_rebuild(
     project_root: Path,
     dry_run: bool,
     strict: bool = False,
+    allow_missing_sources: bool = False,
 ) -> None:
     """Execute (or preview) the steps described by ``cfg``."""
 
@@ -326,8 +435,46 @@ def _do_rebuild(
     if not dry_run:
         data_dir.mkdir(parents=True, exist_ok=True)
 
+    # --- Step 0: import ---------------------------------------------------
+    # Files fresh downloads into the dated archive *before* the ingest
+    # globs read from it, so one rebuild can run end to end. Off by
+    # default — keeping it opt-in keeps a plain rebuild idempotent (no
+    # file moves on a re-run).
+    if cfg.import_step.enabled:
+        _run_import(cfg.import_step, dry_run=dry_run)
+
     # --- Step 1: clean ----------------------------------------------------
     stale = list(cfg.stale_files(project_root))
+
+    # Guard against the data-loss footgun: a source that matches zero PDFs
+    # but whose existing output ``clean`` would delete (a moved or unsynced
+    # source — e.g. a relocated Dropbox folder). Cleaning then skipping
+    # would wipe a ledger that can't be regenerated. A genuinely-new empty
+    # year (output absent → not in ``stale``) is unaffected and still just
+    # warns in the ingest loop below.
+    offenders = _missing_source_guard(cfg, project_root, data_dir, set(stale))
+    if offenders:
+        listing = "\n".join(
+            f"  - {label!r} (glob={glob!r}) → would delete {out}"
+            for label, glob, out in offenders
+        )
+        if allow_missing_sources:
+            err_console.print(
+                "[yellow]warning:[/yellow] proceeding past sources that "
+                "matched zero files; their existing output will be "
+                f"deleted:\n{listing}"
+            )
+        else:
+            err_console.print(
+                "[red]error:[/red] these sources matched zero files, but "
+                "the clean step would delete their existing output and the "
+                "ingest step couldn't regenerate it (a moved or unsynced "
+                f"source is the likely cause):\n{listing}\n"
+                "Nothing has been deleted. Fix the source glob(s), or pass "
+                "--allow-missing-sources to clean and skip them anyway."
+            )
+            raise typer.Exit(code=2)
+
     if stale:
         for path in stale:
             err_console.print(

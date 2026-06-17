@@ -61,6 +61,28 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`portfolio-split`** — writes one independently-loadable beancount
+  ledger per bank account (each Pictet account, the Vanguard ISA) under
+  `<data_dir>/accounts/`, for opening a single account in isolation in
+  Fava. Each per-year ingest file is one bank+account stream, so the
+  command groups the sources by owning account and runs the same
+  open/close scan per group, emitting its own `option`s (operating
+  currency, booking method, and the root ledger's
+  `inferred_tolerance_default` directives so it balances standalone) and
+  `include`s of that account's per-year files plus `prices.beancount` —
+  not `balances.beancount`, whose assertions span every account.
+  (`portfolio_aggregate.generate_per_account`)
+- **`rebuild` missing-source guard** — `rebuild` now aborts before the
+  clean step when a `[[sources]]` glob matches zero files *and* the clean
+  step would delete that source's existing output (the moved / unsynced
+  source case — a wiped ledger the ingest step can't regenerate). A
+  genuinely-new empty year (no output yet) still just warns;
+  `--allow-missing-sources` overrides. (`cli/rebuild.py`)
+- **`[import]` rebuild step** — `rebuild` can optionally file fresh
+  downloads into the dated archive tree (the `import` command) before the
+  `[[sources]]` globs read from it, so one run goes from a download zip to
+  a checked ledger. Off by default to keep a plain rebuild idempotent.
+  (`batch_config.py`, `cli/rebuild.py`)
 - **`[post.reports]` rebuild step** — `rebuild` can now regenerate the
   analytical reports (income / concentration / net-worth / allocation /
   portfolio-allocation) into the configured `*_reports_dir`s as part of

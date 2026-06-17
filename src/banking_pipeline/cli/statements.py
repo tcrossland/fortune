@@ -364,3 +364,89 @@ def portfolio(
         f"Wrote {output_path} ({total} accounts; "
         f"operating_currency={','.join(operating_currency)})"
     )
+
+
+@app.command("portfolio-split")
+def portfolio_split(
+    data_dir: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Directory containing per-year *.beancount ingest output.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--output-dir",
+            "-o",
+            help="Directory for the per-account ledgers. Defaults to "
+            "``<data_dir>/accounts``.",
+        ),
+    ] = None,
+    operating_currency: Annotated[
+        list[str],
+        typer.Option(
+            "--operating-currency",
+            help="Currency emitted as ``option \"operating_currency\" \"<ccy>\"`` "
+            "at the top of each per-account ledger. Pass multiple times for "
+            "a multi-currency view; defaults to ``GBP``.",
+        ),
+    ] = ["GBP"],  # noqa: B006 — Typer's documented list-option default; not mutated
+    booking_method: Annotated[
+        str,
+        typer.Option(
+            "--booking-method",
+            help="Inventory-reduction policy on sells (``FIFO`` default, "
+            "``LIFO`` / ``AVERAGE`` / ``STRICT`` / ``NONE``). Pass an empty "
+            "string to omit the directive.",
+        ),
+    ] = "FIFO",
+    root_ledger: Annotated[
+        Path,
+        typer.Option(
+            "--root-ledger",
+            help="Ledger to copy ``inferred_tolerance_default`` options "
+            "from, so each per-account file balances standalone under the "
+            "same rounding tolerances. Defaults to ``main.beancount``; "
+            "missing-file or no-tolerance is a no-op.",
+        ),
+    ] = Path("main.beancount"),
+    verbose: VerboseOpt = False,
+) -> None:
+    """Write one independently-loadable ledger per bank account.
+
+    Groups the per-year ingest output by owning account (each Pictet
+    account, the Vanguard ISA) and writes ``<account>.beancount`` for each
+    under ``--output-dir`` — its own options, opens, closes, and includes
+    of that account's per-year files plus ``prices.beancount``. Intended
+    for opening a single account in isolation in Fava. ``balances.beancount``
+    is not included (its assertions span every account, so an isolated
+    ledger would fail bean-check on accounts it doesn't open).
+
+    Per-currency rounding tolerances are copied from ``--root-ledger``
+    (``main.beancount``) so each file balances on its own."""
+
+    _configure_logging(verbose)
+    commodities = _resolve_commodities()
+
+    written = portfolio_aggregate.generate_per_account(
+        data_dir=data_dir,
+        output_dir=output_dir,
+        operating_currencies=operating_currency,
+        booking_method=booking_method or None,
+        commodities=commodities,
+        ignore=(settings.property_ledger_path.name,),
+        extra_options=portfolio_aggregate.inferred_tolerance_options(root_ledger),
+    )
+    if not written:
+        err_console.print(
+            "[yellow]warning:[/yellow] no bank accounts found in "
+            f"{data_dir} — nothing written"
+        )
+        return
+    for path, account_key, total in written:
+        err_console.print(f"Wrote {path} ({account_key}, {total} accounts)")

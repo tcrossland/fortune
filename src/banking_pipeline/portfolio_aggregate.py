@@ -32,12 +32,14 @@ Fava / ``bean-check`` directly.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date
 from pathlib import Path
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.writer import render_close_directives
+from banking_pipeline.writer.profile import PROFILES
 
 # A posting line's account is the indented token at the start of the line.
 # Account segments are letters, digits, and hyphens — beancount's grammar.
@@ -349,6 +351,8 @@ def _render(
     extra_includes: Sequence[str] = (),
     booking_method: str | None = "FIFO",
     commodities: Mapping[str, CommodityMetadata] | None = None,
+    include_prefix: str = "",
+    extra_options: Sequence[str] = (),
 ) -> tuple[str, int]:
     """Build the aggregate file body. Returns ``(content, account_count)``.
 
@@ -357,6 +361,12 @@ def _render(
     that file exists alongside the per-year output, so Fava and
     bean-report can value security holdings in the operating
     currency.
+
+    ``include_prefix`` is prepended to every ``include`` path (both the
+    per-year sources and ``extra_includes``). It's empty for the
+    aggregate, which sits beside the files it includes; the per-account
+    split writes into a sub-directory and passes ``"../"`` so its
+    includes still resolve to the per-year output one level up.
 
     ``booking_method`` controls beancount's per-account inventory
     reduction policy on sells (``FIFO`` / ``LIFO`` / ``AVERAGE`` /
@@ -397,7 +407,11 @@ def _render(
         lines.append(f'option "operating_currency" "{ccy}"')
     if booking_method is not None:
         lines.append(f'option "booking_method" "{booking_method}"')
-    if op_currencies or booking_method is not None:
+    # Verbatim extra ``option`` lines — the per-account split passes the
+    # ``inferred_tolerance_default`` directives from the root ledger so an
+    # isolated file balances under the same rounding tolerances.
+    lines.extend(extra_options)
+    if op_currencies or booking_method is not None or extra_options:
         lines.append("")
 
     # UK-tax commodity metadata, above the account opens. Emitted only
@@ -435,13 +449,13 @@ def _render(
     lines.append("")
     lines.append(";; Per-year ingest output.")
     for path in files:
-        lines.append(f'include "{path.name}"')
+        lines.append(f'include "{include_prefix}{path.name}"')
 
     if extra_includes:
         lines.append("")
         lines.append(";; Auxiliary files (prices, etc.).")
         for name in extra_includes:
-            lines.append(f'include "{name}"')
+            lines.append(f'include "{include_prefix}{name}"')
 
     lines.append("")
 
@@ -507,3 +521,184 @@ def generate(
     )
     output.write_text(content, encoding="utf-8")
     return output, total
+
+
+# --- per-account split ---------------------------------------------------
+#
+# The combined aggregate above rolls every account into one
+# ``portfolio.beancount``. The split below instead writes one
+# independently-loadable ledger per bank account — the shape Fava wants
+# when you open a single Pictet account (or the ISA) in isolation.
+#
+# It works because each per-year ingest file is, by construction, a single
+# bank+account stream: ``2025-K`` is all of Pictet ``K-123456.001``,
+# ``vanguard-isa`` is the whole ISA. So splitting is "group the source
+# files by account, then run the same open/close scan per group". A
+# counterparty leg (e.g. ``Assets:Revolut:GBP`` on a Pictet payment) is a
+# minority posting with no bank prefix, so the majority key still pins the
+# file to its owning account.
+
+
+# Known bank account-name prefixes, longest first so a multi-segment
+# prefix (``Vgd:ISA``) is matched before a hypothetical single-segment one
+# that shares its head.
+_BANK_PREFIXES: tuple[tuple[str, ...], ...] = tuple(
+    sorted(
+        (tuple(p.account_prefix.split(":")) for p in PROFILES.values()),
+        key=len,
+        reverse=True,
+    )
+)
+
+
+def _account_key(account: str) -> str | None:
+    """The owning-account key for a beancount ``account`` path, or ``None``.
+
+    Strips the leaf type segment (``Assets`` / ``Income`` / …) and matches
+    the remainder against the known bank prefixes. A multi-segment prefix
+    (``Vgd:ISA``) is itself the key; a single-segment one (``Pic``) takes
+    the following portfolio segment too (``Pic:K123456001``). Accounts with
+    no bank prefix — counterparties like ``Assets:Revolut:GBP`` — return
+    ``None`` so they don't form a group of their own.
+    """
+
+    body = account.split(":")[1:]  # drop Assets / Income / Expenses / …
+    for prefix in _BANK_PREFIXES:
+        n = len(prefix)
+        if tuple(body[:n]) != prefix:
+            continue
+        if n >= 2:  # multi-segment prefix is the whole account (e.g. Vgd:ISA)
+            return ":".join(prefix)
+        if len(body) >= 2:  # single-segment prefix + its portfolio segment
+            return ":".join(body[:2])
+        return ":".join(prefix)
+    return None
+
+
+def _file_account_key(path: Path) -> str | None:
+    """The dominant bank-account key across ``path``'s postings.
+
+    Returns the most common :func:`_account_key` among the file's posting
+    lines — robust to a stray counterparty leg — or ``None`` when the file
+    posts to no recognised bank account (e.g. a property ledger)."""
+
+    keys: Counter[str] = Counter()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = _POSTING_RE.match(line)
+        if not m:
+            continue
+        key = _account_key(m.group(1))
+        if key is not None:
+            keys[key] += 1
+    if not keys:
+        return None
+    # most_common breaks ties by insertion order; sort the top group for a
+    # deterministic key regardless of posting order.
+    top = max(keys.values())
+    return sorted(k for k, c in keys.items() if c == top)[0]
+
+
+def group_files_by_account(files: Sequence[Path]) -> dict[str, list[Path]]:
+    """Group per-year source ``files`` by their owning bank account.
+
+    Files with no recognised bank account are skipped. Keys are account
+    keys (``Pic:K123456001``, ``Vgd:ISA``); values keep ``files`` order.
+    """
+
+    groups: dict[str, list[Path]] = {}
+    for path in files:
+        key = _file_account_key(path)
+        if key is not None:
+            groups.setdefault(key, []).append(path)
+    return groups
+
+
+def _account_filename(account_key: str) -> str:
+    """Filesystem-safe filename for an account key (``Pic:K123456001`` →
+    ``Pic-K123456001.beancount``)."""
+
+    return account_key.replace(":", "-") + ".beancount"
+
+
+_TOLERANCE_RE = re.compile(
+    r'^option\s+"inferred_tolerance_default"\s+"[^"]+"\s*$', re.MULTILINE
+)
+
+
+def inferred_tolerance_options(ledger: Path) -> list[str]:
+    """The ``inferred_tolerance_default`` option lines from ``ledger``.
+
+    The per-currency rounding tolerances are hand-curated in the root
+    ledger (``main.beancount``); a per-account file needs the same set to
+    balance standalone. Returns the verbatim ``option`` lines (empty if the
+    file is absent or declares none)."""
+
+    if not ledger.is_file():
+        return []
+    return _TOLERANCE_RE.findall(ledger.read_text(encoding="utf-8"))
+
+
+def generate_per_account(
+    data_dir: Path,
+    output_dir: Path | None = None,
+    *,
+    operating_currencies: Iterable[str] = ("GBP",),
+    booking_method: str | None = "FIFO",
+    commodities: Mapping[str, CommodityMetadata] | None = None,
+    ignore: Iterable[str] = (),
+    extra_options: Sequence[str] = (),
+) -> list[tuple[Path, str, int]]:
+    """Write one independently-loadable ledger per bank account.
+
+    Groups the per-year ingest files under ``data_dir`` by owning account
+    and writes ``<output_dir>/<account>.beancount`` for each — its own
+    ``option`` directives, central opens, cross-history closes, and
+    ``include``s of that account's per-year files plus ``prices.beancount``
+    (one level up). ``balances.beancount`` is deliberately *not* included:
+    its assertions span every account, so an isolated ledger would fail
+    bean-check on accounts it never opens.
+
+    ``extra_options`` are verbatim ``option`` lines emitted in each file —
+    the caller passes the root ledger's ``inferred_tolerance_default``
+    directives (see :func:`inferred_tolerance_options`) so an isolated
+    ledger balances under the same rounding tolerances as the full load.
+
+    ``output_dir`` defaults to ``<data_dir>/accounts``. Returns one
+    ``(path, account_key, account_count)`` per file written, sorted by
+    account key.
+    """
+
+    if output_dir is None:
+        output_dir = data_dir / "accounts"
+
+    op_currencies = list(operating_currencies)
+    files = _source_files(data_dir, data_dir / "portfolio.beancount", frozenset(ignore))
+    groups = group_files_by_account(files)
+
+    # Prices are shared and harmless (marks for unheld commodities are
+    # ignored); balances are excluded — see the docstring.
+    prices_present = ["prices.beancount"] if (data_dir / "prices.beancount").is_file() else []
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    written: list[tuple[Path, str, int]] = []
+    for account_key in sorted(groups):
+        group = groups[account_key]
+        header = (
+            f";; Per-account ledger — {account_key}.\n"
+            ";; Independently loadable (own options + opens + closes);\n"
+            ";; includes this account's per-year ingest output and prices.\n"
+        )
+        content, total = _render(
+            group,
+            op_currencies,
+            header,
+            extra_includes=prices_present,
+            booking_method=booking_method,
+            commodities=commodities,
+            include_prefix="../",
+            extra_options=extra_options,
+        )
+        out_path = output_dir / _account_filename(account_key)
+        out_path.write_text(content, encoding="utf-8")
+        written.append((out_path, account_key, total))
+    return written

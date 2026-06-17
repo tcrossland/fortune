@@ -18,6 +18,23 @@ data_dir = "data"
 clean_glob = "20*.beancount"
 
 
+# --- Optional pre-ingest archive step ----------------------------------
+# Off by default. When enabled, ``rebuild`` first files fresh downloads
+# into the dated ``<year>/<account>/`` archive tree (the same thing the
+# standalone ``import`` command does) *before* the [[sources]] globs
+# below read from it — so a single ``rebuild`` takes a new download all
+# the way to a checked ledger. Leaving it off keeps ``rebuild``
+# idempotent (re-running moves no files).
+#
+# ``source_glob`` / ``source_dir`` / ``archive_dir`` fall back to the
+# matching ``import_*`` keys under [settings] when left empty, so if you
+# already set those you only need ``enabled = true`` here.
+# [import]
+# enabled = true
+# source_glob = "~/Downloads/files-*.zip"   # the bank's periodic zips
+# archive_dir = "~/Dropbox/Finance/Accounts/Pictet"
+
+
 # --- One [[sources]] entry per ingest call -----------------------------
 # ``label`` becomes the output filename: ``<data_dir>/<label>.beancount``.
 # ``glob`` is the PDF source pattern. The pattern is expanded relative
