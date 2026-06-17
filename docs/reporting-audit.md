@@ -175,8 +175,11 @@ while understating. This is P0.
   `report_format` helpers (`unclassified_lines` / `missing_price_lines`),
   and the `_weight` formula is de-duplicated into `report_format.weight`.
   `report_format` now has its own tests.
-- B3: wire trial-balance into `[post.reports]` (a `trial_balance` toggle).
-- B7/B11: partial-value multi-leg trial-balance accounts; fix the cosmetic
-  `RateGap` slot.
+- ~~B3~~ — ✅ DONE (2026-06-17): trial-balance wired into `[post.reports]`
+  (opt-in `trial_balance` toggle; ledger-based, warns + skips on a missing
+  ledger/binary).
+- ~~B7/B11~~ — ✅ DONE (2026-06-17): multi-leg trial-balance accounts are
+  partially valued (valued legs kept, unvaluable legs flagged); the
+  `RateGap` slot names the account, not the currency.
 - A9/A10/B8: adversarial `infer_issuer` test, the silent-failure-mode
-  tests, more `report_format` / CLI-strict coverage.
+  tests, more `report_format` / CLI-strict coverage. **(remaining P2)**

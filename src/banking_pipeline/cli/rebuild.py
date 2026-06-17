@@ -10,6 +10,7 @@ property / sidecar loading, bean-check) come from
 from __future__ import annotations
 
 import csv
+from datetime import date
 from pathlib import Path
 from typing import Annotated, cast
 
@@ -40,6 +41,9 @@ from banking_pipeline import (
 )
 from banking_pipeline import (
     reconcile as reconcile_mod,
+)
+from banking_pipeline import (
+    trial_balance as trial_balance_mod,
 )
 from banking_pipeline.batch_config import (
     BatchConfig,
@@ -615,6 +619,7 @@ def _do_rebuild(
                 ("net-worth", rep.net_worth),
                 ("allocation", rep.allocation),
                 ("portfolio-allocation", rep.portfolio_allocation),
+                ("trial-balance", rep.trial_balance),
             ) if on
         ]
         err_console.print(
@@ -622,7 +627,12 @@ def _do_rebuild(
             f"({len(stmt_paths)} statement{'s' if len(stmt_paths) != 1 else ''})"
         )
         if not dry_run:
-            _run_rebuild_reports(rep, data_dir, stmt_paths, project_root)
+            tb_ledger = _resolve_ledger(
+                rep.trial_balance_ledger or cfg.post.check.ledger, data_dir
+            )
+            _run_rebuild_reports(
+                rep, data_dir, stmt_paths, project_root, tb_ledger
+            )
 
     # --- Step 4: reconcile -----------------------------------------------
     # Runs *before* bean-check: bean-check exits nonzero on a drifted
@@ -699,12 +709,14 @@ def _run_rebuild_reports(
     data_dir: Path,
     statement_paths: list[Path],
     project_root: Path,
+    trial_balance_ledger: Path,
 ) -> None:
     """Regenerate the analytical reports for the rebuild's reports step.
 
     Uses the configured GBP rate source / commodity metadata / property
     table (no CLI overrides in rebuild). The valuation reports read the
-    statement archive; ``income`` reads the sidecars under ``data_dir``.
+    statement archive; ``income`` reads the sidecars under ``data_dir``;
+    ``trial_balance`` queries ``trial_balance_ledger`` via ``bean-query``.
     """
 
     commodities_map = _resolve_commodities() or {}
@@ -767,6 +779,38 @@ def _run_rebuild_reports(
             "portfolio-allocation.csv",
             portfolio_allocation_mod.render_csv_rows(preport),
         )
+    if rep.trial_balance:
+        # Ledger-based (bean-query), unlike the statement reports above. A
+        # missing ledger / binary, or a ledger that won't load, is a warning
+        # + skip, not a failed rebuild — the [post.check] step is what gates
+        # the ledger.
+        result = (
+            trial_balance_mod.query_balances(trial_balance_ledger)
+            if trial_balance_ledger.is_file()
+            else None
+        )
+        if result is None:
+            err_console.print(
+                f"[yellow]trial-balance skipped:[/yellow] ledger "
+                f"{trial_balance_ledger} not found"
+            )
+        elif not result.ok:
+            err_console.print(
+                f"[yellow]trial-balance skipped:[/yellow] {result.error}"
+            )
+        else:
+            tb = trial_balance_mod.build_trial_balance(
+                result, on_date=date.today(), rate_source=rates
+            )
+            _write_report(
+                _resolve_report_dir(
+                    settings.trial_balance_reports_dir, project_root
+                ),
+                "trial-balance.md",
+                "\n".join(trial_balance_mod.render_markdown(tb)),
+                "trial-balance.csv",
+                trial_balance_mod.render_csv_rows(tb),
+            )
 
 
 def _resolve_ledger(ledger: str, data_dir: Path) -> Path:

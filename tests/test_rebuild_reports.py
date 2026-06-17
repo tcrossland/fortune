@@ -147,3 +147,72 @@ def test_rebuild_reports_dry_run_previews_only(tmp_path: Path) -> None:
     assert "reports income" in flat
     # Nothing written on a dry run.
     assert not (root / "reports").exists()
+
+
+# --- trial-balance in [post.reports] (B3) ---------------------------------
+
+
+def test_reports_step_trial_balance_defaults_off() -> None:
+    step = ReportsStep()
+    assert step.trial_balance is False
+    assert step.trial_balance_ledger == ""
+
+
+def test_reports_step_parses_trial_balance() -> None:
+    cfg = BatchConfig.model_validate(
+        {
+            "sources": [{"label": "x", "glob": "nope/*.pdf"}],
+            "post": {
+                "prices": False, "portfolio": False,
+                "reports": {
+                    "enabled": True, "income": False,
+                    "trial_balance": True,
+                    "trial_balance_ledger": "main.beancount",
+                },
+            },
+        }
+    )
+    assert cfg.post.reports.trial_balance is True
+    assert cfg.post.reports.trial_balance_ledger == "main.beancount"
+
+
+def test_rebuild_trial_balance_skips_gracefully_on_bad_ledger(tmp_path: Path) -> None:
+    # trial-balance is ledger-based (bean-query). A ledger that won't load
+    # (or a missing binary) must warn + skip, never fail the rebuild.
+    root = tmp_path / "project"
+    (root / "data").mkdir(parents=True)
+    config = textwrap.dedent("""
+        data_dir = "data"
+        clean_glob = ""
+
+        [[sources]]
+        label = "x"
+        glob = "nope/*.pdf"
+
+        [post]
+        prices = false
+        portfolio = false
+        balances = false
+
+        [post.reports]
+        enabled = true
+        income = false
+        concentration = false
+        net_worth = false
+        allocation = false
+        portfolio_allocation = false
+        trial_balance = true
+        trial_balance_ledger = "does-not-exist.beancount"
+
+        [post.check]
+        enabled = false
+    """)
+    (root / "banking-pipeline.toml").write_text(config, encoding="utf-8")
+
+    result = runner.invoke(cli.app, ["rebuild", "--project-root", str(root)])
+    assert result.exit_code == 0, result.output
+    flat = " ".join(result.output.split())
+    assert "trial-balance" in flat
+    assert "trial-balance skipped" in flat
+    # Nothing written for the skipped report.
+    assert not (root / "reports" / "trial-balance").exists()

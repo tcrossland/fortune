@@ -116,7 +116,8 @@ def test_render_markdown_columns_and_warnings() -> None:
     assert "Unvaluable assets (no mark)" in md
     assert "`Assets:Pic:K1:IE00Y`" in md
     assert "missing rate" in md
-    assert "- JPY 2026-06 (JPY)" in md
+    # B11: the rate-gap line names the account, not the useless "(JPY)".
+    assert "- JPY 2026-06 (Assets:Pic:K1:JPY)" in md
 
 
 def test_render_csv_rows() -> None:
@@ -130,3 +131,32 @@ def test_render_csv_rows() -> None:
     # Income row carries no GBP cell.
     inc = [r for r in rows if r[0] == "Income:Pic:K1:Dividend"][0]
     assert inc[4] == ""
+
+
+def test_multi_leg_account_partially_valued() -> None:
+    # An account holding valued cash + an unmarked security: B7 keeps the
+    # cash in the GBP total instead of dropping the whole account, and still
+    # flags the unmarked leg.
+    result = QueryResult(
+        rows=[[
+            "Assets:Pic:K1:MIXED",
+            "1000 GBP, 50 IE00NOMARK",          # units (display)
+            "1000 GBP, 50 IE00NOMARK",          # market (one leg unmarked)
+        ]]
+    )
+    tb = tb_mod.build_trial_balance(result, on_date=ON, rate_source=FakeRates())
+    line = tb.lines[0]
+    # The GBP leg is valued; the account is still flagged for the unmarked leg.
+    assert line.value_gbp == Decimal("1000")
+    assert tb.assets_gbp == Decimal("1000")
+    assert tb.missing_prices == ("Assets:Pic:K1:MIXED",)
+
+
+def test_rate_gap_carries_account_not_currency() -> None:
+    # B11: a no-rate currency leg flags the account in the RateGap slot.
+    result = QueryResult(
+        rows=[["Assets:Pic:K1:JPY", "1000 JPY", "1000 JPY"]]
+    )
+    tb = tb_mod.build_trial_balance(result, on_date=ON, rate_source=FakeRates())
+    assert [g.isin for g in tb.rate_gaps] == ["Assets:Pic:K1:JPY"]
+    assert [g.currency for g in tb.rate_gaps] == ["JPY"]

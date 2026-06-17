@@ -117,31 +117,41 @@ def parse_amounts(field: str) -> list[tuple[Decimal, str]]:
 
 
 def _value_account_gbp(
+    account: str,
     market: list[tuple[Decimal, str]],
     *,
     on_date: date,
     rate_source: GbpRateSource,
-) -> tuple[Decimal | None, RateGap | None, str | None]:
-    """GBP value of one account's market position.
+) -> tuple[Decimal | None, list[RateGap], bool]:
+    """GBP value of one account's market position, **leg by leg**.
 
-    Returns ``(value_gbp, rate_gap, missing_commodity)``: a converted total,
-    or — if any leg can't be valued — ``None`` plus the reason (a non-GBP
-    currency with no rate → ``rate_gap``; a non-currency commodity, i.e. no
-    mark → ``missing_commodity``). Reasons are mutually exclusive per call:
-    the first failing leg wins, so the whole account is flagged once.
+    Returns ``(value_gbp, rate_gaps, has_unmarked)``: the sum of the legs
+    that *could* be valued, with the unvaluable legs flagged rather than
+    discarding the whole account (an account holding valuable cash + one
+    unmarked security keeps the cash in the total). ``value_gbp`` is ``None``
+    only when *no* leg could be valued. A non-currency leg (no mark) sets
+    ``has_unmarked``; a currency with no rate yields a ``RateGap`` carrying
+    the **account** (so the warning reads ``USD … (Assets:…:USD)``, not the
+    useless ``USD (USD)``).
     """
 
     total = Decimal(0)
+    valued_any = False
+    gaps: list[RateGap] = []
+    has_unmarked = False
     for amount, commodity in market:
         if not _is_currency(commodity):
-            return None, None, commodity  # value() found no mark
+            has_unmarked = True  # value() found no mark for this leg
+            continue
         value = to_gbp(
             amount, currency=commodity, on_date=on_date, source=rate_source
         )
         if value is None:
-            return None, RateGap.at(commodity, commodity, on_date), None
+            gaps.append(RateGap.at(account, commodity, on_date))
+            continue
         total += value
-    return total, None, None
+        valued_any = True
+    return (total if valued_any else None), gaps, has_unmarked
 
 
 def build_trial_balance(
@@ -173,15 +183,14 @@ def build_trial_balance(
 
         value_gbp: Decimal | None = None
         if acct_type in VALUED_TYPES:
-            value_gbp, gap, miss = _value_account_gbp(
-                parse_amounts(market_field), on_date=on_date,
+            value_gbp, leg_gaps, has_unmarked = _value_account_gbp(
+                account, parse_amounts(market_field), on_date=on_date,
                 rate_source=rate_source,
             )
             if value_gbp is not None:
                 assets_gbp += value_gbp
-            elif gap is not None:
-                gaps.append(gap)
-            elif miss is not None:
+            gaps.extend(leg_gaps)
+            if has_unmarked:
                 missing.append(account)
         lines.append(
             TrialBalanceLine(account, acct_type, tuple(native), value_gbp)

@@ -105,6 +105,12 @@ net_worth = true
 allocation = true
 portfolio_allocation = true
 income_period = "tax-year"
+# Trial balance is opt-in: it reads the *ledger* via bean-query (not the
+# statement archive), so it needs the bean-query binary and a tolerance-
+# bearing root ledger. Empty trial_balance_ledger → the [post.check]
+# ledger. A missing ledger/binary warns and skips, never fails the rebuild.
+# trial_balance = true
+# trial_balance_ledger = "main.beancount"
 # statements = [
 #     "~/Documents/Banking/**/*monthly*.pdf",
 #     "~/Documents/Vanguard/*.pdf",

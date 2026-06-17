@@ -186,13 +186,24 @@ class ReportsStep(BaseModel):
     enabled: bool = False
 
     # Per-report toggles (each on by default once the step is enabled).
-    # ``income`` reads only the sidecars under ``data_dir``; the other four
+    # ``income`` reads only the sidecars under ``data_dir``; the next four
     # value the statement archive (see :attr:`statements`).
     income: bool = True
     concentration: bool = True
     net_worth: bool = True
     allocation: bool = True
     portfolio_allocation: bool = True
+
+    # ``trial_balance`` is opt-in (default off): unlike the others it reads
+    # the *ledger* via ``bean-query`` (not the statement archive), so it
+    # needs the bean-query binary and a tolerance-bearing root ledger. When
+    # the binary is missing or the ledger won't load it warns and skips
+    # rather than failing the rebuild.
+    trial_balance: bool = False
+    # Ledger to query for the trial balance. Empty → the ``[post.check]``
+    # ledger (resolved the same way); it doubles as the source of the
+    # ``inferred_tolerance_default`` options so the isolated query balances.
+    trial_balance_ledger: str = ""
 
     # Statement PDF globs for the valuation reports (concentration /
     # net-worth / allocation / portfolio-allocation). Resolved like
