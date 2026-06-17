@@ -25,6 +25,10 @@ data/cgt-losses.toml
 # Copy from data/property.example.toml and edit.
 data/property.toml
 
+# Benchmark index levels for the value-add report.
+# Copy from data/benchmarks.example.csv and edit.
+data/benchmarks.csv
+
 # Generated / personal ledger data. The pipeline writes per-year ingest
 # output, the portfolio/prices/balances aggregates, the transaction
 # sidecars, and the *.md summaries here — all derived from personal

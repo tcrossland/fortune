@@ -359,6 +359,52 @@ def _aggregate_snapshots(snaps: list[Snapshot]) -> list[Snapshot]:
     return out
 
 
+@dataclass(frozen=True)
+class PeriodReturn:
+    """One whole-mandate sub-period's holdings-based return, on both bases."""
+
+    start: date
+    end: date
+    net_return: float | None
+    gross_return: float | None
+
+
+def aggregate_period_returns(
+    statements: list[tuple[str, str]],
+    *,
+    commodities: dict[str, CommodityMetadata],
+    rate_source: GbpRateSource,
+) -> list[PeriodReturn]:
+    """The whole-mandate per-period market returns + their date boundaries —
+    the series a benchmark aligns against to compute value-add (step 3).
+
+    Same holdings-based gain as :func:`build_report`'s aggregate, exposed
+    period-by-period so a benchmark index can be sampled at the identical
+    statement-date boundaries."""
+
+    snaps = _aggregate_snapshots(
+        build_snapshots(statements, commodities=commodities, rate_source=rate_source)
+    )
+    out: list[PeriodReturn] = []
+    for prev, cur in zip(snaps, snaps[1:], strict=False):
+        gain = _market_gain(prev, cur)
+        out.append(
+            PeriodReturn(
+                start=prev.on_date,
+                end=cur.on_date,
+                net_return=(
+                    float(gain / prev.net_value_gbp)
+                    if prev.net_value_gbp > _ZERO else None
+                ),
+                gross_return=(
+                    float(gain / prev.gross_value_gbp)
+                    if prev.gross_value_gbp > _ZERO else None
+                ),
+            )
+        )
+    return out
+
+
 def build_report(
     statements: list[tuple[str, str]],
     *,

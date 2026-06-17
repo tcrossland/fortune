@@ -34,6 +34,9 @@ from banking_pipeline import (
     income as income_mod,
 )
 from banking_pipeline import (
+    mandate_benchmark as mandate_benchmark_mod,
+)
+from banking_pipeline import (
     mandate_returns as mandate_returns_mod,
 )
 from banking_pipeline import (
@@ -628,6 +631,7 @@ def _do_rebuild(
                 ("trial-balance", rep.trial_balance),
                 ("mandate-scorecard", rep.mandate_scorecard),
                 ("mandate-returns", rep.mandate_returns),
+                ("benchmark", rep.benchmark),
             ) if on
         ]
         err_console.print(
@@ -864,6 +868,28 @@ def _run_rebuild_reports(
             "mandate-returns.csv",
             mandate_returns_mod.render_csv_rows(returns_report),
         )
+    if rep.benchmark:
+        # Statement-derived mandate periods + the benchmark-levels CSV. A
+        # missing CSV warns and skips, not a failed rebuild.
+        if settings.benchmark_path is None or not settings.benchmark_path.is_file():
+            err_console.print(
+                "[yellow]benchmark skipped:[/yellow] no benchmark CSV "
+                "(set benchmark_path / copy data/benchmarks.example.csv)"
+            )
+        else:
+            periods = mandate_returns_mod.aggregate_period_returns(
+                texts, commodities=commodities_map, rate_source=rates
+            )
+            bench_report = mandate_benchmark_mod.build_report(
+                periods, mandate_benchmark_mod.load_benchmarks(settings.benchmark_path)
+            )
+            _write_report(
+                _resolve_report_dir(settings.benchmark_reports_dir, project_root),
+                "benchmark-value-add.md",
+                mandate_benchmark_mod.render_markdown(bench_report),
+                "benchmark-value-add.csv",
+                mandate_benchmark_mod.render_csv_rows(bench_report),
+            )
 
 
 def _resolve_ledger(ledger: str, data_dir: Path) -> Path:

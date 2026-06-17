@@ -19,6 +19,7 @@ import typer
 from banking_pipeline import allocation as allocation_mod
 from banking_pipeline import concentration as concentration_mod
 from banking_pipeline import income as income_mod
+from banking_pipeline import mandate_benchmark as mandate_benchmark_mod
 from banking_pipeline import mandate_returns as mandate_returns_mod
 from banking_pipeline import mandate_scorecard as mandate_scorecard_mod
 from banking_pipeline import net_worth as net_worth_mod
@@ -658,4 +659,81 @@ def mandate_returns(
         err_console.print(
             f"[dim]{len(report.detected_flows)} external movement(s) inferred "
             "from the holdings — see the report.[/dim]"
+        )
+
+
+@app.command("benchmark")
+def benchmark(
+    statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
+    statements_dir: StatementsDirOpt = None,
+    statements_recursive: StatementsRecursiveOpt = False,
+    benchmarks: Annotated[
+        Path | None,
+        typer.Option(
+            "--benchmarks",
+            exists=True,
+            readable=True,
+            help="Benchmark index-levels CSV (date + one column per "
+            "benchmark, GBP total-return levels). Defaults to the configured "
+            "``benchmark_path`` (``data/benchmarks.csv``).",
+        ),
+    ] = None,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``benchmark_reports_dir`` (``reports/benchmark``).",
+        ),
+    ] = None,
+    commodities: CommoditiesOpt = None,
+    rate_source: ValuationRateSourceOpt = None,
+    verbose: VerboseOpt = False,
+) -> None:
+    """Mandate value-add vs benchmarks (step 3).
+
+    Compares the mandate's **gross** (unlevered) time-weighted return against
+    each passive benchmark over the window it covers, so the difference
+    isolates what active management added over holding the index. The
+    benchmark CSV is index *levels* (GBP total-return), sampled at the
+    mandate's statement dates. Not risk-adjusted; a reporting aid, not
+    advice.
+    """
+
+    _configure_logging(verbose)
+    bench_path = benchmarks or settings.benchmark_path
+    if bench_path is None or not bench_path.is_file():
+        err_console.print(
+            "[red]No benchmark CSV — pass --benchmarks or set benchmark_path "
+            "(copy data/benchmarks.example.csv to data/benchmarks.csv).[/red]"
+        )
+        raise typer.Exit(code=2)
+
+    texts, commodities_map, rates = _load_statement_context(
+        statements, statements_dir, statements_recursive, commodities, rate_source
+    )
+    periods = mandate_returns_mod.aggregate_period_returns(
+        texts, commodities=commodities_map, rate_source=rates
+    )
+    bench_series = mandate_benchmark_mod.load_benchmarks(bench_path)
+    report = mandate_benchmark_mod.build_report(periods, bench_series)
+
+    out_dir = out or settings.benchmark_reports_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "benchmark-value-add.md").write_text(
+        mandate_benchmark_mod.render_markdown(report), encoding="utf-8"
+    )
+    with (out_dir / "benchmark-value-add.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as fh:
+        csv.writer(fh).writerows(mandate_benchmark_mod.render_csv_rows(report))
+
+    err_console.print(
+        f"Wrote benchmark value-add to {out_dir} "
+        f"({len(report.rows)} benchmark(s) compared)"
+    )
+    if report.skipped:
+        err_console.print(
+            f"[yellow]{len(report.skipped)} benchmark(s) skipped — no "
+            "overlapping data: " + ", ".join(report.skipped) + "[/yellow]"
         )

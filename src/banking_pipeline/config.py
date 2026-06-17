@@ -154,6 +154,21 @@ class Settings(BaseSettings):
     # and ``.csv`` here.
     mandate_returns_reports_dir: Path = Path("reports/mandate-returns")
 
+    # Benchmark index-levels CSV (``date`` + one column per benchmark, GBP
+    # total-return levels) for the ``benchmark`` value-add report. Defaults
+    # to ``data/benchmarks.csv`` when present.
+    benchmark_path: Path | None = Field(
+        default_factory=lambda: (
+            Path("data/benchmarks.csv")
+            if Path("data/benchmarks.csv").is_file()
+            else None
+        )
+    )
+
+    # Output directory for ``benchmark``: writes ``benchmark-value-add.md``
+    # and ``.csv`` here.
+    benchmark_reports_dir: Path = Path("reports/benchmark")
+
     # Pre-ledger / transferred-in opening positions (ISIN → lots with a
     # GBP cost) seeded into the section 104 pool. Defaults to
     # ``data/opening-positions.toml`` when present. See

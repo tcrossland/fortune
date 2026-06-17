@@ -217,6 +217,11 @@ class ReportsStep(BaseModel):
     # is the price move on units held through each pair of statements.
     mandate_returns: bool = False
 
+    # ``benchmark`` is opt-in (default off): the value-add report, comparing
+    # the mandate's gross return against the ``benchmark_path`` index-levels
+    # CSV. Skips (a warning, not a failure) when no benchmark CSV is set.
+    benchmark: bool = False
+
     # Statement PDF globs for the valuation reports (concentration /
     # net-worth / allocation / portfolio-allocation). Resolved like
     # :class:`Source.glob`. When empty, falls back to
