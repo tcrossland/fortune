@@ -319,7 +319,7 @@ def render_markdown(report: BenchmarkReport) -> str:
             "| Return / value-add | " + " | ".join(str(y) for y in years) + " |",
             "| --- " + "| ---: " * len(years) + "|",
             "| **Mandate return** | "
-            + " | ".join(_pct_plain(r) for _, r in report.mandate_annual)
+            + " | ".join(_pctf(r) for _, r in report.mandate_annual)
             + " |",
         ]
         for r in report.rows:
