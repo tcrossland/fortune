@@ -7,10 +7,19 @@ paradigm. Shipped features are recorded in
 [../CHANGELOG.md](../CHANGELOG.md); design rationale in
 [design-decisions.md](design-decisions.md).
 
-The backward-looking tax-*reporting* area is essentially complete. The
-active direction is forward-looking **tax planning & advice** (below),
-built on the same sidecar substrate; what remains in reporting is FIG
-presentation polish plus the broader (and weaker-fit) reporting ideas.
+For a prioritised list of *correctness and robustness* gaps in the
+reporting subsystems (both tax reporting-status and the analytical
+reports) — as distinct from the new-feature ideas below — see the
+[reporting audit](reporting-audit.md). Its **P0** item (an `unknown`-status
+or unmatched disposal silently understates the tax return and isn't caught
+by `--strict`) should be picked up before the enhancements here; adopted
+audit items can graduate into this backlog.
+
+The backward-looking tax-*reporting* area is feature-complete but carries
+the correctness caveats the audit catalogues. The active *new-feature*
+direction is forward-looking **tax planning & advice** (below), built on
+the same sidecar substrate; what remains in reporting is FIG presentation
+polish plus the broader (and weaker-fit) reporting ideas.
 
 ## Tax reporting
 
