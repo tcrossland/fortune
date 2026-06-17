@@ -87,6 +87,17 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **Spanish monthly statement (`ESTADO_MENSUAL`) valuation extraction** —
+  the Madrid account's Spanish-locale statement now feeds the valuation
+  reports (concentration / net-worth / allocation) like the English
+  monthly statement, not just classification/archival. `balances_extract`
+  handles the bare `K-NNNNNN.NNN` account line and the currency-led cash
+  row; `prices_extract` reads the *cotización* off the holding row above
+  the `ISIN:` line (the ES layout packs the holding into two lines, and
+  the ISIN line carries the gross unit cost, not the mark). Validated
+  against a real statement (33 holdings + cash, `qty × cotización`
+  reconciling with `VALORACIÓN`). (`balances_extract.py`,
+  `prices_extract.py`)
 - **Vanguard ISA ticker metadata** — `commodities.toml` can now carry
   entries keyed on a Vanguard fund **ticker** (e.g. `VGVA` / `VMIG`), which
   the ISA holdings use as their commodity since the contract notes print no

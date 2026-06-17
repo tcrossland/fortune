@@ -32,11 +32,16 @@ period strip the writer uses on trade advices (so ``K-123456.001``
 
 Locale handling
 ---------------
-Same as :mod:`prices_extract` — the ``As at`` anchor accepts both
-English (``As at 31 December 2025``) and Spanish (``al 31 Enero
-2026``) date strings; the parser returns ``[]`` on the
-fully-anonymised ``99 Enero 9999`` form. The header label is also
-locale-specific (``Account no.`` / ``N° de cuenta``).
+The ``As at`` anchor accepts both English (``As at 31 December 2025``)
+and Spanish (``al 31 Enero 2026``) date strings; the parser returns
+``[]`` on the fully-anonymised ``99 Enero 9999`` form. The Spanish
+``ESTADO FINANCIERO`` (Madrid account) statement differs in two further
+ways the parser handles: the portfolio number prints **bare** on its own
+line (``K-NNNNNN.NNN``) rather than behind an ``Account no.`` /
+``N° de cuenta`` label, and its cash row leads with the currency
+(``<CCY> <bal> <name> <bal> <%>``) instead of the English
+``<bal> <name> <CCY> <bal>``. Security rows (quantity-led + ``ISIN:``
+next) are layout-agnostic and need no locale handling.
 """
 
 from __future__ import annotations
@@ -57,6 +62,11 @@ _ACCOUNT_NO_RE = re.compile(
     r"^(?:Account\s+no\.|N°\s*de\s+cuenta)\s*:\s*([A-Z]-\d{6}\.\d{3})",
     re.M,
 )
+# Fallback for the Spanish statement, which prints the portfolio number on
+# its own line (``K-NNNNNN.NNN``) rather than behind an ``Account no.:``
+# label. Anchored to a whole line so the sub-account forms in the
+# current-account table (``K-NNNNNN.NNN.00.EUR``) can't match.
+_ACCOUNT_BARE_RE = re.compile(r"^([A-Z]-\d{6}\.\d{3})\s*$", re.M)
 _ISIN_LINE_RE = re.compile(
     r"\bISIN(?:/Internal\s+ref\.)?\s*:\s*"
     r"([A-Z]{2}[A-Z0-9]{8}(?:[A-Z0-9]{2}|\s[A-Z0-9]))"
@@ -73,6 +83,14 @@ _QUANTITY_ROW_RE = re.compile(
 # Japan``, ``Dollar USA``, ``Franc Switzerland``, etc.).
 _CASH_ROW_RE = re.compile(
     r"^([-\d'.]+)\s+([A-Z][A-Za-z\s]+?)\s+([A-Z]{3})\s+([-\d'.]+)\s*$"
+)
+# Spanish cash row: ``<CCY> <balance> <Currency Name> <balance> <%>`` — the
+# currency leads, the two balances repeat, and a trailing weight column the
+# English layout doesn't have. Requires a digit in each balance so a
+# dash-only zero row (``USD - Dólar USA - -``) can't match.
+_ES_CASH_ROW_RE = re.compile(
+    r"^([A-Z]{3})\s+(-?[\d'][\d'.]*)\s+([A-Z][A-Za-z\s]+?)\s+(-?[\d'][\d'.]*)"
+    r"\s+[-\d'.]+\s*$"
 )
 
 
@@ -172,7 +190,7 @@ def _pictet_balances(text: str) -> list[tuple[str, str, str, str]]:
         return []
     assertion_date = (statement_date + timedelta(days=1)).isoformat()
 
-    acct_match = _ACCOUNT_NO_RE.search(text)
+    acct_match = _ACCOUNT_NO_RE.search(text) or _ACCOUNT_BARE_RE.search(text)
     if acct_match is None:
         return []
     portfolio = _sanitise_portfolio(acct_match.group(1))
@@ -186,14 +204,23 @@ def _pictet_balances(text: str) -> list[tuple[str, str, str, str]]:
         stripped = line.strip()
 
         # --- Cash row ---
-        # ``<bal> <Currency-Name> <CCY> <bal>`` — both balance amounts
-        # repeat across the line. Checked *before* the security row
-        # because cash rows also begin with a number and would
-        # otherwise be caught by the quantity-led pattern. The
-        # symmetry check (bal1 == bal2) guards against layout drift.
+        # EN ``<bal> <Currency-Name> <CCY> <bal>`` or ES ``<CCY> <bal>
+        # <Currency-Name> <bal> <%>`` — both repeat the balance (symmetry
+        # guard against layout drift). Checked *before* the security row
+        # because an EN cash row also begins with a number and would
+        # otherwise be caught by the quantity-led pattern.
+        cash: tuple[str, str, str] | None = None  # (ccy, bal1, bal2)
         m_cash = _CASH_ROW_RE.match(stripped)
         if m_cash is not None:
             bal1, _name, ccy, bal2 = m_cash.groups()
+            cash = (ccy, bal1, bal2)
+        else:
+            m_es_cash = _ES_CASH_ROW_RE.match(stripped)
+            if m_es_cash is not None:
+                ccy, bal1, _name, bal2 = m_es_cash.groups()
+                cash = (ccy, bal1, bal2)
+        if cash is not None:
+            ccy, bal1, bal2 = cash
             if _normalise_amount(bal1) == _normalise_amount(bal2):
                 if ccy not in seen_currencies:
                     seen_currencies.add(ccy)

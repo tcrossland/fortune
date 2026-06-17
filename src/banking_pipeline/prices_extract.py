@@ -373,6 +373,16 @@ _ISIN_LINE_RE = re.compile(
 _PRICE_LINE_RE = re.compile(
     r"^([A-Z]{3})\s+([\d'.]+)(?:\s+\w+\))?\s+[A-Z]{3}\s+[\d'.]+"
 )
+# Spanish layout: the holding is two lines (``<qty> <desc> <ccy>
+# <cotización> <cost> <valoración> …`` then ``ISIN: <isin> <ccy>
+# <gross-unit-cost>``), so the market mark — the *cotización*, which
+# reconciles with VALORACIÓN — sits on the row *above* the ISIN, not below
+# it. Captures ``<ccy> <cotización>``: the first ``<3-upper> <number>``
+# followed by the cost + valuation columns. (EN qty/description lines have
+# no such ``<ccy> <num> <num> <num>`` tail, so this never matches them.)
+_ES_HOLDING_ROW_RE = re.compile(
+    r"^[\d'.]+\s+.+?\s+([A-Z]{3})\s+([\d'.]+)\s+[\d'.]+\s+[\d'.]+"
+)
 
 
 def extract_prices_from_statement(
@@ -387,10 +397,14 @@ def extract_prices_from_statement(
     date is the statement's ``As at`` / ``al <date>`` anchor; if
     that can't be parsed, returns ``[]``.
 
-    Handles both English and Spanish locales (``Financial Statement``
-    and ``ESTADO FINANCIERO``) since they share the same row layout
-    and only differ in the locale of the date string and the column
-    headers — neither of which affect the parser.
+    Handles both English (``Financial Statement``) and Spanish
+    (``ESTADO FINANCIERO``) locales. They differ in more than the date
+    string: English prints the per-unit price on a line *after* the
+    ``ISIN:`` row, while Spanish packs the holding into two lines and the
+    valuation mark — the *cotización* — sits on the row *above* the ISIN
+    (the ISIN line itself carries the gross unit cost). The parser tries
+    the English forward scan first, then falls back to the Spanish row
+    above.
 
     ``doctype`` is the optional pre-classified document type. When
     provided and not in :data:`PRICED_STATEMENT_DOCTYPES`
@@ -479,10 +493,11 @@ def _pictet_statement_prices(
             # page); take the first occurrence and ignore subsequent
             # ones.
             continue
-        # Walk forward from the ISIN line looking for a ``<ccy>
-        # <price> ...`` line. Usually the very next line; rarely
-        # there's a blank or a continuation line in between, so scan
-        # up to ~3 lines forward before giving up.
+        # EN layout: walk forward from the ISIN line looking for a ``<ccy>
+        # <price> ...`` line. Usually the very next line; rarely there's a
+        # blank or a continuation line in between, so scan up to ~3 lines
+        # forward before giving up.
+        found = False
         for j in range(i + 1, min(i + 4, len(lines))):
             m_price = _PRICE_LINE_RE.match(lines[j].strip())
             if m_price is None:
@@ -498,7 +513,25 @@ def _pictet_statement_prices(
                 )
             )
             seen_on_this_statement.add(isin)
+            found = True
             break
+        if found:
+            continue
+        # ES layout: the cotización is on the holding row *above* the ISIN.
+        if i > 0:
+            m_es = _ES_HOLDING_ROW_RE.match(lines[i - 1].strip())
+            if m_es is not None:
+                currency, price = m_es.group(1), m_es.group(2)
+                rows.append(
+                    PriceRow(
+                        date=date_str,
+                        commodity=isin,
+                        price=price.replace("'", ""),
+                        currency=currency,
+                        source=source,
+                    )
+                )
+                seen_on_this_statement.add(isin)
 
     return rows
 
