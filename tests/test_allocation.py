@@ -9,7 +9,11 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from banking_pipeline import cli
-from banking_pipeline.allocation import _timeline_from_raw, build_timeline
+from banking_pipeline.allocation import (
+    _timeline_from_raw,
+    build_timeline,
+    render_markdown,
+)
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import NullSource
 from banking_pipeline.valuation import RawHolding
@@ -141,3 +145,16 @@ def test_build_timeline_end_to_end_vanguard() -> None:
     assert len(tl.points) == 1
     # Vanguard tickers carry no commodities.toml entry → unknown class.
     assert "unknown" in tl.asset_classes
+
+
+def test_render_flags_unclassified_and_caveat() -> None:
+    # A priced holding with no metadata → unknown asset-class bucket AND the
+    # unclassified warning (previously dropped by allocation).
+    raws = [_sec("A", date(2025, 1, 1), "IE00UNCLASS1", D(10), D(100))]
+    tl = _timeline_from_raw(raws, commodities={}, rate_source=NullSource())
+    assert tl.unclassified == ("IE00UNCLASS1",)
+
+    md = render_markdown(tl)
+    assert "Unclassified holdings (no metadata)" in md
+    assert "IE00UNCLASS1" in md
+    assert "wound-down portfolio" in md  # the B6 forward-fill caveat

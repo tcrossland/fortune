@@ -28,12 +28,20 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.property import Property
-from banking_pipeline.report_format import gbp, money, pct, rate_gap_lines
+from banking_pipeline.report_format import (
+    gbp,
+    missing_price_lines,
+    money,
+    pct,
+    rate_gap_lines,
+    unclassified_lines,
+    weight,
+)
 from banking_pipeline.valuation import (
     Holding,
     RawHolding,
@@ -167,16 +175,7 @@ def render_markdown(report: ValuationResult) -> str:
                      f"{pct(report.net_cash_gbp, gross)} |")
         lines.append("")
 
-    if report.missing_prices:
-        lines += [
-            "## ⚠️ Unvaluable holdings (no statement mark)",
-            "",
-            "Held but excluded from the figures above — the latest statement "
-            "carried no price for them:",
-            "",
-        ]
-        lines += [f"- {k}" for k in report.missing_prices]
-        lines.append("")
+    lines += missing_price_lines(report.missing_prices)
     if report.rate_gaps:
         lines += rate_gap_lines(
             report.rate_gaps,
@@ -185,17 +184,7 @@ def render_markdown(report: ValuationResult) -> str:
             "weights above understate). Add the month/currency to "
             "`data/fx/hmrc-monthly-average.csv` and re-run:",
         )
-    if report.unclassified:
-        lines += [
-            "## ⚠️ Unclassified holdings (no metadata)",
-            "",
-            "Counted by value but bucketed `unknown` for asset class and "
-            "domicile — add them to `data/commodities.toml` for accurate "
-            "breakdowns:",
-            "",
-        ]
-        lines += [f"- {k}" for k in report.unclassified]
-        lines.append("")
+    lines += unclassified_lines(report.unclassified)
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -206,11 +195,6 @@ def render_csv_rows(report: ValuationResult) -> list[list[str]]:
 
     gross = report.gross_long_gbp
 
-    def _weight(value: Decimal) -> str:
-        if gross == _ZERO:
-            return ""
-        return str((value / gross * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
-
     rows = [[
         "kind", "key", "name", "asset_class", "domicile", "issuer", "currency",
         "quantity", "value_gbp", "weight_pct",
@@ -218,7 +202,8 @@ def render_csv_rows(report: ValuationResult) -> list[list[str]]:
     for h in report.securities:
         rows.append([
             "security", h.key, h.name, h.asset_class, h.domicile, h.issuer,
-            h.currency, money(h.quantity), money(h.value_gbp), _weight(h.value_gbp),
+            h.currency, money(h.quantity), money(h.value_gbp),
+            weight(h.value_gbp, gross),
         ])
     for c in report.cash:
         rows.append([

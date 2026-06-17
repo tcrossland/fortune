@@ -28,7 +28,13 @@ from decimal import Decimal
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.property import Property
-from banking_pipeline.report_format import gbp, money, rate_gap_lines
+from banking_pipeline.report_format import (
+    gbp,
+    missing_price_lines,
+    money,
+    rate_gap_lines,
+    unclassified_lines,
+)
 from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.valuation import (
     RawHolding,
@@ -65,6 +71,7 @@ class NetWorthTimeline:
     points: tuple[NetWorthPoint, ...]
     rate_gaps: tuple[RateGap, ...]  # snapshots that couldn't fully convert
     missing_prices: tuple[str, ...]
+    unclassified: tuple[str, ...]  # valued but no commodities.toml metadata
 
 
 def build_timeline(
@@ -105,6 +112,7 @@ def _timeline_from_raw(
     snapshots: list[_Snapshot] = []
     rate_gaps: list[RateGap] = []
     missing_prices: list[str] = []
+    unclassified: list[str] = []
     for (portfolio, on_date), grp in groups.items():
         valued = value_holdings(
             list(grp.values()), commodities=commodities, rate_source=rate_source
@@ -117,6 +125,7 @@ def _timeline_from_raw(
         )
         rate_gaps.extend(valued.rate_gaps)
         missing_prices.extend(valued.missing_prices)
+        unclassified.extend(valued.unclassified)
 
     by_portfolio: dict[str, list[_Snapshot]] = defaultdict(list)
     for s in snapshots:
@@ -146,6 +155,7 @@ def _timeline_from_raw(
         points=tuple(points),
         rate_gaps=tuple(rate_gaps),
         missing_prices=tuple(sorted(set(missing_prices))),
+        unclassified=tuple(sorted(set(unclassified))),
     )
 
 
@@ -180,7 +190,15 @@ def render_markdown(timeline: NetWorthTimeline) -> str:
             f"| {gbp(p.net_worth_gbp)} | {delta} |"
         )
     lines.append("")
+    lines += [
+        "> Caveat: a wound-down portfolio keeps contributing its last "
+        "non-empty snapshot until a newer statement supersedes it (an empty "
+        "valuation doesn't refresh the as-of fill), so a closed account can "
+        "linger and overstate a later point.",
+        "",
+    ]
 
+    lines += missing_price_lines(timeline.missing_prices)
     if timeline.rate_gaps:
         lines += rate_gap_lines(
             timeline.rate_gaps,
@@ -189,6 +207,7 @@ def render_markdown(timeline: NetWorthTimeline) -> str:
             "to GBP, so that point's net worth understates. Add the "
             "month/currency to `data/fx/hmrc-monthly-average.csv`:",
         )
+    lines += unclassified_lines(timeline.unclassified)
 
     return "\n".join(lines).rstrip() + "\n"
 

@@ -10,7 +10,11 @@ from typer.testing import CliRunner
 
 from banking_pipeline import cli
 from banking_pipeline.fx.gbp_rates import NullSource
-from banking_pipeline.net_worth import _timeline_from_raw, build_timeline
+from banking_pipeline.net_worth import (
+    _timeline_from_raw,
+    build_timeline,
+    render_markdown,
+)
 from banking_pipeline.valuation import RawHolding
 
 D = Decimal
@@ -122,3 +126,21 @@ def test_cli_strict_fails_on_unconvertible_snapshot(tmp_path: Path) -> None:
 
     strict = runner.invoke(cli.app, [*base, "--strict"])
     assert strict.exit_code == 1, strict.output
+
+
+def test_render_flags_unclassified_missing_price_and_caveat() -> None:
+    # One priced-but-unclassified holding (no metadata) and one with no mark.
+    raws = [
+        RawHolding("A", date(2025, 1, 1), "IE00UNCLASS1", D(10), D(100), "GBP", False),
+        RawHolding("A", date(2025, 1, 1), "IE00NOMARK01", D(5), None, "GBP", False),
+    ]
+    tl = _timeline_from_raw(raws, commodities={}, rate_source=NullSource())
+    assert tl.unclassified == ("IE00UNCLASS1",)
+    assert tl.missing_prices == ("IE00NOMARK01",)
+
+    md = render_markdown(tl)
+    assert "Unclassified holdings (no metadata)" in md
+    assert "IE00UNCLASS1" in md
+    assert "Unvaluable holdings (no statement mark)" in md
+    assert "IE00NOMARK01" in md
+    assert "wound-down portfolio" in md  # the B6 forward-fill caveat

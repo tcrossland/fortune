@@ -22,12 +22,20 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.property import Property
-from banking_pipeline.report_format import gbp, money, pct, rate_gap_lines
+from banking_pipeline.report_format import (
+    gbp,
+    missing_price_lines,
+    money,
+    pct,
+    rate_gap_lines,
+    unclassified_lines,
+    weight,
+)
 from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.valuation import (
     Holding,
@@ -210,15 +218,7 @@ def render_markdown(report: PortfolioAllocationReport) -> str:
                 )
             lines.append("")
 
-    if report.missing_prices:
-        lines += [
-            "## ⚠️ Unvaluable holdings (no statement mark)",
-            "",
-            "Held but excluded — the latest statement carried no price:",
-            "",
-        ]
-        lines += [f"- {k}" for k in report.missing_prices]
-        lines.append("")
+    lines += missing_price_lines(report.missing_prices)
     if report.rate_gaps:
         lines += rate_gap_lines(
             report.rate_gaps,
@@ -226,16 +226,7 @@ def render_markdown(report: PortfolioAllocationReport) -> str:
             intro="Valued in a non-GBP currency with no rate, so excluded. Add "
             "the month/currency to `data/fx/hmrc-monthly-average.csv`:",
         )
-    if report.unclassified:
-        lines += [
-            "## ⚠️ Unclassified holdings (no metadata)",
-            "",
-            "Counted by value but bucketed `unknown` — add them to "
-            "`data/commodities.toml` for accurate breakdowns:",
-            "",
-        ]
-        lines += [f"- {k}" for k in report.unclassified]
-        lines.append("")
+    lines += unclassified_lines(report.unclassified)
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -249,19 +240,14 @@ def render_csv_rows(report: PortfolioAllocationReport) -> list[list[str]]:
         "portfolio_net_worth_gbp",
     ]]
 
-    def _weight(value: Decimal, total: Decimal) -> str:
-        if total == _ZERO:
-            return ""
-        return str((value / total * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
-
     for r in report.portfolios:
         for cls, value in r.by_class_gbp:
             out.append([
                 r.label, r.as_of.isoformat(), cls, money(value),
-                _weight(value, r.gross_long_gbp), money(r.net_worth_gbp),
+                weight(value, r.gross_long_gbp), money(r.net_worth_gbp),
             ])
         out.append([
             r.label, r.as_of.isoformat(), _CASH, money(r.net_cash_gbp),
-            _weight(r.net_cash_gbp, r.gross_long_gbp), money(r.net_worth_gbp),
+            weight(r.net_cash_gbp, r.gross_long_gbp), money(r.net_worth_gbp),
         ])
     return out

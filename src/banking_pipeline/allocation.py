@@ -25,12 +25,20 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.property import Property
-from banking_pipeline.report_format import gbp, money, pct, rate_gap_lines
+from banking_pipeline.report_format import (
+    gbp,
+    missing_price_lines,
+    money,
+    pct,
+    rate_gap_lines,
+    unclassified_lines,
+    weight,
+)
 from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.valuation import (
     RawHolding,
@@ -78,6 +86,7 @@ class AllocationTimeline:
     asset_classes: tuple[str, ...]  # ordered union of security classes seen
     rate_gaps: tuple[RateGap, ...]
     missing_prices: tuple[str, ...]
+    unclassified: tuple[str, ...]  # valued but no commodities.toml metadata
 
 
 def _order_classes(classes: set[str]) -> list[str]:
@@ -126,6 +135,7 @@ def _timeline_from_raw(
     snapshots: list[_Snapshot] = []
     rate_gaps: list[RateGap] = []
     missing_prices: list[str] = []
+    unclassified: list[str] = []
     for (portfolio, on_date), grp in groups.items():
         valued = value_holdings(
             list(grp.values()), commodities=commodities, rate_source=rate_source
@@ -141,6 +151,7 @@ def _timeline_from_raw(
         )
         rate_gaps.extend(valued.rate_gaps)
         missing_prices.extend(valued.missing_prices)
+        unclassified.extend(valued.unclassified)
 
     by_portfolio: dict[str, list[_Snapshot]] = defaultdict(list)
     for s in snapshots:
@@ -179,6 +190,7 @@ def _timeline_from_raw(
         asset_classes=tuple(_order_classes(seen_classes)),
         rate_gaps=tuple(rate_gaps),
         missing_prices=tuple(sorted(set(missing_prices))),
+        unclassified=tuple(sorted(set(unclassified))),
     )
 
 
@@ -228,16 +240,15 @@ def render_markdown(timeline: AllocationTimeline) -> str:
         f"| {pct(last.net_cash_gbp, last.gross_long_gbp)} |"
     )
     lines.append("")
+    lines += [
+        "> Caveat: a wound-down portfolio keeps contributing its last "
+        "non-empty snapshot until a newer statement supersedes it (an empty "
+        "valuation doesn't refresh the as-of fill), so a closed account can "
+        "linger in the mix.",
+        "",
+    ]
 
-    if timeline.missing_prices:
-        lines += [
-            "## ⚠️ Unvaluable holdings (no statement mark)",
-            "",
-            "Held but excluded — the latest statement carried no price:",
-            "",
-        ]
-        lines += [f"- {k}" for k in timeline.missing_prices]
-        lines.append("")
+    lines += missing_price_lines(timeline.missing_prices)
     if timeline.rate_gaps:
         lines += rate_gap_lines(
             timeline.rate_gaps,
@@ -246,6 +257,7 @@ def render_markdown(timeline: AllocationTimeline) -> str:
             "to GBP, so that point's allocation understates. Add the "
             "month/currency to `data/fx/hmrc-monthly-average.csv`:",
         )
+    lines += unclassified_lines(timeline.unclassified)
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -256,21 +268,16 @@ def render_csv_rows(timeline: AllocationTimeline) -> list[list[str]]:
 
     out = [["date", "asset_class", "value_gbp", "weight_pct", "gross_long_gbp", "net_worth_gbp"]]
 
-    def _weight(value: Decimal, total: Decimal) -> str:
-        if total == _ZERO:
-            return ""
-        return str((value / total * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
-
     for p in timeline.points:
         for cls, value in p.by_class_gbp:
             out.append([
                 p.on_date.isoformat(), cls, money(value),
-                _weight(value, p.gross_long_gbp),
+                weight(value, p.gross_long_gbp),
                 money(p.gross_long_gbp), money(p.net_worth_gbp),
             ])
         out.append([
             p.on_date.isoformat(), _CASH, money(p.net_cash_gbp),
-            _weight(p.net_cash_gbp, p.gross_long_gbp),
+            weight(p.net_cash_gbp, p.gross_long_gbp),
             money(p.gross_long_gbp), money(p.net_worth_gbp),
         ])
     return out

@@ -169,12 +169,14 @@ while understating. This is P0.
   foreign. Both surface in `summary.txt`. **P1 complete.**
 
 **P2 — polish & coverage**
+- ~~B4/B5/B6/B10~~ — ✅ DONE (2026-06-17): `unclassified` + `missing_prices`
+  warnings and the stale-forward-fill caveat now render uniformly across
+  concentration / net-worth / allocation / portfolio-allocation via shared
+  `report_format` helpers (`unclassified_lines` / `missing_price_lines`),
+  and the `_weight` formula is de-duplicated into `report_format.weight`.
+  `report_format` now has its own tests.
 - B3: wire trial-balance into `[post.reports]` (a `trial_balance` toggle).
-- B4/B5: render `unclassified` + `missing_prices` uniformly in allocation
-  and net-worth.
-- B6: surface the stale-forward-fill caveat in the rendered report, not
-  just the docstring.
 - B7/B11: partial-value multi-leg trial-balance accounts; fix the cosmetic
   `RateGap` slot.
-- A9/A10/B8/B10: adversarial `infer_issuer` test, the silent-failure-mode
-  tests, `report_format` tests, and de-duplicate the `_weight` formula.
+- A9/A10/B8: adversarial `infer_issuer` test, the silent-failure-mode
+  tests, more `report_format` / CLI-strict coverage.

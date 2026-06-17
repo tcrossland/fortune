@@ -37,6 +37,54 @@ def pct(value: Decimal, total: Decimal) -> str:
     return f"{(value / total * 100).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}%"
 
 
+def weight(value: Decimal, total: Decimal) -> str:
+    """Bare 1-dp percentage *number* (no ``%``) for a CSV weight cell; empty
+    when ``total`` is zero. The CSV counterpart of :func:`pct`, shared by the
+    reports so the weight formula lives in one place."""
+
+    if total == _ZERO:
+        return ""
+    return f"{(value / total * 100).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}"
+
+
+def unclassified_lines(isins: Iterable[str]) -> list[str]:
+    """Markdown for the "counted but un-classified" warning, shared so every
+    report flags a holding with no ``commodities.toml`` entry the same way.
+    Empty when there are none; the caller guards and appends."""
+
+    keys = sorted(set(isins))
+    if not keys:
+        return []
+    return [
+        "## ⚠️ Unclassified holdings (no metadata)",
+        "",
+        "Counted by value but bucketed `unknown` (asset class / domicile / "
+        "issuer) — add them to `data/commodities.toml` for accurate "
+        "breakdowns:",
+        "",
+        *[f"- {k}" for k in keys],
+        "",
+    ]
+
+
+def missing_price_lines(keys: Iterable[str]) -> list[str]:
+    """Markdown for the "held but unvaluable — no statement mark" warning,
+    shared across the valuation reports. Empty when there are none."""
+
+    uniq = sorted(set(keys))
+    if not uniq:
+        return []
+    return [
+        "## ⚠️ Unvaluable holdings (no statement mark)",
+        "",
+        "Held but excluded from the figures above — the latest statement "
+        "carried no price for them:",
+        "",
+        *[f"- {k}" for k in uniq],
+        "",
+    ]
+
+
 def rate_gap_lines(
     gaps: Iterable[RateGap], *, title: str, intro: str
 ) -> list[str]:

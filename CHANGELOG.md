@@ -87,6 +87,15 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **Uniform report warnings + shared formatting** — the "unclassified
+  holdings (no metadata)" and "unvaluable holdings (no mark)" warnings now
+  render consistently across concentration / net-worth / allocation /
+  portfolio-allocation (previously net-worth and allocation silently
+  dropped one or both), and the net-worth/allocation timelines surface the
+  stale-forward-fill caveat in the report body. The shared
+  `report_format.unclassified_lines` / `missing_price_lines` / `weight`
+  helpers replace four per-report copies. Reporting-audit P2 (B4/B5/B6/B10).
+  (`report_format.py` + the four report modules)
 - **`net-worth --strict` + valuation-source note** — `net-worth` gains the
   `--strict` flag the other valued reports already had (exit non-zero when
   a snapshot can't be fully valued, so a CI gate catches an understated
