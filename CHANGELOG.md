@@ -8,6 +8,14 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## UK tax
 
+- **`fetch_reporting_funds.py` hardened** — the HMRC reporting-funds
+  updater now guards network/format failures (clear abort, never a
+  traceback), sanity-checks the parsed ISIN count against an implausibly
+  small download before writing, backs up `commodities.toml` and writes
+  atomically (temp + replace), and rewrites status **order-independently**
+  per `[[commodity]]` block (no longer assuming `isin` precedes
+  `reporting_status`). The pure rewrite is unit-tested. The reporting
+  audit's P1 (A4/A8 fixed; A5 over-match mitigated by the count guard).
 - **`--strict` gates on every understatement mode** — `tax-report`,
   `tax-forecast` and `fig-advice` now exit non-zero under `--strict` not
   only on a missing GBP rate but also on an **unclassified** disposal

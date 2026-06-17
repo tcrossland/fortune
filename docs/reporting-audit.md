@@ -154,8 +154,11 @@ while understating. This is P0.
   can be wrong.
 
 **P1 — robustness & consistency**
-- A4/A5/A8: harden `fetch_reporting_funds.py` — atomic write + backup,
-  network/format guards, tighter ISIN acceptance, and a test.
+- ~~A4/A8: harden `fetch_reporting_funds.py`~~ — ✅ DONE (2026-06-17):
+  network/format guards, ISIN-count sanity check, backup + atomic write,
+  order-independent per-block rewrite, unit tests. A5 (token over-match)
+  mitigated by the count guard; per-token false positives remain a low
+  residual (a full fix needs ODS column parsing).
 - B1: document the trial-balance-vs-statement valuation split (in the
   trial-balance docstring + README), or add a reconciliation note; decide
   whether they should ever agree.
