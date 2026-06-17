@@ -150,6 +150,10 @@ class Settings(BaseSettings):
     # ``mandate-scorecard.md`` and ``.csv`` here.
     mandate_scorecard_reports_dir: Path = Path("reports/mandate-scorecard")
 
+    # Output directory for ``mandate-returns``: writes ``mandate-returns.md``
+    # and ``.csv`` here.
+    mandate_returns_reports_dir: Path = Path("reports/mandate-returns")
+
     # Pre-ledger / transferred-in opening positions (ISIN → lots with a
     # GBP cost) seeded into the section 104 pool. Defaults to
     # ``data/opening-positions.toml`` when present. See

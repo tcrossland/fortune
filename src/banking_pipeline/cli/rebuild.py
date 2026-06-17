@@ -34,6 +34,9 @@ from banking_pipeline import (
     income as income_mod,
 )
 from banking_pipeline import (
+    mandate_returns as mandate_returns_mod,
+)
+from banking_pipeline import (
     mandate_scorecard as mandate_scorecard_mod,
 )
 from banking_pipeline import (
@@ -624,6 +627,7 @@ def _do_rebuild(
                 ("portfolio-allocation", rep.portfolio_allocation),
                 ("trial-balance", rep.trial_balance),
                 ("mandate-scorecard", rep.mandate_scorecard),
+                ("mandate-returns", rep.mandate_returns),
             ) if on
         ]
         err_console.print(
@@ -845,6 +849,33 @@ def _run_rebuild_reports(
                 mandate_scorecard_mod.render_markdown(cost_report),
                 "mandate-scorecard.csv",
                 mandate_scorecard_mod.render_csv_rows(cost_report),
+            )
+    if rep.mandate_returns:
+        # Ledger-based (bean-query) for the external flows + statements for
+        # the value series. Same skip-on-missing handling as the cost block.
+        flow_result = mandate_returns_mod.query_flows(trial_balance_ledger)
+        if not trial_balance_ledger.is_file() or flow_result.binary_missing:
+            err_console.print(
+                f"[yellow]mandate-returns skipped:[/yellow] "
+                f"{flow_result.error or f'ledger {trial_balance_ledger} not found'}"
+            )
+        elif not flow_result.ok:
+            err_console.print(
+                f"[yellow]mandate-returns skipped:[/yellow] {flow_result.error}"
+            )
+        else:
+            returns_report = mandate_returns_mod.build_report(
+                texts, flow_result,
+                commodities=commodities_map, rate_source=rates,
+            )
+            _write_report(
+                _resolve_report_dir(
+                    settings.mandate_returns_reports_dir, project_root
+                ),
+                "mandate-returns.md",
+                mandate_returns_mod.render_markdown(returns_report),
+                "mandate-returns.csv",
+                mandate_returns_mod.render_csv_rows(returns_report),
             )
 
 

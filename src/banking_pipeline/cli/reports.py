@@ -19,6 +19,7 @@ import typer
 from banking_pipeline import allocation as allocation_mod
 from banking_pipeline import concentration as concentration_mod
 from banking_pipeline import income as income_mod
+from banking_pipeline import mandate_returns as mandate_returns_mod
 from banking_pipeline import mandate_scorecard as mandate_scorecard_mod
 from banking_pipeline import net_worth as net_worth_mod
 from banking_pipeline import portfolio_allocation as portfolio_allocation_mod
@@ -591,3 +592,85 @@ def mandate_scorecard(
         f"Wrote mandate scorecard to {out_dir} "
         f"({len(report.years)} year(s), total explicit cost £{total:,.2f})"
     )
+
+
+@app.command("mandate-returns")
+def mandate_returns(
+    ledger: Annotated[
+        Path,
+        typer.Option(
+            "--ledger",
+            exists=True,
+            readable=True,
+            help="Ledger to read external flows from (Expenses:Pic:Other + "
+            "Equity:Pic:Transfers). Defaults to ``main.beancount``.",
+        ),
+    ] = Path("main.beancount"),
+    statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
+    statements_dir: StatementsDirOpt = None,
+    statements_recursive: StatementsRecursiveOpt = False,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``mandate_returns_reports_dir`` (``reports/mandate-returns``).",
+        ),
+    ] = None,
+    commodities: CommoditiesOpt = None,
+    rate_source: ValuationRateSourceOpt = None,
+    verbose: VerboseOpt = False,
+) -> None:
+    """Mandate returns (step 2) — time- & money-weighted returns.
+
+    Computes the Pictet mandate's return on two bases side by side — **net**
+    (your equity, assets minus the Lombard loan) and **gross** (the total
+    asset book, loan added back) — as a time-weighted return (TWR, deposit
+    timing stripped out — the manager's scorecard) and a money-weighted
+    return (MWR/XIRR, your actual experience). Whole mandate plus a per-
+    account (K / P) breakdown. Reads statement valuations for the value
+    series and the ledger (via ``bean-query``) for the external flows.
+    """
+
+    _configure_logging(verbose)
+    texts, commodities_map, rates = _load_statement_context(
+        statements, statements_dir, statements_recursive, commodities, rate_source
+    )
+
+    flow_result = mandate_returns_mod.query_flows(ledger)
+    if flow_result.binary_missing:
+        err_console.print(f"[yellow]warning:[/yellow] {flow_result.error}")
+        raise typer.Exit(code=0)
+    if not flow_result.ok:
+        err_console.print(f"[red]bean-query failed[/red]:\n{flow_result.error}")
+        raise typer.Exit(code=1)
+
+    report = mandate_returns_mod.build_report(
+        texts, flow_result, commodities=commodities_map, rate_source=rates
+    )
+
+    out_dir = out or settings.mandate_returns_reports_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "mandate-returns.md").write_text(
+        mandate_returns_mod.render_markdown(report), encoding="utf-8"
+    )
+    with (out_dir / "mandate-returns.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as fh:
+        csv.writer(fh).writerows(mandate_returns_mod.render_csv_rows(report))
+
+    agg = report.aggregate
+
+    def _p(v: float | None) -> str:
+        return "—" if v is None else f"{v * 100:.1f}%"
+
+    err_console.print(
+        f"Wrote mandate returns to {out_dir} "
+        f"(TWR p.a. net {_p(agg.twr_net_annualised)} / gross "
+        f"{_p(agg.twr_gross_annualised)}, MWR {_p(agg.mwr_net)})"
+    )
+    if agg.suspect_periods:
+        err_console.print(
+            f"[yellow]{len(agg.suspect_periods)} period(s) flagged — possible "
+            "untagged flow; see the report.[/yellow]"
+        )
