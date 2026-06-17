@@ -78,6 +78,13 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`net-worth --strict` + valuation-source note** — `net-worth` gains the
+  `--strict` flag the other valued reports already had (exit non-zero when
+  a snapshot can't be fully valued, so a CI gate catches an understated
+  timeline), and the `trial-balance` module now documents why it does *not*
+  reconcile with the statement-valuation reports (ledger current positions
+  / today vs latest statement snapshot / statement date). Reporting-audit
+  P1 (B1/B2). (`cli/reports.py`, `trial_balance.py`)
 - **Concentration "by issuer"** — the `concentration` report gains a
   fund-house / single-provider exposure breakdown alongside the existing
   ones. Issuer comes from an optional `issuer` field on the commodity

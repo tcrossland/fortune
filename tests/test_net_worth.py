@@ -100,3 +100,25 @@ def test_cli_writes_timeline(tmp_path: Path) -> None:
     assert csv_text.splitlines()[0] == (
         "date,gross_long_gbp,net_cash_gbp,net_worth_gbp,change_gbp,portfolios"
     )
+
+
+_PICTET = Path("tests/fixtures/en/pictet/monthly_statement.txt")
+
+
+def test_cli_strict_fails_on_unconvertible_snapshot(tmp_path: Path) -> None:
+    # Pictet statement has non-GBP holdings; with the null rate source they
+    # can't be valued → the timeline understates. --strict must catch it.
+    out_dir = tmp_path / "nw"
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text("", encoding="utf-8")
+    base = [
+        "net-worth", "--statement", str(_PICTET), "--out", str(out_dir),
+        "--commodities", str(commodities), "--rate-source", "null",
+    ]
+    runner = CliRunner()
+
+    lenient = runner.invoke(cli.app, base)
+    assert lenient.exit_code == 0, lenient.output  # writes + warns, doesn't fail
+
+    strict = runner.invoke(cli.app, [*base, "--strict"])
+    assert strict.exit_code == 1, strict.output

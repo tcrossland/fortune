@@ -159,12 +159,12 @@ while understating. This is P0.
   order-independent per-block rewrite, unit tests. A5 (token over-match)
   mitigated by the count guard; per-token false positives remain a low
   residual (a full fix needs ODS column parsing).
-- B1: document the trial-balance-vs-statement valuation split (in the
-  trial-balance docstring + README), or add a reconciliation note; decide
-  whether they should ever agree.
-- B2: add `--strict` to `net-worth`.
+- ~~B1: document the trial-balance-vs-statement valuation split~~ — ✅ DONE
+  (2026-06-17): the `trial_balance` module docstring spells out the
+  source / as-of / scope differences and that they don't reconcile.
+- ~~B2: add `--strict` to `net-worth`~~ — ✅ DONE (2026-06-17).
 - A6/A7: cross-check ERI `income_type` against `distributions_as_interest`;
-  warn on the SA106 `GB`-prefix drop when `uk_situs` says foreign.
+  warn on the SA106 `GB`-prefix drop when `uk_situs` says foreign. **(next)**
 
 **P2 — polish & coverage**
 - B3: wire trial-balance into `[post.reports]` (a `trial_balance` toggle).

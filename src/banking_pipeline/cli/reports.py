@@ -128,6 +128,14 @@ def net_worth(
     commodities: CommoditiesOpt = None,
     rate_source: ValuationRateSourceOpt = None,
     property_source: PropertyOpt = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="Exit non-zero if any snapshot couldn't be fully valued "
+            "(no statement mark or no GBP rate), so a point understates.",
+        ),
+    ] = False,
     verbose: VerboseOpt = False,
 ) -> None:
     """Net worth over time.
@@ -161,6 +169,14 @@ def net_worth(
     err_console.print(
         f"Wrote net-worth report to {out_dir} ({n} point(s){latest})"
     )
+    gap_n = len(timeline.missing_prices) + len(timeline.rate_gaps)
+    if gap_n:
+        err_console.print(
+            f"[yellow]{gap_n} holding-snapshot(s) excluded (no mark / no "
+            "GBP rate) — the timeline understates; see the report.[/yellow]"
+        )
+        if strict:
+            raise typer.Exit(code=1)
 
 
 @app.command()

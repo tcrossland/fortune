@@ -14,6 +14,24 @@ no GBP rate, is left blank in the GBP column and surfaced as a warning —
 never silently converted. Equity / Income / Expenses stay native: they're
 cumulative flows whose spot-rate conversion would be meaningless (and a
 single-currency total would need an ``Equity:Conversions`` plug).
+
+**This does not reconcile with the statement-valuation reports**
+(``concentration`` / ``net-worth`` / ``allocation`` /
+``portfolio-allocation``), by design — they answer "what is it worth?"
+differently and will not tie out:
+
+* *source* — here, the **ledger's current positions** (what you actually
+  hold per ``bean-query``); there, the **latest statement snapshot** per
+  portfolio. A position traded after the last statement shows here but not
+  there, and vice-versa.
+* *as-of* — here, **today** (``value()`` at the latest price-db mark);
+  there, each portfolio's **last statement date**.
+* *scope* — here, only what the loaded ledger contains (property only if
+  ``main.beancount`` ``include``s ``property.beancount``); there, off-ledger
+  property is folded in from ``property.toml``.
+
+Use the statement reports for the GBP wealth view; use this for a
+ledger-faithful account-by-account check.
 """
 
 from __future__ import annotations
