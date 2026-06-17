@@ -163,8 +163,10 @@ while understating. This is P0.
   (2026-06-17): the `trial_balance` module docstring spells out the
   source / as-of / scope differences and that they don't reconcile.
 - ~~B2: add `--strict` to `net-worth`~~ — ✅ DONE (2026-06-17).
-- A6/A7: cross-check ERI `income_type` against `distributions_as_interest`;
-  warn on the SA106 `GB`-prefix drop when `uk_situs` says foreign. **(next)**
+- ~~A6/A7~~ — ✅ DONE (2026-06-17): ERI for a bond fund now follows the
+  `distributions_as_interest` flag (overrides a mistyped `income_type`,
+  flags it); the SA106 `GB`-prefix drop is flagged when `uk_situs` is
+  foreign. Both surface in `summary.txt`. **P1 complete.**
 
 **P2 — polish & coverage**
 - B3: wire trial-balance into `[post.reports]` (a `trial_balance` toggle).

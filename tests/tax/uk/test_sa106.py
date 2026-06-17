@@ -152,3 +152,39 @@ def test_dividend_outside_year_excluded() -> None:
     ]
     report = compute_sa106_dividends(txs, tax_year_label="2025-26", commodities={})
     assert report.dividends == []
+
+
+def test_gb_prefix_foreign_situs_income_dropped_but_flagged() -> None:
+    # A GB-ISIN depositary receipt over a foreign asset (uk_situs=False):
+    # country resolves to GB so it's dropped from SA106 — but because the
+    # situs is foreign, the drop is flagged for manual review, not silent.
+    isin = "GB00B16KPT44"
+    meta = CommodityMetadata(
+        isin=isin, name="GDR over foreign asset", domicile="GB",
+        reporting_status="reporting", asset_class="equity-fund",
+        first_acquired=date(2020, 1, 1), uk_situs=False,
+    )
+    txs = [_div(isin=isin, amount=Decimal("85.00"), on=date(2025, 6, 1),
+                currency="GBP")]
+    report = compute_sa106_dividends(
+        txs, tax_year_label="2025-26", commodities={isin: meta}
+    )
+    assert report.dividends == [] and report.interest == []
+    assert report.dropped_uk_situs_foreign == [isin]
+
+
+def test_gb_domestic_income_dropped_without_flag() -> None:
+    # A genuinely UK-domestic GB fund (uk_situs derives True) is dropped and
+    # NOT flagged — it correctly belongs on SA100.
+    isin = "GB00B16KPT44"
+    meta = CommodityMetadata(
+        isin=isin, name="UK fund", domicile="GB",
+        reporting_status="uk-domestic", asset_class="equity-fund",
+        first_acquired=date(2020, 1, 1),
+    )
+    txs = [_div(isin=isin, amount=Decimal("85.00"), on=date(2025, 6, 1),
+                currency="GBP")]
+    report = compute_sa106_dividends(
+        txs, tax_year_label="2025-26", commodities={isin: meta}
+    )
+    assert report.dropped_uk_situs_foreign == []

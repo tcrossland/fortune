@@ -63,6 +63,12 @@ class Sa106Report:
     interest: list[Sa106InterestRow] = field(default_factory=list)
     missing_rate_isins: list[str] = field(default_factory=list)
     missing_rates: list[RateGap] = field(default_factory=list)
+    # ISINs whose income was dropped as UK (country resolved to GB) but whose
+    # commodity situs is foreign — a GB-listed receipt over a foreign asset,
+    # so the income may belong on SA106 after all. Flagged, not dropped
+    # silently; the user decides (it isn't auto-included — WHT/country need a
+    # human call).
+    dropped_uk_situs_foreign: list[str] = field(default_factory=list)
 
 
 def _income_date(tx: Transaction) -> date:
@@ -99,6 +105,7 @@ def compute_sa106_dividends(
     interest_groups: dict[tuple[str, str], _Acc] = defaultdict(_Acc)
     missing: set[str] = set()
     gaps: set[RateGap] = set()
+    dropped_foreign: set[str] = set()
 
     for tx in transactions:
         if tx.document_type not in DIVIDEND_TYPES or not tx.isin:
@@ -109,7 +116,14 @@ def compute_sa106_dividends(
             continue  # non-resident part of a split arrival year
         country = (tx.withholding_country or tx.isin[:2]).upper()
         if country == "GB":
-            continue  # UK income → SA100, not SA106
+            # UK income → SA100, not SA106. But a GB *ISIN prefix* can sit
+            # over a foreign asset (a depositary receipt): if the commodity's
+            # situs is explicitly foreign, this drop silently loses foreign
+            # income, so flag it rather than swallow it.
+            meta = commodities.get(tx.isin)
+            if meta is not None and not meta.resolved_uk_situs:
+                dropped_foreign.add(tx.isin)
+            continue
 
         on = _income_date(tx)
         gross_native = tx.gross_income if tx.gross_income is not None else tx.amount
@@ -159,4 +173,5 @@ def compute_sa106_dividends(
         interest=interest_rows,
         missing_rate_isins=sorted(missing),
         missing_rates=sorted(gaps, key=lambda g: (g.isin, g.month)),
+        dropped_uk_situs_foreign=sorted(dropped_foreign),
     )

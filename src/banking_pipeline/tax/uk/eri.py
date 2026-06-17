@@ -149,6 +149,10 @@ class EriResult:
     missing_rate_isins: list[str] = field(default_factory=list)
     # The same gaps with currency/month detail (which HMRC CSV row to add).
     missing_rates: list[RateGap] = field(default_factory=list)
+    # ISINs whose typed eri.toml ``income_type`` was overridden to interest
+    # because the commodity is a bond fund (``distributions_as_interest``);
+    # surfaced so the inconsistent eri.toml entry gets corrected.
+    reclassified_to_interest: list[str] = field(default_factory=list)
 
 
 def _position_as_of(
@@ -191,6 +195,7 @@ def compute_eri(
     adjustments: dict[str, list[PoolCostAdjustment]] = defaultdict(list)
     missing: set[str] = set()
     gaps: set[RateGap] = set()
+    reclassified: set[str] = set()
 
     for isin, entries in eri_entries.items():
         for entry in entries:
@@ -218,11 +223,20 @@ def compute_eri(
             meta = commodities.get(isin)
             country = (meta.domicile if meta is not None else isin[:2]).upper()
             name = meta.name if meta is not None else ""
+            # The bond-fund rule (``distributions_as_interest``) makes ALL the
+            # fund's income — distributions *and* ERI — foreign interest, so
+            # ERI follows the commodity flag, not the typed ``income_type``;
+            # a typed disagreement is overridden here and flagged for the user.
+            income_type = entry.income_type
+            if meta is not None and meta.distributions_as_interest:
+                if income_type != "interest":
+                    reclassified.add(isin)
+                income_type = "interest"
             acc.setdefault(
-                (country, isin, entry.income_type),
+                (country, isin, income_type),
                 [Decimal(0), Decimal(0), Decimal(0), 0, name],
             )
-            bucket = acc[(country, isin, entry.income_type)]
+            bucket = acc[(country, isin, income_type)]
             bucket[0] += gross
             bucket[1] += equalisation
             bucket[2] += base_cost_adj
@@ -247,4 +261,5 @@ def compute_eri(
         base_cost_adjustments=dict(adjustments),
         missing_rate_isins=sorted(missing),
         missing_rates=sorted(gaps, key=lambda g: (g.isin, g.month)),
+        reclassified_to_interest=sorted(reclassified),
     )

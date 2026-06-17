@@ -195,3 +195,38 @@ def test_foreign_currency_uses_rate_source() -> None:
     assert result.rows[0].gross_gbp == Decimal("400.00")  # 500 EUR * 0.80
     # base cost uplift = gross - equalisation = (500 - 100) EUR * 0.80
     assert result.rows[0].base_cost_adjustment_gbp == Decimal("320.00")
+
+
+def test_bond_fund_eri_overridden_to_interest_and_flagged() -> None:
+    # A bond fund (distributions_as_interest) whose eri.toml entry is wrongly
+    # typed "dividend" — ERI must follow the commodity flag (interest), and
+    # the inconsistency is flagged for the user to fix the TOML.
+    from banking_pipeline.commodities_metadata import CommodityMetadata
+
+    isin = "IE00B3VWN518"
+    meta = CommodityMetadata(
+        isin=isin, name="Bond Fund", domicile="IE",
+        reporting_status="reporting", asset_class="bond",
+        first_acquired=date(2020, 1, 1), distributions_as_interest=True,
+    )
+    result = compute_eri(
+        [_buy(isin, "1000", date(2024, 1, 1))],
+        tax_year_label="2024-25",
+        eri_entries={isin: [_entry(isin, income_type="dividend")]},
+        commodities={isin: meta},
+    )
+    assert [r.income_type for r in result.rows] == ["interest"]
+    assert result.reclassified_to_interest == [isin]
+
+
+def test_eri_income_type_respected_without_bond_fund_flag() -> None:
+    # No bond-fund flag → the typed income_type stands, nothing flagged.
+    isin = "IE00B3VWN518"
+    result = compute_eri(
+        [_buy(isin, "1000", date(2024, 1, 1))],
+        tax_year_label="2024-25",
+        eri_entries={isin: [_entry(isin, income_type="dividend")]},
+        commodities={},
+    )
+    assert [r.income_type for r in result.rows] == ["dividend"]
+    assert result.reclassified_to_interest == []

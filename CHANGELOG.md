@@ -8,6 +8,15 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## UK tax
 
+- **ERI / SA106 consistency warnings** — two silent inconsistencies now
+  surface in `summary.txt`. ERI for a bond fund (`distributions_as_interest`)
+  follows the commodity flag (foreign *interest*), overriding a mistyped
+  `income_type` in `eri.toml` so its ERI and distributions can't split
+  differently — and flags the override. And foreign income dropped from
+  SA106 because its ISIN *prefix* is `GB` while the commodity situs is
+  explicitly foreign (a depositary receipt) is flagged for review rather
+  than silently lost. Reporting-audit P1 (A6/A7). (`tax/uk/eri.py`,
+  `tax/uk/sa106.py`, `cli/tax.py`)
 - **`fetch_reporting_funds.py` hardened** — the HMRC reporting-funds
   updater now guards network/format failures (clear abort, never a
   traceback), sanity-checks the parsed ISIN count against an implausibly

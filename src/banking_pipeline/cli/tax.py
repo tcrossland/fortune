@@ -664,6 +664,24 @@ def _write_tax_summary(
         for isin in sa108.unmatched_isins:
             lines.append(f"  {isin}")
         lines.append("")
+    if eri.reclassified_to_interest:
+        lines.append(
+            "WARN ERI income_type overridden to interest (the bond-fund rule "
+            "— distributions_as_interest applies to ERI too); correct the "
+            "income_type in data/eri.toml to match for these ISINs:"
+        )
+        for isin in eri.reclassified_to_interest:
+            lines.append(f"  {isin}")
+        lines.append("")
+    if sa106.dropped_uk_situs_foreign:
+        lines.append(
+            "WARN income dropped as UK (GB ISIN prefix) but the commodity "
+            "situs is foreign — it may belong on SA106; review (not "
+            "auto-included, since WHT / country need a human call):"
+        )
+        for isin in sa106.dropped_uk_situs_foreign:
+            lines.append(f"  {isin}")
+        lines.append("")
     gap_lines = _rate_gap_lines(
         sa108.missing_rates + sa106.missing_rates + eri.missing_rates
     )
