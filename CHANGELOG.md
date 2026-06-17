@@ -61,6 +61,14 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **Concentration "by issuer"** — the `concentration` report gains a
+  fund-house / single-provider exposure breakdown alongside the existing
+  ones. Issuer comes from an optional `issuer` field on the commodity
+  metadata, or is inferred from the fund name (`infer_issuer` — iShares /
+  Amundi / Pictet / …), so it works without tagging every ISIN. Additive:
+  "by domicile" stays, since UK-tax situs and reporting status key off
+  domicile, not issuer. (`commodities_metadata.py`, `valuation.py`,
+  `concentration.py`)
 - **`trial-balance`** — per-account trial balance from the beancount ledger
   via `bean-query` (the one report that needs the loader, since the
   cost-basis `Realized`/`Unrealized` legs are computed at load time). Lists

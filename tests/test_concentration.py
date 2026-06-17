@@ -150,3 +150,40 @@ def test_cli_writes_report_and_csv(tmp_path: Path) -> None:
     csv_text = (out_dir / "holdings.csv").read_text(encoding="utf-8")
     assert "VMIG" in csv_text
     assert csv_text.splitlines()[0].startswith("kind,key,name")
+
+
+def test_issuer_inferred_overridden_and_tabulated() -> None:
+    meta = {
+        # Issuer inferred from the name.
+        "IE00B3VWN518": CommodityMetadata(
+            isin="IE00B3VWN518", name="iShares Core World", domicile="IE",
+            asset_class="equity-etf", reporting_status="reporting",
+            first_acquired=date(2020, 1, 1),
+        ),
+        # Explicit issuer overrides the (mis-)inferable name.
+        "LU1287023185": CommodityMetadata(
+            isin="LU1287023185", name="Some Fund", domicile="LU",
+            asset_class="bond", reporting_status="reporting",
+            first_acquired=date(2020, 1, 1), issuer="Amundi",
+        ),
+    }
+    raws = [
+        _raw(key="IE00B3VWN518", qty=D(10), price=D(100), ccy="GBP"),
+        _raw(key="LU1287023185", qty=D(10), price=D(50), ccy="GBP"),
+        _raw(key="US0378331005", qty=D(1), price=D(40), ccy="GBP"),  # no meta
+    ]
+    report = _build_from_raw(raws, commodities=meta, rate_source=NullSource())
+    issuers = {h.key: h.issuer for h in report.securities}
+    assert issuers["IE00B3VWN518"] == "iShares"
+    assert issuers["LU1287023185"] == "Amundi"
+    assert issuers["US0378331005"] == "unknown"  # no metadata → unknown bucket
+
+    from banking_pipeline.concentration import render_csv_rows, render_markdown
+
+    md = render_markdown(report)
+    assert "## By issuer" in md
+    # Domicile is kept (load-bearing for UK tax), not replaced.
+    assert "## By domicile" in md
+
+    header = render_csv_rows(report)[0]
+    assert "issuer" in header

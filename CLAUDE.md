@@ -686,14 +686,16 @@ and reads the JSONL sidecars, not the ledger:
   `--statements-dir`, same discovery as `prices`), values holdings in GBP
   (FX via `--rate-source`), and writes `concentration.md` + `holdings.csv`
   to `<concentration_reports_dir>/` (default `reports/concentration/`):
-  breakdowns by holding / asset class / currency / domicile. Weights are a
-  share of **gross long holdings**; a negative cash balance (margin /
-  Lombard loan) is netted by currency and reported separately, so a
-  leveraged book doesn't read as >100%. Non-GBP holdings with no rate (or
+  breakdowns by holding / asset class / currency / domicile / issuer.
+  Weights are a share of **gross long holdings**; a negative cash balance
+  (margin / Lombard loan) is netted by currency and reported separately, so
+  a leveraged book doesn't read as >100%. Non-GBP holdings with no rate (or
   no statement mark) are excluded + flagged; `--strict` exits non-zero on
-  any such gap. Domicile stands in for issuer (no issuer field on the
-  metadata yet); Vanguard ISA tickers carry no `commodities.toml` entry so
-  land in an `unknown` bucket.
+  any such gap. "By issuer" is fund-house / single-provider exposure
+  (`CommodityMetadata.issuer`, else inferred from the fund name via
+  `infer_issuer`); it's additive — "by domicile" stays because UK-tax situs
+  / reporting status key off domicile, not issuer. Vanguard ISA tickers
+  carry no `commodities.toml` entry so land in an `unknown` bucket.
 - `net-worth` — net-worth-over-time. Same statement discovery /
   `--rate-source` as `concentration`, but values *every* statement at its
   own date and builds a combined timeline: at each statement date, each

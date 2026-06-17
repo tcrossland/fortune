@@ -300,3 +300,51 @@ def test_emitted_commodity_directive_parses_in_beancount() -> None:
     ledger = "\n".join(_commodity_directives(["IE00B3VWN518"], commodities))
     _, errors, _ = loader.load_string(ledger)
     assert not errors, [e.message for e in errors]
+
+
+# --- issuer inference -----------------------------------------------------
+
+
+def test_infer_issuer_from_real_fund_names() -> None:
+    from banking_pipeline.commodities_metadata import infer_issuer
+
+    cases = {
+        "iShares IV PLC - iShares Lithium & Battery Producers UCITS ETF": "iShares",
+        "HSBC ETFs PLC - HSBC S&P India Tech UCITS ETF EUR-Acc.-": "HSBC",
+        "Wisdomtree Issuer ICAV - Wisdomtree Europe Defence": "WisdomTree",
+        "Multi Units Luxembourg SICAV - Amundi Euro Government Bond": "Amundi",
+        "PICTET-CLEAN ENERGY TR.-I EUR": "Pictet",
+        "PWM FS-GLOBAL REITS SEL.HI EUR": "Pictet",
+        "SISF-QEP GLOBAL ESG C USD -ACC.-": "Schroder",
+        "SSGA-GBL TRE.BD IDX S EUR PO.H.-ACC": "State Street",
+        "JPMF-GBL NAT.RESOURCE.JPM I EUR-ACC": "JPMorgan",
+        "AB SICAV I-SUST.US THEM.I USD-ACC": "AllianceBernstein",
+    }
+    for name, issuer in cases.items():
+        assert infer_issuer(name) == issuer, name
+    # A direct equity / sovereign bond has no fund house.
+    assert infer_issuer("NOVO NORDISK 'B'") is None
+    assert infer_issuer("2.30% GERMANY 23/33 SR GREEN") is None
+
+
+def test_resolved_issuer_explicit_overrides_inference() -> None:
+    base = dict(
+        domicile="IE", asset_class="equity-etf",
+        reporting_status="reporting", first_acquired=date(2020, 1, 1),
+    )
+    # No explicit issuer → inferred from the name.
+    inferred = CommodityMetadata(
+        isin="IE00B3VWN518", name="iShares Core MSCI World", **base
+    )
+    assert inferred.resolved_issuer == "iShares"
+    # Explicit issuer wins over what the name would infer.
+    overridden = CommodityMetadata(
+        isin="IE00B3VWN518", name="iShares Core MSCI World",
+        issuer="BlackRock", **base
+    )
+    assert overridden.resolved_issuer == "BlackRock"
+    # Neither resolves → None (an unknown bucket downstream).
+    unknown = CommodityMetadata(
+        isin="IE00B3VWN518", name="Some Unbranded Bond 24/30", **base
+    )
+    assert unknown.resolved_issuer is None

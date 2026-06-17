@@ -29,3 +29,8 @@ first_acquired = 2018-03-15
                                  # relievable under a FIG claim). Omitted
                                  # → derived: UK iff GB-domiciled or
                                  # reporting_status = "uk-domestic"
+# issuer = "iShares"             # optional: fund house / manager for the
+                                 # concentration report's "by issuer"
+                                 # (single-provider) exposure. Omitted →
+                                 # inferred from `name`; set it only when
+                                 # the name can't be placed automatically

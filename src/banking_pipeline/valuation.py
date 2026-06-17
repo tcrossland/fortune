@@ -68,6 +68,7 @@ def property_raws(properties: list[Property]) -> list[RawHolding]:
                     key=p.commodity, quantity=Decimal(1), price=v.value,
                     currency=p.currency, is_cash=False, label=p.display_name,
                     asset_class=_PROPERTY, domicile=p.country,
+                    issuer=_PROPERTY.capitalize(),
                 )
             )
     return out
@@ -81,6 +82,7 @@ class Holding:
     name: str
     asset_class: str
     domicile: str
+    issuer: str  # fund house / manager; "unknown" when un-inferable
     currency: str  # quotation currency (cash: the cash currency)
     quantity: Decimal
     value_gbp: Decimal
@@ -121,6 +123,7 @@ class RawHolding:
     label: str | None = None
     asset_class: str | None = None
     domicile: str | None = None
+    issuer: str | None = None
 
 
 def _is_currency(key: str) -> bool:
@@ -225,6 +228,7 @@ def value_holdings(
                 name=r.label or (meta.name if meta else r.key),
                 asset_class=r.asset_class or (meta.asset_class if meta else _UNKNOWN),
                 domicile=r.domicile or (meta.domicile if meta else _UNKNOWN),
+                issuer=r.issuer or (meta.resolved_issuer if meta else None) or _UNKNOWN,
                 currency=r.currency, quantity=r.quantity, value_gbp=value_gbp,
                 is_cash=False,
             )
@@ -234,8 +238,8 @@ def value_holdings(
     cash = tuple(
         Holding(
             key=ccy, name=f"Cash ({ccy})", asset_class=_CASH, domicile="—",
-            currency=ccy, quantity=cash_native[ccy], value_gbp=cash_gbp[ccy],
-            is_cash=True,
+            issuer="—", currency=ccy, quantity=cash_native[ccy],
+            value_gbp=cash_gbp[ccy], is_cash=True,
         )
         for ccy in sorted(cash_gbp, key=lambda c: abs(cash_gbp[c]), reverse=True)
     )

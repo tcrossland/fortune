@@ -4,8 +4,8 @@ Reads the *latest* statement valuation per portfolio — the Pictet monthly
 statement's portfolio-valuation page and the Vanguard ISA regular
 statement's "Your ISA investments at …" snapshot, the same valuations
 ``balances`` / ``prices`` already parse — values every holding in GBP,
-and breaks the total down four ways (by holding, asset class, quotation
-currency, and domicile) so over-weight positions are visible.
+and breaks the total down five ways (by holding, asset class, quotation
+currency, domicile, and issuer) so over-weight positions are visible.
 
 It is a *reporting aid*: values are the statement marks (quantity × the
 statement's per-unit price) converted to GBP at the configured rate
@@ -16,9 +16,12 @@ than silently understating a weight.
 Holdings key on the statement's own commodity identifier — an ISIN for
 Pictet, a ticker for the Vanguard ISA. ``commodities.toml`` is ISIN-keyed,
 so Vanguard tickers carry no metadata and land in an ``unknown`` asset
-class / domicile bucket (flagged). Issuer-level breakdown isn't available
-yet — there's no issuer field on the metadata — so domicile stands in as
-the geographic-exposure dimension.
+class / domicile / issuer bucket (flagged). The "by issuer" breakdown is
+single-provider / counterparty exposure (fund house) — distinct from "by
+domicile", which is kept because UK-tax situs and reporting status key off
+domicile, not issuer. Issuer comes from the ``issuer`` metadata field, or
+is inferred from the fund name when that's unset (see
+:func:`banking_pipeline.commodities_metadata.infer_issuer`).
 """
 
 from __future__ import annotations
@@ -141,6 +144,10 @@ def render_markdown(report: ValuationResult) -> str:
     )
     lines += _table("By currency", _aggregate(report.securities, "currency"), gross)
     lines += _table("By domicile", _aggregate(report.securities, "domicile"), gross)
+    # Issuer (fund house) concentration — single-provider / counterparty
+    # exposure the domicile view can't surface. Additive: domicile stays,
+    # it carries the UK-tax situs / reporting-status read.
+    lines += _table("By issuer", _aggregate(report.securities, "issuer"), gross)
 
     if report.cash:
         lines += [
@@ -205,17 +212,17 @@ def render_csv_rows(report: ValuationResult) -> list[list[str]]:
         return str((value / gross * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
     rows = [[
-        "kind", "key", "name", "asset_class", "domicile", "currency",
+        "kind", "key", "name", "asset_class", "domicile", "issuer", "currency",
         "quantity", "value_gbp", "weight_pct",
     ]]
     for h in report.securities:
         rows.append([
-            "security", h.key, h.name, h.asset_class, h.domicile, h.currency,
-            money(h.quantity), money(h.value_gbp), _weight(h.value_gbp),
+            "security", h.key, h.name, h.asset_class, h.domicile, h.issuer,
+            h.currency, money(h.quantity), money(h.value_gbp), _weight(h.value_gbp),
         ])
     for c in report.cash:
         rows.append([
-            "cash", c.key, c.name, c.asset_class, c.domicile, c.currency,
-            money(c.quantity), money(c.value_gbp), "",
+            "cash", c.key, c.name, c.asset_class, c.domicile, c.issuer,
+            c.currency, money(c.quantity), money(c.value_gbp), "",
         ])
     return rows

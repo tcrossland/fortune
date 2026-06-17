@@ -37,6 +37,51 @@ AssetClass = Literal[
 # Keying on the 11-char length keeps 12-char ISIN typos rejected.
 _INTERNAL_REF_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}$")
 
+# Fund-name fragments → issuer (fund house / manager). Matched as an
+# upper-cased substring of the commodity ``name``, first hit wins, so a
+# holding's issuer can be inferred from the name Pictet already prints
+# without the user tagging all ~40 ISINs. An explicit ``issuer`` in
+# ``commodities.toml`` always overrides this. Ordered so a specific
+# fragment ("AB SICAV") precedes any shorter one it could collide with.
+_ISSUER_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("PICTET", "Pictet"), ("PWM", "Pictet"),
+    ("ISHARES", "iShares"), ("BLACKROCK", "BlackRock"),
+    ("HSBC", "HSBC"), ("JPMF", "JPMorgan"), ("JPM ", "JPMorgan"),
+    ("WISDOMTREE", "WisdomTree"),
+    ("MULTI UNITS LUXEMBOURG", "Amundi"), ("AMUNDI", "Amundi"),
+    ("NORDEA", "Nordea"),
+    ("SISF", "Schroder"), ("SCHRODER", "Schroder"),
+    ("SSGA", "State Street"), ("PIMCO", "PIMCO"), ("UBS", "UBS"),
+    ("AB SICAV", "AllianceBernstein"), ("ABERDEEN", "abrdn"),
+    ("AXA", "AXA"), ("BARINGS", "Barings"), ("BLUEBAY", "BlueBay"),
+    ("CANDRIAM", "Candriam"), ("CHAHINE", "Chahine"),
+    ("STURDZA", "E.I. Sturdza"), ("ELEVA", "Eleva"),
+    ("FEDERAT", "Federated Hermes"), ("HERMES", "Federated Hermes"),
+    ("KEMPEN", "Kempen"), ("LAZARD", "Lazard"), ("MIROVA", "Mirova"),
+    ("MSIF", "Morgan Stanley"), ("MUZINICH", "Muzinich"),
+    ("NINETY ONE", "Ninety One"), ("NN(L)", "NN"), ("ROBECO", "Robeco"),
+    ("SWISSCANTO", "Swisscanto"), ("LEGAL & GENERAL", "Legal & General"),
+    ("L&G", "Legal & General"), ("HANETF", "HANetf"), ("VANECK", "VanEck"),
+    ("INVESCO", "Invesco"), ("COINSHARES", "CoinShares"),
+    ("VANGUARD", "Vanguard"),
+)
+
+
+def infer_issuer(name: str) -> str | None:
+    """Best-effort fund issuer from a commodity ``name``, or ``None``.
+
+    A substring match against :data:`_ISSUER_PATTERNS` — enough to bucket
+    the fund holdings without manual tagging. Returns ``None`` for names
+    with no recognised house (direct equities, sovereign bonds, unrecognised
+    funds), which the report shows in an ``unknown`` issuer bucket.
+    """
+
+    upper = name.upper()
+    for fragment, issuer in _ISSUER_PATTERNS:
+        if fragment in upper:
+            return issuer
+    return None
+
 
 def normalise_commodity_code(value: str) -> str | None:
     """Return the canonical commodity code, or ``None`` if unrecognised.
@@ -95,6 +140,19 @@ class CommodityMetadata(BaseModel):
     # is ``"uk-domestic"``. Set explicitly only to override a misleading
     # domicile (e.g. a GB-listed depositary receipt over a foreign asset).
     uk_situs: bool | None = None
+    # Fund issuer / manager (iShares, Amundi, Pictet, …) for the
+    # concentration report's issuer-exposure breakdown — single-provider /
+    # counterparty risk that the domicile view can't see. ``None`` (the
+    # default) infers it from ``name`` (see :func:`infer_issuer`); set it
+    # explicitly to fix a name the inference can't place.
+    issuer: str | None = None
+
+    @property
+    def resolved_issuer(self) -> str | None:
+        """Effective issuer: the explicit field if set, else inferred from
+        the fund name. ``None`` when neither resolves (an ``unknown`` bucket)."""
+
+        return self.issuer or infer_issuer(self.name)
 
     @property
     def resolved_uk_situs(self) -> bool:
