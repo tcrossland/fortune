@@ -158,3 +158,19 @@ def test_render_flags_unclassified_and_caveat() -> None:
     assert "Unclassified holdings (no metadata)" in md
     assert "IE00UNCLASS1" in md
     assert "wound-down portfolio" in md  # the B6 forward-fill caveat
+
+
+_PICTET = Path("tests/fixtures/en/pictet/monthly_statement.txt")
+
+
+def test_cli_strict_fails_on_unvaluable_holding(tmp_path: Path) -> None:
+    out_dir = tmp_path / "alloc"
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text("", encoding="utf-8")
+    base = [
+        "allocation", "--statement", str(_PICTET), "--out", str(out_dir),
+        "--commodities", str(commodities), "--rate-source", "null",
+    ]
+    runner = CliRunner()
+    assert runner.invoke(cli.app, base).exit_code == 0
+    assert runner.invoke(cli.app, [*base, "--strict"]).exit_code == 1

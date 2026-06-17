@@ -420,3 +420,45 @@ def test_strict_passes_on_a_clean_ledger(tmp_path: Path) -> None:
     )
     result = _run_tax_report(data_dir, tmp_path, strict=True)
     assert result.exit_code == 0, result.output
+
+
+def test_unknown_status_disposal_excluded_from_all_figures(tmp_path: Path) -> None:
+    # A disposal whose ISIN has no metadata (reporting_status unknown) must
+    # not reach SA108, offshore income gains, OR the loss-carry-forward
+    # chain — its £8,000 loss is neither taxed nor carried; only flagged.
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    unk = "US0378331005"  # absent from _COMMODITIES → unknown
+    dump_transactions(
+        [
+            _tx(document_type=DocumentType.BUY_SHARES, isin=unk,
+                quantity=Decimal("100"), amount=Decimal("-10000"),
+                trade_date=date(2024, 1, 1)),
+            _tx(document_type=DocumentType.SELL_ETF, isin=unk,
+                quantity=Decimal("-100"), amount=Decimal("2000"),
+                trade_date=date(2025, 6, 1)),  # loss -8000
+        ],
+        data_dir / "2025.transactions.jsonl",
+    )
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text(_COMMODITIES, encoding="utf-8")
+    out_dir = tmp_path / "report"
+
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "tax-report", "--year", "2025-26", "--source", str(data_dir),
+            "--out", str(out_dir), "--commodities", str(commodities),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    # Excluded from CGT and offshore-income-gains.
+    assert _read_csv(out_dir / "sa108-disposals.csv") == []
+    assert _read_csv(out_dir / "sa106-offshore-income-gains.csv") == []
+    # The £8,000 loss is NOT carried forward (would be 8000 if it leaked in).
+    chain = _read_csv(out_dir / "cgt-loss-carryforward.csv")
+    assert chain[0]["losses_carried_forward"] == "0.00"
+    # Surfaced as a warning instead.
+    summary = (out_dir / "summary.txt").read_text(encoding="utf-8")
+    assert "WARN_UNCLASSIFIED" in summary and unk in summary

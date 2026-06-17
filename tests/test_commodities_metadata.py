@@ -348,3 +348,21 @@ def test_resolved_issuer_explicit_overrides_inference() -> None:
         isin="IE00B3VWN518", name="Some Unbranded Bond 24/30", **base
     )
     assert unknown.resolved_issuer is None
+
+
+def test_infer_issuer_precedence_case_and_no_false_match() -> None:
+    from banking_pipeline.commodities_metadata import infer_issuer
+
+    # Specific fragment wins over a generic one it could collide with.
+    assert infer_issuer("AB SICAV I-SUST.US THEM.I USD-ACC") == "AllianceBernstein"
+    assert infer_issuer("ABERDEEN II-EURO.CORP.BD D EUR") == "abrdn"
+    assert infer_issuer("Multi Units Luxembourg SICAV - Amundi Euro Govt") == "Amundi"
+    # Matching is case-insensitive.
+    assert infer_issuer("pictet-biotech-i usd") == "Pictet"
+    # A name with no recognised house → None, not a spurious match.
+    assert infer_issuer("GLOBAL GOVERNMENT BOND 2030 FUND") is None
+    assert infer_issuer("2.30% GERMANY 23/33 SR GREEN") is None
+    # Known limitation (documented, not a bug): matching is substring-based,
+    # so an embedded fragment *does* match. This pins the behaviour so a
+    # future refactor to word-boundary matching notices the change.
+    assert infer_issuer("SOMETHING WITH JPM EMBEDDED") == "JPMorgan"

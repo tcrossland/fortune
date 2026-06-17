@@ -187,3 +187,19 @@ def test_issuer_inferred_overridden_and_tabulated() -> None:
 
     header = render_csv_rows(report)[0]
     assert "issuer" in header
+
+
+_PICTET = Path("tests/fixtures/en/pictet/monthly_statement.txt")
+
+
+def test_cli_strict_fails_on_unvaluable_holding(tmp_path: Path) -> None:
+    out_dir = tmp_path / "conc"
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text("", encoding="utf-8")
+    base = [
+        "concentration", "--statement", str(_PICTET), "--out", str(out_dir),
+        "--commodities", str(commodities), "--rate-source", "null",
+    ]
+    runner = CliRunner()
+    assert runner.invoke(cli.app, base).exit_code == 0  # writes + warns
+    assert runner.invoke(cli.app, [*base, "--strict"]).exit_code == 1

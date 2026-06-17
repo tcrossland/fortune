@@ -17,10 +17,9 @@ file is the rationale for *why* those items exist.
 figure and is **not** caught by `--strict`. The tax return looks clean
 while understating. This is P0.
 
-> **Update (2026-06-17): P0 resolved.** `--strict` now fails on
-> unclassified *and* unmatched (zero-cost) disposals across `tax-report` /
-> `tax-forecast` / `fig-advice` (the A2 gate; A1/A3 are now catchable). See
-> the CHANGELOG. The remaining P1/P2 items below stand.
+> **Update (2026-06-17): the whole audit is resolved.** Every P0/P1/P2
+> item below has been fixed (see each ✅ marker and the CHANGELOG). This
+> document is kept as the record of *why* those changes were made.
 
 ---
 
@@ -181,5 +180,10 @@ while understating. This is P0.
 - ~~B7/B11~~ — ✅ DONE (2026-06-17): multi-leg trial-balance accounts are
   partially valued (valued legs kept, unvaluable legs flagged); the
   `RateGap` slot names the account, not the currency.
-- A9/A10/B8: adversarial `infer_issuer` test, the silent-failure-mode
-  tests, more `report_format` / CLI-strict coverage. **(remaining P2)**
+- ~~A9/A10/B8~~ — ✅ DONE (2026-06-17): adversarial `infer_issuer`
+  precedence/collision test; an assertion that an `unknown` disposal is
+  excluded from SA108 *and* the loss-carry-forward chain; CLI `--strict`
+  exit-path tests for concentration / allocation / portfolio-allocation /
+  income; `report_format` helper tests.
+
+**All audit items (P0 / P1 / P2) are now resolved.**

@@ -135,3 +135,19 @@ def test_build_report_end_to_end_vanguard() -> None:
     text = _VANGUARD.read_text(encoding="utf-8")
     report = build_report([(text, "vg.txt")], commodities={}, rate_source=NullSource())
     assert len(report.portfolios) == 1
+
+_PICTET = Path("tests/fixtures/en/pictet/monthly_statement.txt")
+
+
+def test_cli_strict_fails_on_unvaluable_holding(tmp_path: Path) -> None:
+    out_dir = tmp_path / "pa"
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text("", encoding="utf-8")
+    base = [
+        "portfolio-allocation", "--statement", str(_PICTET),
+        "--out", str(out_dir), "--commodities", str(commodities),
+        "--rate-source", "null",
+    ]
+    runner = CliRunner()
+    assert runner.invoke(cli.app, base).exit_code == 0
+    assert runner.invoke(cli.app, [*base, "--strict"]).exit_code == 1

@@ -6,9 +6,13 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+from typer.testing import CliRunner
+
+from banking_pipeline import cli
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.income import compute_income, render_markdown
 from banking_pipeline.models import DocumentType, Transaction
+from banking_pipeline.transaction_sidecar import dump_transactions
 
 
 def _div(
@@ -181,3 +185,22 @@ def test_render_markdown_totals_and_tax_free_note() -> None:
 def test_empty_report_renders_placeholder() -> None:
     md = render_markdown(compute_income([], period="tax-year", commodities={}))
     assert "No dividend or interest income found." in md
+
+
+def test_cli_strict_fails_on_missing_rate(tmp_path: Path) -> None:
+    # A USD dividend with no per-tx rate → unconvertible under the null
+    # source, so the income figure understates. --strict must catch it.
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    dump_transactions(
+        [_div(isin="US0378331005", amount=Decimal("85.00"),
+              on=date(2025, 6, 1), currency="USD")],
+        data_dir / "x.transactions.jsonl",
+    )
+    base = [
+        "income", "--source", str(data_dir), "--out", str(tmp_path / "out"),
+        "--rate-source", "null",
+    ]
+    runner = CliRunner()
+    assert runner.invoke(cli.app, base).exit_code == 0
+    assert runner.invoke(cli.app, [*base, "--strict"]).exit_code == 1
