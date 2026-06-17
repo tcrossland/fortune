@@ -34,6 +34,9 @@ from banking_pipeline import (
     income as income_mod,
 )
 from banking_pipeline import (
+    mandate_scorecard as mandate_scorecard_mod,
+)
+from banking_pipeline import (
     net_worth as net_worth_mod,
 )
 from banking_pipeline import (
@@ -620,6 +623,7 @@ def _do_rebuild(
                 ("allocation", rep.allocation),
                 ("portfolio-allocation", rep.portfolio_allocation),
                 ("trial-balance", rep.trial_balance),
+                ("mandate-scorecard", rep.mandate_scorecard),
             ) if on
         ]
         err_console.print(
@@ -810,6 +814,37 @@ def _run_rebuild_reports(
                 "\n".join(trial_balance_mod.render_markdown(tb)),
                 "trial-balance.csv",
                 trial_balance_mod.render_csv_rows(tb),
+            )
+    if rep.mandate_scorecard:
+        # Ledger-based (bean-query, like trial-balance) for the costs, plus
+        # the statement archive for the average-invested denominator. A
+        # missing binary / ledger warns and skips, not a failed rebuild.
+        cost_result = mandate_scorecard_mod.query_costs(trial_balance_ledger)
+        if not trial_balance_ledger.is_file() or cost_result.binary_missing:
+            err_console.print(
+                f"[yellow]mandate-scorecard skipped:[/yellow] "
+                f"{cost_result.error or f'ledger {trial_balance_ledger} not found'}"
+            )
+        elif not cost_result.ok:
+            err_console.print(
+                f"[yellow]mandate-scorecard skipped:[/yellow] {cost_result.error}"
+            )
+        else:
+            ms_timeline = net_worth_mod.build_timeline(
+                texts, commodities=commodities_map, rate_source=rates,
+                properties=properties,
+            )
+            cost_report = mandate_scorecard_mod.build_cost_report(
+                cost_result, rate_source=rates, timeline=ms_timeline
+            )
+            _write_report(
+                _resolve_report_dir(
+                    settings.mandate_scorecard_reports_dir, project_root
+                ),
+                "mandate-scorecard.md",
+                mandate_scorecard_mod.render_markdown(cost_report),
+                "mandate-scorecard.csv",
+                mandate_scorecard_mod.render_csv_rows(cost_report),
             )
 
 

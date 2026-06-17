@@ -146,6 +146,10 @@ class Settings(BaseSettings):
     # and ``trial-balance.csv`` here.
     trial_balance_reports_dir: Path = Path("reports/trial-balance")
 
+    # Output directory for ``mandate-scorecard``: writes
+    # ``mandate-scorecard.md`` and ``.csv`` here.
+    mandate_scorecard_reports_dir: Path = Path("reports/mandate-scorecard")
+
     # Pre-ledger / transferred-in opening positions (ISIN → lots with a
     # GBP cost) seeded into the section 104 pool. Defaults to
     # ``data/opening-positions.toml`` when present. See

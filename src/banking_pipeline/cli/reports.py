@@ -19,6 +19,7 @@ import typer
 from banking_pipeline import allocation as allocation_mod
 from banking_pipeline import concentration as concentration_mod
 from banking_pipeline import income as income_mod
+from banking_pipeline import mandate_scorecard as mandate_scorecard_mod
 from banking_pipeline import net_worth as net_worth_mod
 from banking_pipeline import portfolio_allocation as portfolio_allocation_mod
 from banking_pipeline import trial_balance as trial_balance_mod
@@ -513,3 +514,80 @@ def trial_balance(
         )
         if strict:
             raise typer.Exit(code=1)
+
+
+@app.command("mandate-scorecard")
+def mandate_scorecard(
+    ledger: Annotated[
+        Path,
+        typer.Option(
+            "--ledger",
+            exists=True,
+            readable=True,
+            help="Ledger to read costs from (Expenses:Pic). Defaults to "
+            "``main.beancount``.",
+        ),
+    ] = Path("main.beancount"),
+    statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
+    statements_dir: StatementsDirOpt = None,
+    statements_recursive: StatementsRecursiveOpt = False,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``mandate_scorecard_reports_dir`` (``reports/mandate-scorecard``).",
+        ),
+    ] = None,
+    commodities: CommoditiesOpt = None,
+    rate_source: ValuationRateSourceOpt = None,
+    property_source: PropertyOpt = None,
+    verbose: VerboseOpt = False,
+) -> None:
+    """Mandate cost scorecard (step 1) — the all-in explicit cost block.
+
+    Totals the mandate's ledger-visible cost per calendar year — management
+    fee, transaction & custody, and Lombard interest — from the
+    ``Expenses:Pic`` accounts (excluding payment/transfer ``Other`` legs and
+    the in-house fund TERs, which aren't in the ledger), converted to GBP,
+    and expressed as a share of the year's average invested assets (gross
+    long, from the net-worth timeline). Needs ``bean-query`` for the costs
+    and statements for the average-assets denominator.
+    """
+
+    _configure_logging(verbose)
+    texts, commodities_map, rates = _load_statement_context(
+        statements, statements_dir, statements_recursive, commodities, rate_source
+    )
+    timeline = net_worth_mod.build_timeline(
+        texts, commodities=commodities_map, rate_source=rates,
+        properties=_load_properties(property_source),
+    )
+
+    result = mandate_scorecard_mod.query_costs(ledger)
+    if result.binary_missing:
+        err_console.print(f"[yellow]warning:[/yellow] {result.error}")
+        raise typer.Exit(code=0)
+    if not result.ok:
+        err_console.print(f"[red]bean-query failed[/red]:\n{result.error}")
+        raise typer.Exit(code=1)
+
+    report = mandate_scorecard_mod.build_cost_report(
+        result, rate_source=rates, timeline=timeline
+    )
+
+    out_dir = out or settings.mandate_scorecard_reports_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "mandate-scorecard.md").write_text(
+        mandate_scorecard_mod.render_markdown(report), encoding="utf-8"
+    )
+    with (out_dir / "mandate-scorecard.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as fh:
+        csv.writer(fh).writerows(mandate_scorecard_mod.render_csv_rows(report))
+
+    total = sum((c.total_gbp for c in report.years), __import__("decimal").Decimal(0))
+    err_console.print(
+        f"Wrote mandate scorecard to {out_dir} "
+        f"({len(report.years)} year(s), total explicit cost £{total:,.2f})"
+    )
