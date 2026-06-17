@@ -9,6 +9,7 @@ sidecars via ``_load_sidecar_transactions`` (kept in :mod:`...cli._main`).
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
@@ -350,6 +351,44 @@ def _rate_gap_lines(gaps: list[RateGap]) -> list[str]:
     ]
     lines += [f"  {g.currency} {g.month} ({g.isin})" for g in uniq]
     return lines
+
+
+def _understatement_blockers(
+    sa108_reports: Iterable[Sa108Report], rate_gaps: Sequence[RateGap]
+) -> list[str]:
+    """The reasons ``--strict`` should fail: every way the figures silently
+    *understate* the return, not just missing GBP rates.
+
+    Three modes, all of which otherwise pass with a clean-looking return:
+    a missing GBP rate (the amount is excluded), an *unclassified* disposal
+    (``reporting_status == "unknown"`` → excluded from SA108, offshore
+    income gains, the loss chain and the forecast alike — it lands on no
+    figure at all), and an *unmatched* disposal (no acquisition / opening
+    position → matched at **zero cost**, i.e. taxed on 100% of proceeds).
+    Returns one human-readable reason per non-empty mode; empty means the
+    figures are complete. Reports are deduped across years (for the
+    multi-year fig-advice window)."""
+
+    reports = list(sa108_reports)
+    blockers: list[str] = []
+    if rate_gaps:
+        blockers.append(f"{len(set(rate_gaps))} missing GBP rate(s)")
+    unclassified = {
+        r.isin for rep in reports for r in rep.rows
+        if r.reporting_status == "unknown"
+    }
+    if unclassified:
+        blockers.append(
+            f"{len(unclassified)} unclassified disposal(s) — unknown "
+            "reporting status, excluded from every figure"
+        )
+    unmatched = {isin for rep in reports for isin in rep.unmatched_isins}
+    if unmatched:
+        blockers.append(
+            f"{len(unmatched)} unmatched disposal(s) matched at zero cost — "
+            "missing acquisition / opening position"
+        )
+    return blockers
 
 
 def _partition_fig_relief(
@@ -820,8 +859,18 @@ def tax_report(
     if gaps:
         for line in _rate_gap_lines(gaps):
             err_console.print(line)
-        if strict:
-            raise typer.Exit(code=1)
+
+    # --strict gates on *every* silent-understatement mode, not only rate
+    # gaps: an unclassified or zero-cost unmatched disposal also makes the
+    # return understate while looking clean (the warnings are in summary.txt).
+    blockers = _understatement_blockers([sa108], gaps)
+    if strict and blockers:
+        err_console.print(
+            "[red]--strict:[/red] figures understate the return — "
+            + "; ".join(blockers)
+            + ". See summary.txt; resolve or rerun without --strict."
+        )
+        raise typer.Exit(code=1)
 
 
 # --- tax-forecast -----------------------------------------------------------
@@ -1171,8 +1220,17 @@ def tax_forecast(
     if gaps:
         for line in _rate_gap_lines(gaps):
             err_console.print(line)
-        if strict:
-            raise typer.Exit(code=1)
+
+    # As tax-report: --strict also fails on unclassified / zero-cost
+    # unmatched disposals, which silently skew the estimate.
+    blockers = _understatement_blockers([comp.sa108], gaps)
+    if strict and blockers:
+        err_console.print(
+            "[red]--strict:[/red] figures understate the forecast — "
+            + "; ".join(blockers)
+            + ". See forecast-summary.txt; resolve or rerun without --strict."
+        )
+        raise typer.Exit(code=1)
 
 
 # --- tax-pack ---------------------------------------------------------------
@@ -1464,6 +1522,7 @@ def fig_advice(
     year_inputs: dict[str, FigYearInputs] = {}
     rate_gaps: list[RateGap] = []
     history_rows: list[Sa108Row] = []
+    sa108_reports: list[Sa108Report] = []
     pre_ledger_losses = Decimal(0)
     for y in window:
         comp = _compute_tax_year(
@@ -1472,6 +1531,7 @@ def fig_advice(
         )
         year_inputs[y] = _fig_year_inputs(comp, year=y, other_income=expected_income)
         rate_gaps += comp.rate_gaps
+        sa108_reports.append(comp.sa108)
         # The matched history + brought-forward losses are year-independent.
         history_rows = comp.history.rows
         pre_ledger_losses = comp.pre_ledger_losses
@@ -1499,8 +1559,17 @@ def fig_advice(
     if rate_gaps:
         for line in _rate_gap_lines(rate_gaps):
             err_console.print(line)
-        if strict:
-            raise typer.Exit(code=1)
+
+    # As tax-report: --strict fails on unclassified / zero-cost unmatched
+    # disposals across the whole window, not only rate gaps.
+    blockers = _understatement_blockers(sa108_reports, rate_gaps)
+    if strict and blockers:
+        err_console.print(
+            "[red]--strict:[/red] figures understate the window — "
+            + "; ".join(blockers)
+            + ". See fig-advice.txt; resolve or rerun without --strict."
+        )
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

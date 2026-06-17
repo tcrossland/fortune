@@ -8,6 +8,15 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## UK tax
 
+- **`--strict` gates on every understatement mode** — `tax-report`,
+  `tax-forecast` and `fig-advice` now exit non-zero under `--strict` not
+  only on a missing GBP rate but also on an **unclassified** disposal
+  (`reporting_status = "unknown"` → excluded from SA108 / offshore income
+  gains / the loss chain entirely) and an **unmatched** disposal (no
+  acquisition / opening position → matched at zero cost). Previously these
+  two were text-only warnings that passed `--strict`, so a CI gate could
+  green-light a silently-understated return. The P0 finding from the
+  [reporting audit](docs/reporting-audit.md). (`cli/tax.py`)
 - **CGT 4-year loss-claim window warning** — the loss-carry-forward chain
   now tracks the allowable-loss pool by arising year (FIFO) and flags a
   brought-forward loss relieved more than four years after it arose, since

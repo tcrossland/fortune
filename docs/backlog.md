@@ -10,10 +10,12 @@ paradigm. Shipped features are recorded in
 For a prioritised list of *correctness and robustness* gaps in the
 reporting subsystems (both tax reporting-status and the analytical
 reports) — as distinct from the new-feature ideas below — see the
-[reporting audit](reporting-audit.md). Its **P0** item (an `unknown`-status
-or unmatched disposal silently understates the tax return and isn't caught
-by `--strict`) should be picked up before the enhancements here; adopted
-audit items can graduate into this backlog.
+[reporting audit](reporting-audit.md). Its **P0** (an `unknown`-status or
+unmatched disposal silently understating the return) is now fixed — see
+the CHANGELOG; the audit's **P1** items (harden `fetch_reporting_funds.py`,
+document the trial-balance-vs-statement valuation split, add `net-worth
+--strict`) are the next correctness work, ahead of the new features here.
+Adopted audit items graduate into this backlog.
 
 The backward-looking tax-*reporting* area is feature-complete but carries
 the correctness caveats the audit catalogues. The active *new-feature*

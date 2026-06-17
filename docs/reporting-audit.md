@@ -17,6 +17,11 @@ file is the rationale for *why* those items exist.
 figure and is **not** caught by `--strict`. The tax return looks clean
 while understating. This is P0.
 
+> **Update (2026-06-17): P0 resolved.** `--strict` now fails on
+> unclassified *and* unmatched (zero-cost) disposals across `tax-report` /
+> `tax-forecast` / `fig-advice` (the A2 gate; A1/A3 are now catchable). See
+> the CHANGELOG. The remaining P1/P2 items below stand.
+
 ---
 
 ## Part A — UK tax reporting-status pipeline
@@ -141,12 +146,12 @@ while understating. This is P0.
 
 ## Remediation roadmap
 
-**P0 — tax correctness (silent understatement of the return)**
-- A1 + A2 + A3: make `unclassified` disposals and `unmatched_isins`
-  (zero-cost) disposals fail `--strict` across `tax-report` /
-  `tax-forecast` / `fig-advice`. One choke point, three call sites. This
-  is the single most important fix: the CI gate is currently blind to the
-  two worst ways a return can be wrong.
+**P0 — tax correctness (silent understatement of the return) — ✅ DONE (2026-06-17)**
+- A1 + A2 + A3: `unclassified` disposals and `unmatched_isins` (zero-cost)
+  disposals now fail `--strict` across `tax-report` / `tax-forecast` /
+  `fig-advice` (shared `_understatement_blockers` helper, three call
+  sites). The CI gate is no longer blind to the two worst ways a return
+  can be wrong.
 
 **P1 — robustness & consistency**
 - A4/A5/A8: harden `fetch_reporting_funds.py` — atomic write + backup,

@@ -349,3 +349,74 @@ def test_isa_wrapped_transactions_excluded_from_tax_report(tmp_path: Path) -> No
     assert _read_csv(out_dir / "sa108-disposals.csv") == []
     assert _read_csv(out_dir / "sa106-dividends.csv") == []
     assert _read_csv(out_dir / "sa106-offshore-income-gains.csv") == []
+
+
+# --- P0: --strict gates on silent-understatement modes ---------------------
+
+
+def _run_tax_report(
+    data_dir: Path, tmp_path: Path, *, strict: bool
+) -> object:
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text(_COMMODITIES, encoding="utf-8")
+    args = [
+        "tax-report", "--year", "2025-26",
+        "--source", str(data_dir), "--out", str(tmp_path / "report"),
+        "--commodities", str(commodities),
+    ]
+    if strict:
+        args.append("--strict")
+    return CliRunner().invoke(cli.app, args)
+
+
+def test_strict_fails_on_unclassified_disposal(tmp_path: Path) -> None:
+    # _build_ledger has an unknown-metadata disposal (US0378331005) that is
+    # excluded from every figure — --strict must catch it; plain run must not.
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _build_ledger(data_dir)
+
+    lenient = _run_tax_report(data_dir, tmp_path, strict=False)
+    assert lenient.exit_code == 0, lenient.output
+
+    strict = _run_tax_report(data_dir, tmp_path, strict=True)
+    assert strict.exit_code == 1, strict.output
+    assert "unclassified disposal" in strict.output
+
+
+def test_strict_fails_on_unmatched_zero_cost_disposal(tmp_path: Path) -> None:
+    # A reporting ISIN sold with no prior acquisition → matched at zero cost.
+    # reporting_status is known, so the *only* blocker is the unmatched leg.
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    dump_transactions(
+        [_tx(document_type=DocumentType.SELL_ETF, isin="IE00B3VWN518",
+             quantity=Decimal("-100"), amount=Decimal("1500"),
+             trade_date=date(2025, 6, 1))],
+        data_dir / "2025.transactions.jsonl",
+    )
+
+    assert _run_tax_report(data_dir, tmp_path, strict=False).exit_code == 0
+    strict = _run_tax_report(data_dir, tmp_path, strict=True)
+    assert strict.exit_code == 1, strict.output
+    assert "unmatched disposal" in strict.output
+    assert "zero cost" in strict.output
+
+
+def test_strict_passes_on_a_clean_ledger(tmp_path: Path) -> None:
+    # Reporting ISIN, fully matched, all-GBP (no rate gaps) → no blockers.
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    dump_transactions(
+        [
+            _tx(document_type=DocumentType.BUY_ETF, isin="IE00B3VWN518",
+                quantity=Decimal("100"), amount=Decimal("-1000"),
+                trade_date=date(2024, 5, 1)),
+            _tx(document_type=DocumentType.SELL_ETF, isin="IE00B3VWN518",
+                quantity=Decimal("-100"), amount=Decimal("1500"),
+                trade_date=date(2025, 6, 1)),
+        ],
+        data_dir / "2025.transactions.jsonl",
+    )
+    result = _run_tax_report(data_dir, tmp_path, strict=True)
+    assert result.exit_code == 0, result.output
