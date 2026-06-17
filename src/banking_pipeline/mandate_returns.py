@@ -1,40 +1,39 @@
 """Mandate return scorecard — step 2: time- and money-weighted returns.
 
-What the Pictet mandate actually *returned*, on two bases the user asked
-for side by side:
+What the Pictet mandate actually *returned*, computed **directly from the
+statement holdings** so it needs no flow tagging in the ledger — the
+deliberate work-around for the untagged deposits/withdrawals (the opening
+capital, the 2023 top-ups, the 2025 Lombard drawdown) that would otherwise
+distort the figures.
 
-* **net (equity) return** — the return on net worth (assets minus the
-  negative Lombard cash). The loan drawdown is internal (cash up, debt up,
-  net worth unchanged); the loan interest is a drag carried inside the
-  return. This is the investor's true experience of their own capital.
-* **gross (asset) return** — the return on the total asset book (the loan
-  added back). A loan drawdown is treated as an external inflow and its
-  use as an outflow, so leverage doesn't read as performance. The gap
-  between the two is the leverage contribution.
+The trick: between two consecutive statements, a position's *market* gain
+is ``qty_held × (price_now − price_then)`` — the price move on the units
+held through **both** snapshots. A deposit (new units) or a withdrawal
+(units sold) simply isn't in that sum, so external flows never read as
+performance and the return is immune to whether they were tagged. What's
+left over each period — ``ΔValue − market gain`` — is the **inferred
+external flow**, surfaced as a "detected movements" table (the deposits /
+withdrawals the holdings imply) and used to money-weight the MWR.
 
-For each basis two numbers are computed:
+Two bases, side by side:
 
-* **TWR** (time-weighted) — chained per-period Modified Dietz returns, so
-  the *timing* of deposits/withdrawals is stripped out. The manager's
-  scorecard, comparable to a benchmark (step 3).
-* **MWR / XIRR** (money-weighted) — the single rate reconciling every
-  dated external flow with the latest valuation. The investor's actual
-  experience; reported for the net basis (the equity the user funds).
+* **net (equity) return** — market gain over net worth (assets minus the
+  negative Lombard cash). A leveraged book divides the same gain by a
+  smaller equity base, so leverage amplifies it.
+* **gross (asset) return** — market gain over the total asset book (the
+  loan added back). The gap between the two is the leverage contribution.
 
-Two series feed it: the **statement valuations** (per portfolio, per date,
-reusing :mod:`banking_pipeline.valuation`) and the **external capital
-flows** read from the ledger — ``Expenses:Pic:*:Other`` (wires out) and
-``Equity:Pic:*:Transfers`` (deposits), each ``F = −(posting amount)`` into
-the portfolio. The opening capital never came through as an advice (it is
-the first statement balance), so inception value is the first snapshot, not
-a flow.
+For each basis, **TWR** (time-weighted — chained per-period market returns,
+the manager's scorecard) and, for net, **MWR / XIRR** (money-weighted over
+the inferred flows — the investor's actual experience).
 
-Completeness caveat: the flow series is only as good as what the ledger
-tags. A deposit that arrived as a raw balance change with no advice would
-be invisible and inflate that period's apparent return, so the report
-flags any single period whose implied return exceeds
-``_OUTSIZED_PERIOD_RETURN`` as a possible untagged flow. A reporting aid,
-not advice.
+Limitations (documented, not silently wrong): the holdings-based gain is a
+*price* return, so income that a *distributing* fund pays out as cash —
+rather than accumulating into its price — is treated as a small inferred
+inflow, marginally understating total return; and an inferred flow lumps in
+loan interest and dealing spreads alongside the genuine deposit/withdrawal.
+Most of the book is accumulating funds, so the price return tracks total
+return closely. A reporting aid, not advice.
 """
 
 from __future__ import annotations
@@ -43,13 +42,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from pathlib import Path
 
-from banking_pipeline.bean_query import QueryResult, run_query
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.report_format import gbp, money
-from banking_pipeline.tax.uk.currency import RateGap, to_gbp
 from banking_pipeline.valuation import (
     RawHolding,
     as_of,
@@ -60,50 +56,33 @@ from banking_pipeline.valuation import (
 _ZERO = Decimal(0)
 _PICTET_PREFIX = "Assets:Pic:"
 
-# A single sub-period return above this magnitude is implausible as real
-# performance on a diversified book and almost certainly signals an
-# untagged external flow — flagged for review, not silently trusted.
-_OUTSIZED_PERIOD_RETURN = 0.20
-
-# Per-posting external flows: deposits (Equity transfers) and wires out
-# (the Other catch-all leg). ``F = −(posting amount)`` into the portfolio.
-_FLOW_BQL = (
-    "SELECT date, account, units(sum(position)) AS amount "
-    'WHERE (account ~ "Equity:Pic" AND account ~ "Transfers") '
-    'OR (account ~ "Expenses:Pic" AND account ~ ":Other") '
-    "GROUP BY date, account ORDER BY date"
-)
+# Inferred per-period flows below this magnitude are noise (dealing spreads,
+# loan interest, distributed-fund income mistaken for a flow); only larger
+# ones are surfaced as candidate deposits/withdrawals to tag.
+_FLOW_REPORT_THRESHOLD = Decimal(50_000)
 
 
 @dataclass(frozen=True)
 class Snapshot:
-    """A portfolio's value at one statement date, on both bases."""
+    """A portfolio's value at one statement date, on both bases, plus the
+    per-security GBP positions used for the holdings-based market gain."""
 
     portfolio: str
     on_date: date
+    # key → (quantity, value_gbp); securities only (cash carries no mark).
+    positions: dict[str, tuple[Decimal, Decimal]]
     net_value_gbp: Decimal  # net worth = assets − loan
     gross_value_gbp: Decimal  # total assets (loan added back)
     loan_gbp: Decimal  # ≤ 0; the negative (Lombard) cash total
 
 
 @dataclass(frozen=True)
-class Flow:
-    """An external capital movement into (+) or out of (−) a portfolio."""
+class DetectedFlow:
+    """An external movement the holdings imply (``ΔValue − market gain``)."""
 
     portfolio: str
     on_date: date
-    amount_gbp: Decimal  # signed: + into the portfolio, − out
-
-
-@dataclass(frozen=True)
-class PeriodReturn:
-    start: date
-    end: date
-    begin_value_gbp: Decimal
-    end_value_gbp: Decimal
-    flow_gbp: Decimal  # net external flow over the period
-    twr: float | None  # Modified Dietz return for the sub-period
-    outsized: bool  # |twr| over the untagged-flow threshold
+    amount_gbp: Decimal  # signed: + into the portfolio (deposit), − out
 
 
 @dataclass(frozen=True)
@@ -119,16 +98,14 @@ class ReturnSeries:
     twr_gross: float | None
     twr_net_annualised: float | None
     twr_gross_annualised: float | None
-    mwr_net: float | None  # XIRR on the net (equity) flows + latest value
-    periods_net: tuple[PeriodReturn, ...]
-    suspect_periods: tuple[PeriodReturn, ...]  # outsized — possible untagged flow
+    mwr_net: float | None  # XIRR on the inferred flows + latest value
 
 
 @dataclass(frozen=True)
 class ReturnReport:
     aggregate: ReturnSeries
     per_portfolio: tuple[ReturnSeries, ...]
-    rate_gaps: tuple[RateGap, ...]  # flows that couldn't be converted to GBP
+    detected_flows: tuple[DetectedFlow, ...]  # large inferred movements
 
 
 # --- valuation snapshots ----------------------------------------------------
@@ -164,10 +141,24 @@ def build_snapshots(
         loan = sum(
             (c.value_gbp for c in valued.cash if c.value_gbp < _ZERO), _ZERO
         )
+        positions = {
+            h.key: (h.quantity, h.value_gbp)
+            for h in valued.securities
+            if h.quantity != _ZERO
+        }
+        # Drop an empty snapshot — a gap-period statement that parsed to no
+        # holdings and no value. Left in, it would read as the whole book
+        # leaving (a withdrawal) and coming back (a deposit) either side of
+        # the gap; dropped, the timeline bridges the gap to the next real
+        # statement (a genuine multi-month move). A legitimately all-cash
+        # snapshot (the opening capital) has non-zero value, so it survives.
+        if not positions and valued.net_worth_gbp == _ZERO:
+            continue
         out.append(
             Snapshot(
                 portfolio=portfolio,
                 on_date=on_date,
+                positions=positions,
                 net_value_gbp=valued.net_worth_gbp,
                 gross_value_gbp=valued.net_worth_gbp - loan,  # add the loan back
                 loan_gbp=loan,
@@ -177,91 +168,27 @@ def build_snapshots(
     return out
 
 
-# --- external capital flows -------------------------------------------------
+# --- holdings-based return maths --------------------------------------------
 
 
-def query_flows(ledger: Path) -> QueryResult:
-    """Run the external-flow query against ``ledger`` via ``bean-query``."""
+def _market_gain(prev: Snapshot, cur: Snapshot) -> Decimal:
+    """GBP price gain on the securities held through *both* snapshots:
+    ``Σ qty_prev × (gbp_unit_now − gbp_unit_then)``. Positions only in one
+    snapshot (a buy or a sell during the period) are excluded — their value
+    change is a flow/trade, not a market move."""
 
-    return run_query(ledger, _FLOW_BQL)
-
-
-def _portfolio_from_flow_account(account: str) -> str:
-    """``Expenses:Pic:K999999001:Other`` → ``Assets:Pic:K999999001`` — map a
-    flow leg onto the matching asset portfolio key used by the snapshots."""
-
-    parts = account.split(":")
-    # parts[2] is the portfolio segment (K…/P…) for both Equity:Pic:<p>:…
-    # and Expenses:Pic:<p>:… ; rebuild the Assets portfolio key.
-    return f"{_PICTET_PREFIX}{parts[2]}" if len(parts) >= 3 else account
-
-
-def _parse_amount(field: str) -> tuple[Decimal, str] | None:
-    parts = field.split()
-    if len(parts) != 2:
-        return None
-    try:
-        return Decimal(parts[0].replace(",", "")), parts[1]
-    except (ArithmeticError, ValueError):
-        return None
-
-
-def build_flows(
-    result: QueryResult, *, rate_source: GbpRateSource
-) -> tuple[list[Flow], list[RateGap]]:
-    """Per-portfolio external flows in GBP. ``F = −(posting amount)`` so a
-    deposit (negative equity credit) is +in and a wire-out (positive expense
-    debit) is −out. An unconvertible flow is dropped and recorded."""
-
-    flows: list[Flow] = []
-    gaps: list[RateGap] = []
-    for row in result.rows:
-        if len(row) < 3:
+    gain = _ZERO
+    for key, (qty_prev, val_prev) in prev.positions.items():
+        cur_pos = cur.positions.get(key)
+        if cur_pos is None:
             continue
-        date_str, account, amount_field = row[0], row[1].strip(), row[2]
-        parsed = _parse_amount(amount_field)
-        if parsed is None:
+        qty_cur, val_cur = cur_pos
+        if qty_prev == _ZERO or qty_cur == _ZERO:
             continue
-        amount, ccy = parsed
-        on_date = date.fromisoformat(date_str)
-        value = to_gbp(amount, currency=ccy, on_date=on_date, source=rate_source)
-        if value is None:
-            gaps.append(RateGap.at(account, ccy, on_date))
-            continue
-        flows.append(
-            Flow(
-                portfolio=_portfolio_from_flow_account(account),
-                on_date=on_date,
-                amount_gbp=-value,  # into the portfolio
-            )
-        )
-    return flows, gaps
-
-
-# --- return maths -----------------------------------------------------------
-
-
-def _modified_dietz(
-    v0: Decimal, v1: Decimal, flows: list[Flow], start: date, end: date
-) -> float | None:
-    """Modified Dietz return over ``(start, end]``: each flow day-weighted by
-    the fraction of the period it was invested. ``None`` if the weighted base
-    is zero (no capital at risk)."""
-
-    days = (end - start).days or 1
-    net_flow = sum((f.amount_gbp for f in flows), _ZERO)
-    weighted = sum(
-        (float(f.amount_gbp) * ((end - f.on_date).days / days) for f in flows),
-        0.0,
-    )
-    base = float(v0) + weighted
-    if base <= 0:
-        # No positive capital at risk over the period — a return on a zero or
-        # negative base (e.g. a portfolio whose Lombard loan exceeds its
-        # assets, so equity is negative) is meaningless. Suppressed, not
-        # printed as a flipped-sign artefact.
-        return None
-    return (float(v1) - float(v0) - float(net_flow)) / base
+        unit_then = val_prev / qty_prev
+        unit_now = val_cur / qty_cur
+        gain += qty_prev * (unit_now - unit_then)
+    return gain
 
 
 def _chain(returns: list[float | None]) -> float | None:
@@ -324,114 +251,90 @@ def _xirr(cashflows: list[tuple[date, Decimal]]) -> float | None:
 
 
 def _series_for(
-    label: str, snaps: list[Snapshot], flows: list[Flow]
-) -> ReturnSeries:
-    """Compute the net + gross TWR and net MWR for one value-snapshot series.
-
-    Net basis uses ``net_value_gbp`` with the capital flows; gross basis uses
-    ``gross_value_gbp`` (total assets) and additionally treats the change in
-    the loan balance between snapshots as a financing flow, so a drawdown
-    isn't counted as performance."""
+    label: str, snaps: list[Snapshot]
+) -> tuple[ReturnSeries, list[DetectedFlow]]:
+    """Holdings-based net + gross TWR and net MWR for one snapshot series,
+    plus the inferred external flows. No flow tags needed: the period return
+    is the market gain over the basis value, so deposits/withdrawals never
+    enter the return — they emerge as the residual ``ΔValue − gain``."""
 
     snaps = sorted(snaps, key=lambda s: s.on_date)
     if len(snaps) < 2:
-        last_snap = snaps[-1] if snaps else None
-        return ReturnSeries(
-            label=label,
-            inception=snaps[0].on_date if snaps else None,
-            latest=last_snap.on_date if last_snap else None,
-            net_value_gbp=last_snap.net_value_gbp if last_snap else _ZERO,
-            gross_value_gbp=last_snap.gross_value_gbp if last_snap else _ZERO,
-            twr_net=None, twr_gross=None,
-            twr_net_annualised=None, twr_gross_annualised=None,
-            mwr_net=None, periods_net=(), suspect_periods=(),
+        last = snaps[-1] if snaps else None
+        return (
+            ReturnSeries(
+                label=label,
+                inception=snaps[0].on_date if snaps else None,
+                latest=last.on_date if last else None,
+                net_value_gbp=last.net_value_gbp if last else _ZERO,
+                gross_value_gbp=last.gross_value_gbp if last else _ZERO,
+                twr_net=None, twr_gross=None,
+                twr_net_annualised=None, twr_gross_annualised=None,
+                mwr_net=None,
+            ),
+            [],
         )
 
     net_returns: list[float | None] = []
     gross_returns: list[float | None] = []
-    period_objs: list[PeriodReturn] = []
-    suspect: list[PeriodReturn] = []
+    flows: list[DetectedFlow] = []
 
     for prev, cur in zip(snaps, snaps[1:], strict=False):
-        window = [f for f in flows if prev.on_date < f.on_date <= cur.on_date]
-        r_net = _modified_dietz(
-            prev.net_value_gbp, cur.net_value_gbp, window, prev.on_date, cur.on_date
+        gain = _market_gain(prev, cur)
+        net_returns.append(
+            float(gain / prev.net_value_gbp)
+            if prev.net_value_gbp > _ZERO else None
         )
-        # Gross basis: add the loan-principal change as a financing flow
-        # (drawdown = inflow to the asset book). loan ≤ 0, so a bigger debt
-        # makes (cur.loan − prev.loan) negative → +inflow.
-        loan_flow = Flow(label, cur.on_date, -(cur.loan_gbp - prev.loan_gbp))
-        r_gross = _modified_dietz(
-            prev.gross_value_gbp, cur.gross_value_gbp,
-            [*window, loan_flow], prev.on_date, cur.on_date,
+        gross_returns.append(
+            float(gain / prev.gross_value_gbp)
+            if prev.gross_value_gbp > _ZERO else None
         )
-        net_returns.append(r_net)
-        gross_returns.append(r_gross)
-        net_flow = sum((f.amount_gbp for f in window), _ZERO)
-        outsized = r_net is not None and abs(r_net) > _OUTSIZED_PERIOD_RETURN
-        pr = PeriodReturn(
-            start=prev.on_date, end=cur.on_date,
-            begin_value_gbp=prev.net_value_gbp, end_value_gbp=cur.net_value_gbp,
-            flow_gbp=net_flow, twr=r_net, outsized=outsized,
-        )
-        period_objs.append(pr)
-        if outsized:
-            suspect.append(pr)
+        # Inferred external flow: the value change the market gain doesn't
+        # explain (a deposit adds value beyond price moves; a withdrawal
+        # removes it). Includes loan interest / dealing spreads as noise.
+        inferred = (cur.net_value_gbp - prev.net_value_gbp) - gain
+        flows.append(DetectedFlow(label, cur.on_date, inferred))
 
-    # Re-anchor inception past any *leading* suspect period: the opening
-    # capital lands untagged during the first interval (the account is
-    # near-empty before it), so that period is a funding event, not
-    # performance. Start the series at the first snapshot from which a clean
-    # period runs. A still-suspect period mid-series is nulled (treated as an
-    # untagged flow, not credited to the manager) but reported below.
-    start_idx = next(
-        (i for i, p in enumerate(period_objs) if not p.outsized), len(period_objs)
-    )
-    net_eff = [
-        None if period_objs[i].outsized else net_returns[i]
-        for i in range(start_idx, len(net_returns))
-    ]
-    gross_eff = [
-        None if period_objs[i].outsized else gross_returns[i]
-        for i in range(start_idx, len(gross_returns))
-    ]
-    anchor = snaps[start_idx] if start_idx < len(snaps) else snaps[-1]
-    inception, latest = anchor.on_date, snaps[-1].on_date
-    twr_net = _chain(net_eff)
-    twr_gross = _chain(gross_eff)
+    inception, latest = snaps[0].on_date, snaps[-1].on_date
+    twr_net = _chain(net_returns)
+    twr_gross = _chain(gross_returns)
 
-    # MWR (net basis): inception value out, each capital flow, ending value
-    # in. Only meaningful from positive equity (a negative-equity account has
-    # no capital base to earn a money-weighted return on).
+    # MWR (net basis): inception equity out, each inferred flow, ending
+    # equity in. Investor sign — a deposit (+ inferred flow) is cash out of
+    # pocket (negative). Only meaningful from positive starting equity.
     mwr_net: float | None = None
-    if anchor.net_value_gbp > _ZERO:
-        cashflows: list[tuple[date, Decimal]] = [(inception, -anchor.net_value_gbp)]
-        cashflows += [(f.on_date, f.amount_gbp) for f in flows
-                      if inception < f.on_date <= latest]
+    if snaps[0].net_value_gbp > _ZERO:
+        cashflows: list[tuple[date, Decimal]] = [
+            (inception, -snaps[0].net_value_gbp)
+        ]
+        cashflows += [(f.on_date, -f.amount_gbp) for f in flows]
         cashflows.append((latest, snaps[-1].net_value_gbp))
         mwr_net = _xirr(cashflows)
 
-    return ReturnSeries(
-        label=label,
-        inception=inception,
-        latest=latest,
-        net_value_gbp=snaps[-1].net_value_gbp,
-        gross_value_gbp=snaps[-1].gross_value_gbp,
-        twr_net=twr_net,
-        twr_gross=twr_gross,
-        twr_net_annualised=_annualise(twr_net, inception, latest),
-        twr_gross_annualised=_annualise(twr_gross, inception, latest),
-        mwr_net=mwr_net,
-        periods_net=tuple(period_objs),
-        suspect_periods=tuple(suspect),
+    return (
+        ReturnSeries(
+            label=label,
+            inception=inception,
+            latest=latest,
+            net_value_gbp=snaps[-1].net_value_gbp,
+            gross_value_gbp=snaps[-1].gross_value_gbp,
+            twr_net=twr_net,
+            twr_gross=twr_gross,
+            twr_net_annualised=_annualise(twr_net, inception, latest),
+            twr_gross_annualised=_annualise(twr_gross, inception, latest),
+            mwr_net=mwr_net,
+        ),
+        flows,
     )
 
 
 def _aggregate_snapshots(snaps: list[Snapshot]) -> list[Snapshot]:
     """Combine per-portfolio snapshots into a whole-mandate series via the
     as-of forward-fill (each portfolio contributes its latest snapshot on or
-    before each date), summing the bases — the same shape ``net_worth`` uses.
-    """
+    before each date). Positions are keyed by ``portfolio|key`` so a holding
+    a newly-statemented portfolio brings is a *new* key — excluded from that
+    period's market gain, so a portfolio first appearing (a coverage gap) is
+    a flow, never a spurious return."""
 
     by_portfolio: dict[str, list[Snapshot]] = defaultdict(list)
     for s in snaps:
@@ -442,46 +345,49 @@ def _aggregate_snapshots(snaps: list[Snapshot]) -> list[Snapshot]:
     out: list[Snapshot] = []
     for d in sorted({s.on_date for s in snaps}):
         net = gross = loan = _ZERO
-        for lst in by_portfolio.values():
+        positions: dict[str, tuple[Decimal, Decimal]] = {}
+        for portfolio, lst in by_portfolio.items():
             chosen = as_of(lst, d, key=lambda s: s.on_date)
-            if chosen is not None:
-                net += chosen.net_value_gbp
-                gross += chosen.gross_value_gbp
-                loan += chosen.loan_gbp
-        out.append(Snapshot("Pictet (all)", d, net, gross, loan))
+            if chosen is None:
+                continue
+            net += chosen.net_value_gbp
+            gross += chosen.gross_value_gbp
+            loan += chosen.loan_gbp
+            for key, pos in chosen.positions.items():
+                positions[f"{portfolio}|{key}"] = pos
+        out.append(Snapshot("Pictet (all)", d, positions, net, gross, loan))
     return out
 
 
 def build_report(
     statements: list[tuple[str, str]],
-    flow_result: QueryResult,
     *,
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
 ) -> ReturnReport:
-    """Assemble the whole-mandate and per-portfolio return series."""
+    """Assemble the whole-mandate and per-portfolio holdings-based returns."""
 
     snaps = build_snapshots(
         statements, commodities=commodities, rate_source=rate_source
     )
-    flows, gaps = build_flows(flow_result, rate_source=rate_source)
 
     by_portfolio: dict[str, list[Snapshot]] = defaultdict(list)
     for s in snaps:
         by_portfolio[s.portfolio].append(s)
-    flows_by_portfolio: dict[str, list[Flow]] = defaultdict(list)
-    for f in flows:
-        flows_by_portfolio[f.portfolio].append(f)
 
-    per_portfolio = tuple(
-        _series_for(p, by_portfolio[p], flows_by_portfolio.get(p, []))
-        for p in sorted(by_portfolio)
-    )
-    aggregate = _series_for(
-        "Pictet (all)", _aggregate_snapshots(snaps), flows
+    per_portfolio: list[ReturnSeries] = []
+    for p in sorted(by_portfolio):
+        series, _ = _series_for(p, by_portfolio[p])
+        per_portfolio.append(series)
+
+    aggregate, agg_flows = _series_for("Pictet (all)", _aggregate_snapshots(snaps))
+    detected = tuple(
+        f for f in agg_flows if abs(f.amount_gbp) >= _FLOW_REPORT_THRESHOLD
     )
     return ReturnReport(
-        aggregate=aggregate, per_portfolio=per_portfolio, rate_gaps=tuple(gaps)
+        aggregate=aggregate,
+        per_portfolio=tuple(per_portfolio),
+        detected_flows=detected,
     )
 
 
@@ -516,13 +422,15 @@ def render_markdown(report: ReturnReport) -> str:
     lines = [
         "# Mandate returns — time- & money-weighted",
         "",
-        f"Pictet mandate return over **{span}**, on two bases side by side: "
-        "**net** (your equity — assets minus the Lombard loan, with the loan's "
-        "interest as an internal drag) and **gross** (the total asset book, "
-        "the loan added back and its principal moves treated as flows so "
-        "leverage isn't counted as performance). TWR strips out deposit "
-        "timing (the manager's scorecard); MWR/XIRR is your actual "
-        "money-weighted experience. A reporting aid, not advice.",
+        f"Pictet mandate return over **{span}**, computed **from the statement "
+        "holdings** (price moves on the units held through each pair of "
+        "statements), so it needs no flow tagging in the ledger — deposits "
+        "and withdrawals never read as performance. Two bases: **net** (over "
+        "your equity, assets minus the Lombard loan) and **gross** (over the "
+        "total asset book, loan added back); their gap is the leverage "
+        "contribution. TWR is the manager's scorecard; MWR/XIRR (over the "
+        "inferred flows) is your money-weighted experience. A reporting aid, "
+        "not advice.",
         "",
         "| Scope | Latest net worth | TWR (net) | TWR p.a. (net) | MWR (net) "
         "| TWR (gross) | TWR p.a. (gross) |",
@@ -549,45 +457,29 @@ def render_markdown(report: ReturnReport) -> str:
             "",
         ]
 
-    suspects = agg.suspect_periods
-    if suspects:
+    if report.detected_flows:
         lines += [
-            "## ⚠️ Periods to review — possible untagged flows",
+            "## Detected movements (inferred from the holdings)",
             "",
-            "These sub-periods show an implied return too large to be real "
-            f"performance (|return| over {_OUTSIZED_PERIOD_RETURN * 100:.0f}% "
-            "in one period), which usually means a deposit or withdrawal that "
-            "wasn't tagged in the ledger. A *leading* flagged period is the "
-            "opening-capital arrival, so the series is anchored to start "
-            "after it; a *mid-series* one is excluded from the TWR (not "
-            "credited as performance). Tagging these flows would let them "
-            "re-enter the figures. Check these statement intervals:",
+            "These deposits / withdrawals are what the holdings imply each "
+            "period (`ΔValue − market gain`) — the returns above already "
+            "exclude them, so tagging them in the ledger is optional and "
+            "only firms up the money-weighted figure. A positive amount is "
+            "money **in**, negative is **out**:",
             "",
-            "| Period | Begin | End | Net flow | Implied return |",
-            "| --- | ---: | ---: | ---: | ---: |",
+            "| Date | Amount | Direction |",
+            "| --- | ---: | --- |",
         ]
-        for p in suspects:
+        for f in report.detected_flows:
+            direction = "deposit" if f.amount_gbp > _ZERO else "withdrawal"
             lines.append(
-                f"| {p.start} → {p.end} | {gbp(p.begin_value_gbp)} "
-                f"| {gbp(p.end_value_gbp)} | {gbp(p.flow_gbp)} "
-                f"| {_pctf(p.twr)} |"
+                f"| {f.on_date} | {gbp(abs(f.amount_gbp))} | {direction} |"
             )
-        lines.append("")
-
-    if report.rate_gaps:
         lines += [
-            "## ⚠️ Flows excluded — missing GBP rate",
             "",
-            "These external flows couldn't be converted to GBP, so the return "
-            "base is incomplete; add the month/currency to "
-            "`data/fx/hmrc-monthly-average.csv`:",
-            "",
-            *[
-                f"- {g.currency} {g.month} ({g.isin})"
-                for g in sorted(
-                    set(report.rate_gaps), key=lambda g: (g.month, g.currency)
-                )
-            ],
+            "> An inferred flow also absorbs loan interest, dealing spreads "
+            "and any cash income a *distributing* fund pays out rather than "
+            "accumulating, so treat the amounts as indicative.",
             "",
         ]
 

@@ -212,10 +212,9 @@ class ReportsStep(BaseModel):
     # ``[post.check]`` ledger). Warns and skips on a missing binary / ledger.
     mandate_scorecard: bool = False
 
-    # ``mandate_returns`` is opt-in (default off): like ``mandate_scorecard``
-    # it reads the *ledger* via ``bean-query`` (external flows) plus the
-    # statement archive (the value series). Same ledger resolution; warns and
-    # skips on a missing binary / ledger.
+    # ``mandate_returns`` is opt-in (default off): holdings-based, so it
+    # reads only the statement archive (no ledger / bean-query) — the return
+    # is the price move on units held through each pair of statements.
     mandate_returns: bool = False
 
     # Statement PDF globs for the valuation reports (concentration /

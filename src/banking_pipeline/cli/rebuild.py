@@ -851,32 +851,19 @@ def _run_rebuild_reports(
                 mandate_scorecard_mod.render_csv_rows(cost_report),
             )
     if rep.mandate_returns:
-        # Ledger-based (bean-query) for the external flows + statements for
-        # the value series. Same skip-on-missing handling as the cost block.
-        flow_result = mandate_returns_mod.query_flows(trial_balance_ledger)
-        if not trial_balance_ledger.is_file() or flow_result.binary_missing:
-            err_console.print(
-                f"[yellow]mandate-returns skipped:[/yellow] "
-                f"{flow_result.error or f'ledger {trial_balance_ledger} not found'}"
-            )
-        elif not flow_result.ok:
-            err_console.print(
-                f"[yellow]mandate-returns skipped:[/yellow] {flow_result.error}"
-            )
-        else:
-            returns_report = mandate_returns_mod.build_report(
-                texts, flow_result,
-                commodities=commodities_map, rate_source=rates,
-            )
-            _write_report(
-                _resolve_report_dir(
-                    settings.mandate_returns_reports_dir, project_root
-                ),
-                "mandate-returns.md",
-                mandate_returns_mod.render_markdown(returns_report),
-                "mandate-returns.csv",
-                mandate_returns_mod.render_csv_rows(returns_report),
-            )
+        # Statement-only (holdings-based) — no ledger / bean-query needed.
+        returns_report = mandate_returns_mod.build_report(
+            texts, commodities=commodities_map, rate_source=rates
+        )
+        _write_report(
+            _resolve_report_dir(
+                settings.mandate_returns_reports_dir, project_root
+            ),
+            "mandate-returns.md",
+            mandate_returns_mod.render_markdown(returns_report),
+            "mandate-returns.csv",
+            mandate_returns_mod.render_csv_rows(returns_report),
+        )
 
 
 def _resolve_ledger(ledger: str, data_dir: Path) -> Path:

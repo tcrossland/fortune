@@ -596,16 +596,6 @@ def mandate_scorecard(
 
 @app.command("mandate-returns")
 def mandate_returns(
-    ledger: Annotated[
-        Path,
-        typer.Option(
-            "--ledger",
-            exists=True,
-            readable=True,
-            help="Ledger to read external flows from (Expenses:Pic:Other + "
-            "Equity:Pic:Transfers). Defaults to ``main.beancount``.",
-        ),
-    ] = Path("main.beancount"),
     statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
     statements_dir: StatementsDirOpt = None,
     statements_recursive: StatementsRecursiveOpt = False,
@@ -625,11 +615,14 @@ def mandate_returns(
 
     Computes the Pictet mandate's return on two bases side by side — **net**
     (your equity, assets minus the Lombard loan) and **gross** (the total
-    asset book, loan added back) — as a time-weighted return (TWR, deposit
-    timing stripped out — the manager's scorecard) and a money-weighted
-    return (MWR/XIRR, your actual experience). Whole mandate plus a per-
-    account (K / P) breakdown. Reads statement valuations for the value
-    series and the ledger (via ``bean-query``) for the external flows.
+    asset book, loan added back) — as a time-weighted return (TWR, the
+    manager's scorecard) and a money-weighted return (MWR/XIRR, your actual
+    experience). Whole mandate plus a per-account (K / P) breakdown.
+
+    Computed **from the statement holdings** (price moves on units held
+    through each pair of statements), so it needs no flow tagging in the
+    ledger — deposits and withdrawals never read as performance and emerge
+    instead as a "detected movements" table. Statement-only; no bean-query.
     """
 
     _configure_logging(verbose)
@@ -637,16 +630,8 @@ def mandate_returns(
         statements, statements_dir, statements_recursive, commodities, rate_source
     )
 
-    flow_result = mandate_returns_mod.query_flows(ledger)
-    if flow_result.binary_missing:
-        err_console.print(f"[yellow]warning:[/yellow] {flow_result.error}")
-        raise typer.Exit(code=0)
-    if not flow_result.ok:
-        err_console.print(f"[red]bean-query failed[/red]:\n{flow_result.error}")
-        raise typer.Exit(code=1)
-
     report = mandate_returns_mod.build_report(
-        texts, flow_result, commodities=commodities_map, rate_source=rates
+        texts, commodities=commodities_map, rate_source=rates
     )
 
     out_dir = out or settings.mandate_returns_reports_dir
@@ -669,8 +654,8 @@ def mandate_returns(
         f"(TWR p.a. net {_p(agg.twr_net_annualised)} / gross "
         f"{_p(agg.twr_gross_annualised)}, MWR {_p(agg.mwr_net)})"
     )
-    if agg.suspect_periods:
+    if report.detected_flows:
         err_console.print(
-            f"[yellow]{len(agg.suspect_periods)} period(s) flagged — possible "
-            "untagged flow; see the report.[/yellow]"
+            f"[dim]{len(report.detected_flows)} external movement(s) inferred "
+            "from the holdings — see the report.[/dim]"
         )
