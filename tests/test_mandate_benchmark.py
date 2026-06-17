@@ -101,6 +101,52 @@ def test_value_add_window_restricted_to_benchmark_coverage() -> None:
     assert r.mandate_twr is not None and abs(r.mandate_twr - 0.21) < 1e-9
 
 
+def test_per_year_value_add_buckets_by_calendar_year() -> None:
+    # A December-2021 period and a January-2022 period (bucketed by the
+    # period's start-month year), each with +2pp value-add.
+    periods = [
+        PeriodReturn(date(2021, 12, 1), date(2022, 1, 1), 0.10, 0.10),  # 2021
+        PeriodReturn(date(2022, 1, 1), date(2022, 2, 1), 0.05, 0.05),   # 2022
+    ]
+    bench = _bench("B", [
+        (date(2021, 12, 1), "100"),
+        (date(2022, 1, 1), "108"),    # +8%
+        (date(2022, 2, 1), "111.24"),  # +3%
+    ])
+    report = mb.build_report(periods, [bench])
+    # Mandate's own annual return is exposed benchmark-independently.
+    annual = dict(report.mandate_annual)
+    assert set(annual) == {2021, 2022}
+    assert abs(annual[2021] - 0.10) < 1e-9 and abs(annual[2022] - 0.05) < 1e-9
+    by_year = {yv.year: yv.value_add for yv in report.rows[0].per_year}
+    assert set(by_year) == {2021, 2022}
+    assert abs(by_year[2021] - 0.02) < 1e-9  # 0.10 − 0.08
+    assert abs(by_year[2022] - 0.02) < 1e-9  # 0.05 − 0.03
+
+
+def test_up_down_market_capture() -> None:
+    # Benchmark up +10%, down −20%, up +5%; mandate +6%, −8%, +4%.
+    periods = [
+        PeriodReturn(date(2021, 8, 1), date(2021, 9, 1), 0.06, 0.06),
+        PeriodReturn(date(2021, 9, 1), date(2021, 10, 1), -0.08, -0.08),
+        PeriodReturn(date(2021, 10, 1), date(2021, 11, 1), 0.04, 0.04),
+    ]
+    # Levels reproducing the benchmark's +10 / −20 / +5 path.
+    bench = _bench("B", [
+        (date(2021, 8, 1), "100"),
+        (date(2021, 9, 1), "110"),
+        (date(2021, 10, 1), "88"),
+        (date(2021, 11, 1), "92.4"),
+    ])
+    r = mb.build_report(periods, [bench]).rows[0]
+    assert r.up_months == 2 and r.down_months == 1
+    # Down-capture = −0.08 / −0.20 = 0.40 (fell ~40% as much → protection).
+    assert r.down_capture is not None and abs(r.down_capture - 0.40) < 1e-9
+    # Up-capture = (1.06·1.04−1)/(1.10·1.05−1) ≈ 0.6606.
+    assert r.up_capture is not None and abs(r.up_capture - 0.6606) < 1e-3
+    assert r.down_capture < r.up_capture  # defensive: lost less than it gave up
+
+
 def test_benchmark_with_no_overlap_is_skipped() -> None:
     periods = _periods(0.05)  # Aug→Sep 2021
     bench = _bench("Future", [

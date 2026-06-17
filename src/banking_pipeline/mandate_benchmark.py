@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import csv
 from bisect import bisect_right
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -51,6 +52,12 @@ class Benchmark:
 
 
 @dataclass(frozen=True)
+class YearValueAdd:
+    year: int
+    value_add: float  # mandate − benchmark, over that calendar year's periods
+
+
+@dataclass(frozen=True)
 class ValueAdd:
     name: str
     window_start: date | None
@@ -62,12 +69,22 @@ class ValueAdd:
     benchmark_twr_pa: float | None
     value_add_pa: float | None  # mandate − benchmark, annualised
     value_add_cumulative: float | None  # geometric, over the window
+    per_year: tuple[YearValueAdd, ...]  # value-add bucketed by calendar year
+    # Up/down-market capture: the mandate's chained return over the months the
+    # benchmark *rose* (up) / *fell* (down), as a ratio of the benchmark's.
+    # down < 100% = fell less (protection); up < 100% = captured less upside.
+    up_capture: float | None
+    down_capture: float | None
+    up_months: int
+    down_months: int
 
 
 @dataclass(frozen=True)
 class BenchmarkReport:
     rows: tuple[ValueAdd, ...]
     skipped: tuple[str, ...]  # benchmarks with too little overlapping data
+    # The mandate's own gross return per calendar year (benchmark-independent).
+    mandate_annual: tuple[tuple[int, float], ...]
 
 
 # --- loading ----------------------------------------------------------------
@@ -139,14 +156,25 @@ def _annualise(cumulative: float, start: date, end: date) -> float:
     return float((1.0 + cumulative) ** (1.0 / years)) - 1.0
 
 
+def _capture(pairs: list[tuple[float, float]]) -> float | None:
+    """Mandate's chained return over a set of (mandate, benchmark) months as a
+    ratio of the benchmark's. ``None`` if empty or the benchmark netted flat."""
+
+    if not pairs:
+        return None
+    bench = _chain([b for _, b in pairs])
+    if bench == 0:
+        return None
+    return _chain([m for m, _ in pairs]) / bench
+
+
 def _value_add_for(periods: list[PeriodReturn], bench: Benchmark) -> ValueAdd | None:
     """Align ``bench`` to the mandate periods and compute value-add over the
-    common window. ``None`` when fewer than one period overlaps."""
+    common window, plus the per-year breakdown and up/down-market capture.
+    ``None`` when fewer than one period overlaps."""
 
-    mandate_rets: list[float] = []
-    bench_rets: list[float] = []
-    window_start: date | None = None
-    window_end: date | None = None
+    # (period, mandate_return, benchmark_return) for each aligned sub-period.
+    aligned: list[tuple[PeriodReturn, float, float]] = []
     for p in periods:
         if p.gross_return is None:
             continue
@@ -154,29 +182,44 @@ def _value_add_for(periods: list[PeriodReturn], bench: Benchmark) -> ValueAdd | 
         lvl_end = bench.level_as_of(p.end)
         if lvl_start is None or lvl_end is None or lvl_start == 0:
             continue
-        mandate_rets.append(p.gross_return)
-        bench_rets.append(float(lvl_end / lvl_start) - 1.0)
-        window_start = window_start or p.start
-        window_end = p.end
+        aligned.append((p, p.gross_return, float(lvl_end / lvl_start) - 1.0))
 
-    if not mandate_rets or window_start is None or window_end is None:
+    if not aligned:
         return None
+    window_start, window_end = aligned[0][0].start, aligned[-1][0].end
 
-    mandate_cum = _chain(mandate_rets)
-    bench_cum = _chain(bench_rets)
+    mandate_cum = _chain([m for _, m, _ in aligned])
+    bench_cum = _chain([b for _, _, b in aligned])
     mandate_pa = _annualise(mandate_cum, window_start, window_end)
     bench_pa = _annualise(bench_cum, window_start, window_end)
+
+    # Per-calendar-year value-add (bucket by the period's start-month year).
+    by_year: dict[int, list[tuple[float, float]]] = defaultdict(list)
+    for p, m, b in aligned:
+        by_year[p.start.year].append((m, b))
+    per_year = tuple(
+        YearValueAdd(year=y, value_add=_chain([m for m, _ in v]) - _chain([b for _, b in v]))
+        for y, v in sorted(by_year.items())
+    )
+
+    ups = [(m, b) for _, m, b in aligned if b > 0]
+    downs = [(m, b) for _, m, b in aligned if b < 0]
     return ValueAdd(
         name=bench.name,
         window_start=window_start,
         window_end=window_end,
-        periods=len(mandate_rets),
+        periods=len(aligned),
         mandate_twr=mandate_cum,
         mandate_twr_pa=mandate_pa,
         benchmark_twr=bench_cum,
         benchmark_twr_pa=bench_pa,
         value_add_pa=mandate_pa - bench_pa,
         value_add_cumulative=(1.0 + mandate_cum) / (1.0 + bench_cum) - 1.0,
+        per_year=per_year,
+        up_capture=_capture(ups),
+        down_capture=_capture(downs),
+        up_months=len(ups),
+        down_months=len(downs),
     )
 
 
@@ -191,7 +234,18 @@ def build_report(
             skipped.append(bench.name)
         else:
             rows.append(va)
-    return BenchmarkReport(rows=tuple(rows), skipped=tuple(skipped))
+
+    # The mandate's own gross return per calendar year — benchmark-independent,
+    # so the per-year matrix has a stable "what did the mandate do" reference.
+    by_year: dict[int, list[float]] = defaultdict(list)
+    for p in periods:
+        if p.gross_return is not None:
+            by_year[p.start.year].append(p.gross_return)
+    mandate_annual = tuple((y, _chain(v)) for y, v in sorted(by_year.items()))
+
+    return BenchmarkReport(
+        rows=tuple(rows), skipped=tuple(skipped), mandate_annual=mandate_annual
+    )
 
 
 # --- rendering --------------------------------------------------------------
@@ -248,6 +302,55 @@ def render_markdown(report: BenchmarkReport) -> str:
         "or a TR index).",
         "",
     ]
+
+    # --- year by year -------------------------------------------------------
+    years = [y for y, _ in report.mandate_annual]
+    if years:
+        lines += [
+            "## Year by year",
+            "",
+            "The mandate's own gross return each calendar year (top row), then "
+            "**value-add** (mandate − benchmark) per year for each benchmark — "
+            "so you can see *when* value was added or lost, not just the "
+            "blended average. A balanced mandate is expected to trail in equity "
+            "rallies and lose less in drawdowns. First/last years are partial. "
+            "Single years are noisy — read the path, not one cell.",
+            "",
+            "| Return / value-add | " + " | ".join(str(y) for y in years) + " |",
+            "| --- " + "| ---: " * len(years) + "|",
+            "| **Mandate return** | "
+            + " | ".join(_pct_plain(r) for _, r in report.mandate_annual)
+            + " |",
+        ]
+        for r in report.rows:
+            ymap = {yv.year: yv.value_add for yv in r.per_year}
+            cells = " | ".join(
+                _pctf(ymap[y]) if y in ymap else "—" for y in years
+            )
+            lines.append(f"| {r.name} | {cells} |")
+        lines.append("")
+
+    # --- up/down-market capture --------------------------------------------
+    lines += [
+        "## Up- vs down-market capture",
+        "",
+        "In the months each benchmark *rose* vs *fell*, how much of its move "
+        "the mandate captured (gross). **Down-capture < 100%** = the mandate "
+        "fell less (downside protection — a balanced mandate's job); "
+        "**up-capture < 100%** = it captured less of the rally (the cost of "
+        "caution). A defensive mandate earns its keep when down-capture is "
+        "well below up-capture.",
+        "",
+        "| Benchmark | Down-capture (months) | Up-capture (months) |",
+        "| --- | ---: | ---: |",
+    ]
+    for r in report.rows:
+        lines.append(
+            f"| {r.name} | {_pct_plain(r.down_capture)} ({r.down_months}) "
+            f"| {_pct_plain(r.up_capture)} ({r.up_months}) |"
+        )
+    lines.append("")
+
     if report.skipped:
         lines += [
             "Benchmarks skipped (no overlapping data): "
@@ -263,6 +366,7 @@ def render_csv_rows(report: BenchmarkReport) -> list[list[str]]:
         "mandate_twr", "mandate_twr_pa",
         "benchmark_twr", "benchmark_twr_pa",
         "value_add_pa", "value_add_cumulative",
+        "down_capture", "up_capture", "down_months", "up_months",
     ]]
 
     def f(v: float | None) -> str:
@@ -277,5 +381,13 @@ def render_csv_rows(report: BenchmarkReport) -> list[list[str]]:
             f(r.mandate_twr), f(r.mandate_twr_pa),
             f(r.benchmark_twr), f(r.benchmark_twr_pa),
             f(r.value_add_pa), f(r.value_add_cumulative),
+            f(r.down_capture), f(r.up_capture),
+            str(r.down_months), str(r.up_months),
         ])
+    # Per-year value-add (long form) appended after a blank separator row.
+    rows.append([])
+    rows.append(["per_year", "benchmark", "year", "value_add"])
+    for r in report.rows:
+        for yv in r.per_year:
+            rows.append(["", r.name, str(yv.year), f(yv.value_add)])
     return rows
