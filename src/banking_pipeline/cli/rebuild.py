@@ -874,7 +874,7 @@ def _run_rebuild_reports(
         if settings.benchmark_path is None or not settings.benchmark_path.is_file():
             err_console.print(
                 "[yellow]benchmark skipped:[/yellow] no benchmark CSV "
-                "(set benchmark_path / copy data/benchmarks.example.csv)"
+                "(run scripts/fetch_benchmarks.py / set benchmark_path)"
             )
         else:
             periods = mandate_returns_mod.aggregate_period_returns(

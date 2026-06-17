@@ -705,7 +705,8 @@ def benchmark(
     if bench_path is None or not bench_path.is_file():
         err_console.print(
             "[red]No benchmark CSV — pass --benchmarks or set benchmark_path "
-            "(copy data/benchmarks.example.csv to data/benchmarks.csv).[/red]"
+            "(run scripts/fetch_benchmarks.py to generate "
+            "data/benchmarks.csv).[/red]"
         )
         raise typer.Exit(code=2)
 

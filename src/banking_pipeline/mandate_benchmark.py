@@ -221,8 +221,8 @@ def render_markdown(report: BenchmarkReport) -> str:
     if not report.rows:
         lines += [
             "No benchmark data aligned to the mandate's statement dates. "
-            "Provide a benchmark-levels CSV (see "
-            "`data/benchmarks.example.csv`).",
+            "Provide a benchmark-levels CSV (run "
+            "`scripts/fetch_benchmarks.py`, or pass `--benchmarks`).",
             "",
         ]
         return "\n".join(lines).rstrip() + "\n"
