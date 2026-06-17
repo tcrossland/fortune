@@ -19,6 +19,8 @@ public market levels — no personal data — so the file is committed, like
 from __future__ import annotations
 
 import calendar
+import csv
+import io
 import json
 import re
 import urllib.request
@@ -57,6 +59,16 @@ FT_FUNDS = {
     # Vanguard LifeStrategy 60% Equity Fund A Acc (GB00B3TYHH97), OCF 0.20%
     # — a real, fee-bearing, total-return 60/40 alternative.
     "Vanguard LS60 (fund NAV)": 35662823,
+}
+
+# EUR-denominated UCITS ETFs (no GBP exchange line exists) — fetched in EUR
+# and converted to a GBP total-return series via EUR/GBP, so they're
+# comparable to the mandate's GBP return. name -> Yahoo (EUR) ticker.
+EUR_ETFS = {
+    # Vanguard LifeStrategy 60% Equity UCITS ETF (IE00BMVB5P51, Xetra) —
+    # Irish-domiciled and globally weighted, vs the UK OEIC's ~25% UK-equity
+    # home bias; tests whether removing that bias narrows the value-add gap.
+    "Vanguard LS60 global (VNGA60)": "V60A.DE",
 }
 
 OUT = Path(__file__).resolve().parent.parent / "data" / "benchmarks.csv"
@@ -109,7 +121,7 @@ def _fetch_ft_fund(xid: int) -> dict[date, float]:
     return monthly
 
 
-def _fetch(ticker: str) -> dict[date, float]:
+def _fetch_yahoo(ticker: str, expect_currency: str | None = None) -> dict[date, float]:
     req = urllib.request.Request(
         _CHART.format(ticker=ticker), headers={"User-Agent": "Mozilla/5.0"}
     )
@@ -117,8 +129,10 @@ def _fetch(ticker: str) -> dict[date, float]:
         payload = json.load(resp)
     res = payload["chart"]["result"][0]
     meta = res["meta"]
-    if meta.get("currency") != "GBP":
-        raise SystemExit(f"{ticker}: expected GBP, got {meta.get('currency')}")
+    if expect_currency and meta.get("currency") != expect_currency:
+        raise SystemExit(
+            f"{ticker}: expected {expect_currency}, got {meta.get('currency')}"
+        )
     timestamps = res["timestamp"]
     adjclose = res["indicators"]["adjclose"][0]["adjclose"]
     today = datetime.now(tz=_LONDON).date()
@@ -133,12 +147,29 @@ def _fetch(ticker: str) -> dict[date, float]:
     return out
 
 
+def _fetch(ticker: str) -> dict[date, float]:
+    return _fetch_yahoo(ticker, "GBP")
+
+
+def _fetch_eur_etf_gbp(ticker: str) -> dict[date, float]:
+    """Month-end GBP total-return level of a EUR-denominated ETF: its EUR
+    close × EUR/GBP. The ETF trades only in EUR (no GBP exchange line exists);
+    a GBP line would be this same product, so this is the GBP total return a
+    sterling investor actually earns holding it."""
+
+    eur = _fetch_yahoo(ticker, "EUR")
+    fx = _fetch_yahoo("EURGBP=X")  # GBP per 1 EUR
+    return {d: round(eur[d] * fx[d], 4) for d in eur if d in fx}
+
+
 def main() -> None:
     series: dict[str, dict[date, float]] = {
         name: _fetch(ticker) for ticker, name in TICKERS.items()
     }
     for name, xid in FT_FUNDS.items():
         series[name] = _fetch_ft_fund(xid)
+    for name, ticker in EUR_ETFS.items():
+        series[name] = _fetch_eur_etf_gbp(ticker)
 
     # 60/40 blend from equity + bond monthly returns, rebased to 100.
     eq, bd = series[EQUITY], series[BOND]
@@ -153,28 +184,30 @@ def main() -> None:
         prev = d
     series[BLEND] = blend
 
-    # Blend + real LS60 first (the 60/40 yardsticks), then the index ETFs.
-    names = [BLEND, *FT_FUNDS, *TICKERS.values()]
+    # Blend + the two real LS60 funds first (the 60/40 yardsticks), then ETFs.
+    names = [BLEND, *FT_FUNDS, *EUR_ETFS, *TICKERS.values()]
     all_dates = sorted({d for s in series.values() for d in s})
 
-    lines = [
-        "# Benchmark levels — GBP total-return, month-end. Regenerate with",
-        "# scripts/fetch_benchmarks.py. Sources: Yahoo Finance monthly closes",
-        "# of GBP accumulating UCITS ETFs (acc price = total return) —",
-        "# FTSE All-World=VWRP.L, S&P 500=VUAG.L, MSCI World=SWLD.L,",
-        "# FTSE 100=VUKG.L, Global Agg Bond GBP-hedged=VAGP.L; and FT markets",
-        "# NAV for Vanguard LS60 (GB00B3TYHH97 Acc, in pence). Global 60/40 is",
-        "# 60% FTSE All-World + 40% Global Agg by monthly return, rebased 100.",
-        "date," + ",".join(names),
-    ]
+    comments = (
+        "# Benchmark levels — GBP total-return, month-end. Regenerate with\n"
+        "# scripts/fetch_benchmarks.py. Sources: Yahoo Finance monthly closes\n"
+        "# of GBP accumulating UCITS ETFs (acc price = total return) —\n"
+        "# FTSE All-World=VWRP.L, S&P 500=VUAG.L, MSCI World=SWLD.L,\n"
+        "# FTSE 100=VUKG.L, Global Agg Bond GBP-hedged=VAGP.L; FT markets NAV\n"
+        "# for Vanguard LS60 (GB00B3TYHH97 Acc, in pence); and Vanguard LS60\n"
+        "# global (VNGA60, IE00BMVB5P51) in EUR x EUR/GBP. Global 60/40 is 60%\n"
+        "# FTSE All-World + 40% Global Agg by monthly return, rebased 100.\n"
+    )
+    buf = io.StringIO()
+    buf.write(comments)
+    writer = csv.writer(buf)  # quotes any name containing a comma
+    writer.writerow(["date", *names])
     for d in all_dates:
-        cells = [d.isoformat()]
-        for name in names:
-            v = series[name].get(d)
-            cells.append(f"{v}" if v is not None else "")
-        lines.append(",".join(cells))
-
-    OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        writer.writerow([
+            d.isoformat(),
+            *("" if series[name].get(d) is None else series[name][d] for name in names),
+        ])
+    OUT.write_text(buf.getvalue(), encoding="utf-8")
     print(
         f"Wrote {OUT} — {len(all_dates)} months, {len(names)} benchmarks "
         f"({all_dates[0]} .. {all_dates[-1]})"
