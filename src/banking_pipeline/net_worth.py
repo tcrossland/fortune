@@ -54,6 +54,7 @@ class _Snapshot:
     gross_long_gbp: Decimal
     net_cash_gbp: Decimal
     net_worth_gbp: Decimal
+    missing_prices: tuple[str, ...]  # unvaluable holdings in this snapshot
 
 
 @dataclass(frozen=True)
@@ -111,7 +112,6 @@ def _timeline_from_raw(
 
     snapshots: list[_Snapshot] = []
     rate_gaps: list[RateGap] = []
-    missing_prices: list[str] = []
     unclassified: list[str] = []
     for (portfolio, on_date), grp in groups.items():
         valued = value_holdings(
@@ -121,10 +121,10 @@ def _timeline_from_raw(
             _Snapshot(
                 portfolio, on_date, valued.gross_long_gbp,
                 valued.net_cash_gbp, valued.net_worth_gbp,
+                valued.missing_prices,
             )
         )
         rate_gaps.extend(valued.rate_gaps)
-        missing_prices.extend(valued.missing_prices)
         unclassified.extend(valued.unclassified)
 
     by_portfolio: dict[str, list[_Snapshot]] = defaultdict(list)
@@ -135,7 +135,8 @@ def _timeline_from_raw(
 
     points: list[NetWorthPoint] = []
     prev_nw: Decimal | None = None
-    for d in sorted({s.on_date for s in snapshots}):
+    all_dates = sorted({s.on_date for s in snapshots})
+    for d in all_dates:
         gross = net_cash = net_worth = _ZERO
         contributing = 0
         for lst in by_portfolio.values():
@@ -150,6 +151,18 @@ def _timeline_from_raw(
             NetWorthPoint(d, gross, net_cash, net_worth, change, contributing)
         )
         prev_nw = net_worth
+
+    # Unvaluable holdings are reported only for the *latest* point — the
+    # snapshot each portfolio contributes as-of the final date — so the
+    # warning names holdings currently held but unvaluable, not ones a
+    # long-superseded historical statement happened to mis-price.
+    missing_prices: list[str] = []
+    if all_dates:
+        latest = all_dates[-1]
+        for lst in by_portfolio.values():
+            chosen = as_of(lst, latest, key=lambda s: s.on_date)
+            if chosen is not None:
+                missing_prices.extend(chosen.missing_prices)
 
     return NetWorthTimeline(
         points=tuple(points),

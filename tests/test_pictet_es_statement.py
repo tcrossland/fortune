@@ -78,6 +78,34 @@ def test_es_raw_from_statement_values_holdings() -> None:
     assert by["EUR"].is_cash and by["EUR"].quantity == Decimal("10080")
 
 
+def test_exploded_layout_recovers_every_holding_mark(load_fixture_doc) -> None:  # type: ignore[no-untyped-def]
+    """Some ES monthly statements (the 2022-10 / 2022-11 valuations) extract
+    one column per line instead of packing the holding onto a single row,
+    putting the cotización on the line *below* the ISIN. The golden fixture
+    is the (PII-scrubbed) valuation pages of one such statement; every one
+    of its 32 holdings must price — none may fall through as unvaluable."""
+
+    text = load_fixture_doc("es/pictet/estado_mensual.exploded.txt").text
+
+    prices = extract_prices_from_statement(text, doctype=None, source="exploded")
+    by = {p.commodity: (p.price, p.currency) for p in prices}
+    # One mark per holding, no duplicates from the repeated valuation header.
+    assert len(prices) == len(by) == 32
+    # The mark is the line *below* the ISIN, not the gross unit cost below it.
+    assert by["LU0128494944"] == ("136.41", "EUR")
+    assert by["LU1852211215"] == ("10.79", "USD")
+    # Footnote symbol + cost concatenated onto the mark line
+    # (``EUR 52.47 b)- EUR 49.99``): the ``b)`` must not swallow the mark.
+    assert by["CH1117356522"] == ("52.47", "EUR")
+    # A holding whose cost line is a bare ``-`` (JPY, thousands-separated).
+    assert by["LU0155301467"] == ("15091.27", "JPY")
+
+    # End-to-end: no security is left unvaluable.
+    securities = [r for r in raw_from_statement(text, "exploded") if not r.is_cash]
+    assert len(securities) == 32
+    assert [r.key for r in securities if r.price is None] == []
+
+
 def test_whole_number_fiat_cash_gets_rounding_tolerance() -> None:
     # The ES statement rounds cash to whole units, so a whole-number fiat
     # balance asserts with a ±0.5 tolerance; cent-precise cash and security

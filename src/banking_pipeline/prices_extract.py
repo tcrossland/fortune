@@ -383,6 +383,14 @@ _PRICE_LINE_RE = re.compile(
 _ES_HOLDING_ROW_RE = re.compile(
     r"^[\d'.]+\s+.+?\s+([A-Z]{3})\s+([\d'.]+)\s+[\d'.]+\s+[\d'.]+"
 )
+# "Exploded" layout: some statements (e.g. the 2022-10 / 2022-11 Spanish
+# valuations) extract one column per line instead of packing the holding
+# onto a single row. The market mark — the *cotización* — is then the
+# first ``<ccy> <number>`` line *below* the ISIN; the next line is the
+# gross unit cost (prefixed ``-`` so it won't match) and the one after is
+# the valuation. Anchored at the line start (not end) so a trailing ``b)``
+# footnote + concatenated cost (``EUR 52.47 b)- EUR 49.99``) still matches.
+_EXPLODED_PRICE_RE = re.compile(r"^([A-Z]{3})\s+([\d'.]+)")
 
 
 def extract_prices_from_statement(
@@ -522,6 +530,27 @@ def _pictet_statement_prices(
             m_es = _ES_HOLDING_ROW_RE.match(lines[i - 1].strip())
             if m_es is not None:
                 currency, price = m_es.group(1), m_es.group(2)
+                rows.append(
+                    PriceRow(
+                        date=date_str,
+                        commodity=isin,
+                        price=price.replace("'", ""),
+                        currency=currency,
+                        source=source,
+                    )
+                )
+                seen_on_this_statement.add(isin)
+                continue
+        # Exploded layout: the mark is the ``<ccy> <number>`` line directly
+        # below the ISIN. Only that line is inspected — the cost line two
+        # down is ``-``-prefixed and the valuation three down is a *total*
+        # (also ``<ccy> <number>``), so widening the window would mis-grab
+        # it for a holding whose mark is genuinely absent (e.g. a
+        # percent-quoted bond, whose line below the ISIN is ``99.06% …``).
+        if i + 1 < len(lines):
+            m_exp = _EXPLODED_PRICE_RE.match(lines[i + 1].strip())
+            if m_exp is not None:
+                currency, price = m_exp.group(1), m_exp.group(2)
                 rows.append(
                     PriceRow(
                         date=date_str,
