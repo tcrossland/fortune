@@ -33,17 +33,21 @@ data/property.toml
 data/*.beancount
 data/*.transactions.jsonl
 data/*.md
+# Generated per-account ledgers (banking-pipeline portfolio-split).
+# Named explicitly rather than data/*/ so the tracked data/fx rate CSV
+# stays committed.
+data/accounts/
 
 # Hand-curated bean-check root — references the personal portfolio
 # structure, so kept local rather than committed.
 main.beancount
 
-# Generated reports (personal financial output). Scoped so the
-# hand-written build scripts at reports/ root stay visible.
-reports/uk-tax/
-reports/reconciliation/
-reports/concentration/
-reports/net-worth/
+# Generated reports (personal financial output). Every per-report
+# sub-directory is ignored (uk-tax, reconciliation, concentration,
+# net-worth, income, allocation, portfolio-allocation, trial-balance, …)
+# so a new report can't silently become committable; the hand-written
+# build scripts / templates at the reports/ root stay visible.
+reports/*/
 reports/*.html
 # …but keep the hand-written HTML template (source, not generated output).
 !reports/*_template.html
