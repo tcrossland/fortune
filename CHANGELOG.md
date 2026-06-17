@@ -98,7 +98,10 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
   handles the bare `K-NNNNNN.NNN` account line and the currency-led cash
   row; `prices_extract` reads the *cotización* off the holding row above
   the `ISIN:` line (the ES layout packs the holding into two lines, and
-  the ISIN line carries the gross unit cost, not the mark). Validated
+  the ISIN line carries the gross unit cost, not the mark). Cash on those statements is rounded to whole units, so a
+  whole-number fiat balance assertion now carries a `~ 0.5` rounding
+  tolerance (securities and cent-precise cash assert exactly).
+  Validated
   against a real statement (33 holdings + cash, `qty × cotización`
   reconciling with `VALORACIÓN`). (`balances_extract.py`,
   `prices_extract.py`)

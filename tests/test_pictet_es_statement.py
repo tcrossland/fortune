@@ -76,3 +76,19 @@ def test_es_raw_from_statement_values_holdings() -> None:
     # qty × cotización reconciles with the statement's VALORACIÓN (240'516).
     assert round(sec.quantity * sec.price) == 240519
     assert by["EUR"].is_cash and by["EUR"].quantity == Decimal("10080")
+
+
+def test_whole_number_fiat_cash_gets_rounding_tolerance() -> None:
+    # The ES statement rounds cash to whole units, so a whole-number fiat
+    # balance asserts with a ±0.5 tolerance; cent-precise cash and security
+    # quantities assert exactly.
+    from banking_pipeline.balances_extract import render
+
+    body = render([
+        ("2022-07-01", "Assets:Pic:K1:EUR", "10080", "EUR"),         # rounded cash
+        ("2022-07-01", "Assets:Pic:K1:DKK", "12345.67", "DKK"),      # cent-precise
+        ("2022-07-01", "Assets:Pic:K1:LU0000000001", "100", "LU0000000001"),
+    ])
+    assert "balance Assets:Pic:K1:EUR  10080 ~ 0.5 EUR" in body
+    assert "balance Assets:Pic:K1:DKK  12345.67 DKK" in body
+    assert "balance Assets:Pic:K1:LU0000000001  100 LU0000000001" in body

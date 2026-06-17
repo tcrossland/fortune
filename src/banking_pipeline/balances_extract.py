@@ -319,11 +319,20 @@ def render(
 
     lines = [header.rstrip("\n"), ""]
     for assertion_date, account, quantity, commodity in rows:
-        # Leave a tab-like padding between account and quantity so
-        # the output is human-readable; the exact spacing isn't
-        # significant to beancount's parser.
+        # A statement that rounds cash to whole units (the Spanish locale
+        # prints ``EUR 10'080``) can't be asserted to the cent against the
+        # precise ledger under the tight ``EUR:0.005`` default tolerance, so
+        # a whole-number *fiat* balance carries an explicit ``~ 0.5``
+        # rounding tolerance. Security quantities (ISIN / ticker commodities)
+        # and cent-precise cash assert exactly. The padding between account
+        # and quantity is cosmetic — beancount ignores the spacing.
+        tol = (
+            " ~ 0.5"
+            if len(commodity) == 3 and commodity.isalpha() and "." not in quantity
+            else ""
+        )
         lines.append(
-            f"{assertion_date} balance {account}  {quantity} {commodity}"
+            f"{assertion_date} balance {account}  {quantity}{tol} {commodity}"
         )
     lines.append("")
     return "\n".join(lines)
