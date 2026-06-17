@@ -144,3 +144,18 @@ def test_render_flags_unclassified_missing_price_and_caveat() -> None:
     assert "Unvaluable holdings (no statement mark)" in md
     assert "IE00NOMARK01" in md
     assert "wound-down portfolio" in md  # the B6 forward-fill caveat
+
+
+def test_render_table_is_newest_first() -> None:
+    raws = [
+        _sec("A", date(2025, 1, 1), "IE00B3VWN518", D(10), D(100)),
+        _sec("A", date(2025, 2, 1), "IE00B3VWN518", D(12), D(100)),
+        _sec("A", date(2025, 3, 1), "IE00B3VWN518", D(11), D(100)),
+    ]
+    tl = _timeline_from_raw(raws, commodities={}, rate_source=NullSource())
+    md = render_markdown(tl)
+    dates = [
+        ln.split("|")[1].strip()
+        for ln in md.splitlines() if ln.startswith("| 2025-")
+    ]
+    assert dates == ["2025-03-01", "2025-02-01", "2025-01-01"]  # descending

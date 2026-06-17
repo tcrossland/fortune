@@ -175,13 +175,16 @@ def render_markdown(timeline: NetWorthTimeline) -> str:
         f"From **{first.on_date}** to **{last.on_date}**: net worth "
         f"**{gbp(first.net_worth_gbp)} → {gbp(last.net_worth_gbp)}** "
         f"({'+' if total_change >= _ZERO else ''}{gbp(total_change)}). "
-        "Each row uses every portfolio's latest valuation on or before that "
-        "date. A reporting aid, not advice.",
+        "Rows are newest first; each uses every portfolio's latest valuation "
+        "on or before that date, and Δ is the change since the previous "
+        "(older) date. A reporting aid, not advice.",
         "",
         "| Date | Gross long | Net cash | Net worth | Δ net worth |",
         "| --- | ---: | ---: | ---: | ---: |",
     ]
-    for p in points:
+    # Newest first in the rendered table; the per-row Δ keeps its
+    # chronological meaning (change since the previous, older date).
+    for p in reversed(points):
         delta = "—" if p.change_gbp is None else (
             f"{'+' if p.change_gbp >= _ZERO else ''}{gbp(p.change_gbp)}"
         )

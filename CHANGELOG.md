@@ -87,6 +87,10 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`net-worth` table is newest-first** — the net-worth-over-time Markdown
+  table now lists rows in descending date order (most recent at the top);
+  each row's Δ keeps its chronological meaning (change since the previous,
+  older date). The CSV stays ascending for spreadsheet use. (`net_worth.py`)
 - **Spanish monthly statement (`ESTADO_MENSUAL`) valuation extraction** —
   the Madrid account's Spanish-locale statement now feeds the valuation
   reports (concentration / net-worth / allocation) like the English
