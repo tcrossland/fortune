@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import calendar
 import json
+import re
 import urllib.request
 from datetime import date, datetime
 from pathlib import Path
@@ -45,7 +46,18 @@ TICKERS = {
 }
 EQUITY = "FTSE All-World (Global eq)"
 BOND = "Global Agg Bond (GBP-h)"
-BLEND = "Global 60/40"
+BLEND = "Global 60/40 (constructed)"
+
+# Real investable funds from FT markets data (OEICs Yahoo's chart API won't
+# serve). name -> FT XID. The XID is on the fund's FT tearsheet page
+# (markets.ft.com/data/funds/tearsheet/historical?s=<ISIN>:GBP), in the
+# historical-prices module's data-mod-config. NAV is quoted in pence — only
+# within-column ratios matter, so the unit is immaterial to the return.
+FT_FUNDS = {
+    # Vanguard LifeStrategy 60% Equity Fund A Acc (GB00B3TYHH97), OCF 0.20%
+    # — a real, fee-bearing, total-return 60/40 alternative.
+    "Vanguard LS60 (fund NAV)": 35662823,
+}
 
 OUT = Path(__file__).resolve().parent.parent / "data" / "benchmarks.csv"
 
@@ -54,6 +66,47 @@ def _month_end(ts: int) -> date:
     d = datetime.fromtimestamp(ts, tz=_LONDON).date()  # bar's month, London
     last = calendar.monthrange(d.year, d.month)[1]
     return date(d.year, d.month, last)
+
+
+def _fetch_ft_fund(xid: int) -> dict[date, float]:
+    """Month-end NAV for an FT fund (by internal XID): fetch the daily
+    historical prices, then keep the last trading day's close per month."""
+
+    url = (
+        "https://markets.ft.com/data/equities/ajax/get-historical-prices"
+        f"?startDate=2021/07/01&endDate=2030/01/01&symbol={xid}"
+    )
+    req = urllib.request.Request(
+        url, headers={"User-Agent": "Mozilla/5.0", "X-Requested-With": "XMLHttpRequest"}
+    )
+    with urllib.request.urlopen(req, timeout=40) as resp:  # noqa: S310 (https only)
+        html = json.load(resp).get("html", "")
+    # FT lists newest-first, so parse all daily closes first, then resample
+    # ascending — the last trading day of each month wins regardless of order.
+    daily: dict[date, float] = {}
+    for tr in re.findall(r"<tr>(.*?)</tr>", html, re.S):
+        cells = [
+            re.sub("<.*?>", "", c).strip()
+            for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)
+        ]
+        if len(cells) < 5:
+            continue
+        m = re.search(r"[A-Z][a-z]+ \d{1,2}, \d{4}", cells[0])
+        if m is None:
+            continue
+        try:
+            daily[datetime.strptime(m.group(0), "%B %d, %Y").date()] = float(
+                cells[4].replace(",", "")
+            )
+        except ValueError:
+            continue
+    today = datetime.now(tz=_LONDON).date()
+    monthly: dict[date, float] = {}
+    for d in sorted(daily):
+        me = date(d.year, d.month, calendar.monthrange(d.year, d.month)[1])
+        if me <= today:
+            monthly[me] = daily[d]
+    return monthly
 
 
 def _fetch(ticker: str) -> dict[date, float]:
@@ -84,6 +137,8 @@ def main() -> None:
     series: dict[str, dict[date, float]] = {
         name: _fetch(ticker) for ticker, name in TICKERS.items()
     }
+    for name, xid in FT_FUNDS.items():
+        series[name] = _fetch_ft_fund(xid)
 
     # 60/40 blend from equity + bond monthly returns, rebased to 100.
     eq, bd = series[EQUITY], series[BOND]
@@ -98,15 +153,17 @@ def main() -> None:
         prev = d
     series[BLEND] = blend
 
-    names = [BLEND, *TICKERS.values()]  # blend first — the headline yardstick
+    # Blend + real LS60 first (the 60/40 yardsticks), then the index ETFs.
+    names = [BLEND, *FT_FUNDS, *TICKERS.values()]
     all_dates = sorted({d for s in series.values() for d in s})
 
     lines = [
         "# Benchmark levels — GBP total-return, month-end. Regenerate with",
-        "# scripts/fetch_benchmarks.py. Source: Yahoo Finance monthly closes",
+        "# scripts/fetch_benchmarks.py. Sources: Yahoo Finance monthly closes",
         "# of GBP accumulating UCITS ETFs (acc price = total return) —",
         "# FTSE All-World=VWRP.L, S&P 500=VUAG.L, MSCI World=SWLD.L,",
-        "# FTSE 100=VUKG.L, Global Agg Bond GBP-hedged=VAGP.L. Global 60/40 is",
+        "# FTSE 100=VUKG.L, Global Agg Bond GBP-hedged=VAGP.L; and FT markets",
+        "# NAV for Vanguard LS60 (GB00B3TYHH97 Acc, in pence). Global 60/40 is",
         "# 60% FTSE All-World + 40% Global Agg by monthly return, rebased 100.",
         "date," + ",".join(names),
     ]
