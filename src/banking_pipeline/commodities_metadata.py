@@ -37,6 +37,14 @@ AssetClass = Literal[
 # Keying on the 11-char length keeps 12-char ISIN typos rejected.
 _INTERNAL_REF_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}$")
 
+# Non-ISIN ledger commodity codes that are nonetheless valid. The Vanguard
+# ISA keys holdings on the fund *ticker* (its buy contract notes print no
+# ISIN), so those tickers flow through as commodities and need metadata too.
+# An explicit allow-list (rather than a loose short-code pattern) keeps a
+# mistyped ISIN rejected. Mirror the tickers the Vanguard template resolves
+# (``templates/vanguard_uk/_common._TICKER_BY_NAME``) when a new fund is held.
+_TICKER_CODES = frozenset({"VGVA", "VMIG"})
+
 # Fund-name fragments → issuer (fund house / manager). Matched as an
 # upper-cased substring of the commodity ``name``, first hit wins, so a
 # holding's issuer can be inferred from the name Pictet already prints
@@ -96,7 +104,7 @@ def normalise_commodity_code(value: str) -> str | None:
     real = normalise_isin(cleaned)
     if real is not None:
         return real
-    if _INTERNAL_REF_RE.match(cleaned):
+    if _INTERNAL_REF_RE.match(cleaned) or cleaned in _TICKER_CODES:
         return cleaned
     return None
 

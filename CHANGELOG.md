@@ -87,6 +87,13 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **Vanguard ISA ticker metadata** — `commodities.toml` can now carry
+  entries keyed on a Vanguard fund **ticker** (e.g. `VGVA` / `VMIG`), which
+  the ISA holdings use as their commodity since the contract notes print no
+  ISIN. The commodity-code validator gained a small allow-list for those
+  tickers (a mistyped ISIN is still rejected). This classifies the ISA
+  holdings in the concentration / allocation reports instead of bucketing
+  them `unknown`. (`commodities_metadata.py`)
 - **Reporting-audit test coverage (P2 close-out)** — adversarial
   `infer_issuer` precedence/collision test; an assertion that an
   `unknown`-status disposal is excluded from SA108 *and* the

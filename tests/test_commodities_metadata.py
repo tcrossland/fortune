@@ -160,6 +160,11 @@ def test_normalise_commodity_code() -> None:
     assert normalise_commodity_code("ZZ00ABB5K5 0") == "ZZ00ABB5K50"  # space artifact
     assert normalise_commodity_code("XX00INVALID0") is None  # 12-char, bad checksum
     assert normalise_commodity_code("FOO") is None
+    # Allow-listed Vanguard tickers (keyed by ticker, no ISIN) are accepted;
+    # an unlisted short code is still rejected.
+    assert normalise_commodity_code("VGVA") == "VGVA"
+    assert normalise_commodity_code("vmig") == "VMIG"
+    assert normalise_commodity_code("ZZZZ") is None
 
 
 def test_commodity_directives_known_and_missing() -> None:
