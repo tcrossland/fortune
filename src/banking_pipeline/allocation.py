@@ -68,6 +68,7 @@ class _Snapshot:
     gross_long_gbp: Decimal
     net_cash_gbp: Decimal
     by_class: tuple[tuple[str, Decimal], ...]  # securities aggregated by class
+    missing_prices: tuple[str, ...]  # unvaluable holdings in this snapshot
 
 
 @dataclass(frozen=True)
@@ -134,7 +135,6 @@ def _timeline_from_raw(
 
     snapshots: list[_Snapshot] = []
     rate_gaps: list[RateGap] = []
-    missing_prices: list[str] = []
     unclassified: list[str] = []
     for (portfolio, on_date), grp in groups.items():
         valued = value_holdings(
@@ -146,11 +146,10 @@ def _timeline_from_raw(
         snapshots.append(
             _Snapshot(
                 portfolio, on_date, valued.gross_long_gbp, valued.net_cash_gbp,
-                tuple(by_class.items()),
+                tuple(by_class.items()), valued.missing_prices,
             )
         )
         rate_gaps.extend(valued.rate_gaps)
-        missing_prices.extend(valued.missing_prices)
         unclassified.extend(valued.unclassified)
 
     by_portfolio: dict[str, list[_Snapshot]] = defaultdict(list)
@@ -161,7 +160,8 @@ def _timeline_from_raw(
 
     seen_classes: set[str] = set()
     points: list[AllocationPoint] = []
-    for d in sorted({s.on_date for s in snapshots}):
+    all_dates = sorted({s.on_date for s in snapshots})
+    for d in all_dates:
         gross = net_cash = _ZERO
         agg: dict[str, Decimal] = defaultdict(lambda: _ZERO)
         contributing = 0
@@ -184,6 +184,18 @@ def _timeline_from_raw(
                 portfolios=contributing,
             )
         )
+
+    # Unvaluable holdings are reported only for the *latest* point (the
+    # snapshot each portfolio contributes as-of the final date), so the
+    # warning names currently-held unvaluable holdings, not ones a
+    # long-superseded historical statement happened to mis-price.
+    missing_prices: list[str] = []
+    if all_dates:
+        latest = all_dates[-1]
+        for lst in by_portfolio.values():
+            chosen = as_of(lst, latest, key=lambda s: s.on_date)
+            if chosen is not None:
+                missing_prices.extend(chosen.missing_prices)
 
     return AllocationTimeline(
         points=tuple(points),
