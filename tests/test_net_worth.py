@@ -146,6 +146,27 @@ def test_render_flags_unclassified_missing_price_and_caveat() -> None:
     assert "wound-down portfolio" in md  # the B6 forward-fill caveat
 
 
+def test_missing_prices_scoped_to_latest_snapshot() -> None:
+    """Unvaluable holdings are reported only for each portfolio's *latest*
+    snapshot. A holding the parser couldn't mark in an old statement but
+    can in the current one (or that's since been sold) must not linger in
+    the warning — it would name long-superseded holdings as 'currently
+    unvaluable'."""
+
+    raws = [
+        # Old snapshot: HISTONLY had no mark; NOWOK also unmarked then.
+        RawHolding("A", date(2025, 1, 1), "IE00HISTONLY", D(5), None, "GBP", False),
+        RawHolding("A", date(2025, 1, 1), "IE00NOWOK001", D(5), None, "GBP", False),
+        # Latest snapshot: NOWOK now prices; HISTONLY is gone; STILLBAD is new
+        # and still unmarked.
+        _sec("A", date(2025, 2, 1), "IE00NOWOK001", D(5), D(100)),
+        RawHolding("A", date(2025, 2, 1), "IE00STILLBAD", D(5), None, "GBP", False),
+    ]
+    tl = _timeline_from_raw(raws, commodities={}, rate_source=NullSource())
+    # Only the latest snapshot's unvaluable holding is surfaced.
+    assert tl.missing_prices == ("IE00STILLBAD",)
+
+
 def test_render_table_is_newest_first() -> None:
     raws = [
         _sec("A", date(2025, 1, 1), "IE00B3VWN518", D(10), D(100)),
