@@ -10,6 +10,7 @@ live in :mod:`banking_pipeline.cli._main`.
 from __future__ import annotations
 
 import csv
+from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated, cast
 
@@ -20,6 +21,7 @@ from banking_pipeline import concentration as concentration_mod
 from banking_pipeline import income as income_mod
 from banking_pipeline import net_worth as net_worth_mod
 from banking_pipeline import portfolio_allocation as portfolio_allocation_mod
+from banking_pipeline import trial_balance as trial_balance_mod
 from banking_pipeline.cli._main import (
     _configure_logging,
     _load_properties,
@@ -399,6 +401,99 @@ def income(
         err_console.print(
             f"[yellow]{len(report.missing_rates)} income amount(s) excluded "
             "(no GBP rate) — see the report.[/yellow]"
+        )
+        if strict:
+            raise typer.Exit(code=1)
+
+
+@app.command("trial-balance")
+def trial_balance(
+    ledger: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            readable=True,
+            help="Beancount ledger to query. Defaults to ``main.beancount``.",
+        ),
+    ] = Path("main.beancount"),
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``trial_balance_reports_dir`` (``reports/trial-balance``).",
+        ),
+    ] = None,
+    rate_source: ValuationRateSourceOpt = None,
+    as_of: Annotated[
+        datetime | None,
+        typer.Option(
+            "--as-of",
+            formats=["%Y-%m-%d"],
+            help="Date for the GBP rate lookup (the marks are the ledger's "
+            "latest prices regardless). Defaults to today.",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="Exit non-zero if any Asset/Liability balance can't be "
+            "valued in GBP (no mark or no rate).",
+        ),
+    ] = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """Per-account trial balance from the ledger, with a GBP column on Assets.
+
+    Lists every account's closing balance via ``bean-query`` (securities in
+    units, cash native); the Assets / Liabilities sections add a GBP
+    market-value column (latest mark converted at the configured rate),
+    while Equity / Income / Expenses stay native. Writes ``trial-balance.md``
+    + ``trial-balance.csv``. Needs the ``bean-query`` binary (``uv tool
+    install beancount``); a missing binary is a warning, not an error.
+    """
+
+    _configure_logging(verbose)
+    eff_settings = (
+        settings.model_copy(update={"gbp_rate_source": rate_source})
+        if rate_source is not None
+        else settings
+    )
+    rates = build_rate_source(eff_settings)
+    on_date = as_of.date() if as_of is not None else date.today()
+
+    result = trial_balance_mod.query_balances(ledger)
+    if result.binary_missing:
+        err_console.print(f"[yellow]warning:[/yellow] {result.error}")
+        raise typer.Exit(code=0)
+    if not result.ok:
+        err_console.print(f"[red]bean-query failed[/red]:\n{result.error}")
+        raise typer.Exit(code=1)
+
+    tb = trial_balance_mod.build_trial_balance(
+        result, on_date=on_date, rate_source=rates
+    )
+
+    out_dir = out or settings.trial_balance_reports_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "trial-balance.md").write_text(
+        "\n".join(trial_balance_mod.render_markdown(tb)), encoding="utf-8"
+    )
+    with (out_dir / "trial-balance.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as fh:
+        csv.writer(fh).writerows(trial_balance_mod.render_csv_rows(tb))
+
+    err_console.print(
+        f"Wrote trial balance to {out_dir} ({len(tb.lines)} account(s); "
+        f"assets £{tb.assets_gbp:,.2f} at market)"
+    )
+    gap_n = len(tb.missing_prices) + len(tb.rate_gaps)
+    if gap_n:
+        err_console.print(
+            f"[yellow]{gap_n} Asset/Liability balance(s) not valued in GBP "
+            "(no mark / no rate) — see the report.[/yellow]"
         )
         if strict:
             raise typer.Exit(code=1)

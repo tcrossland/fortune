@@ -61,6 +61,18 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`trial-balance`** — per-account trial balance from the beancount ledger
+  via `bean-query` (the one report that needs the loader, since the
+  cost-basis `Realized`/`Unrealized` legs are computed at load time). Lists
+  every account's closing balance — securities in units, cash native — and
+  adds a **GBP market-value column on Assets / Liabilities** (each account's
+  `value()` converted at the configured `GbpRateSource`, the same rate
+  machinery `concentration` uses); Equity / Income / Expenses stay native
+  (cumulative flows whose spot conversion would need an `Equity:Conversions`
+  plug). Unvaluable balances (no mark / no GBP rate) are blank in the GBP
+  column and flagged; `--strict` exits non-zero on any. Writes
+  `trial-balance.md` + `trial-balance.csv`. (`trial_balance.py`,
+  `bean_query.py`)
 - **`portfolio-split`** — writes one independently-loadable beancount
   ledger per bank account (each Pictet account, the Vanguard ISA) under
   `<data_dir>/accounts/`, for opening a single account in isolation in
