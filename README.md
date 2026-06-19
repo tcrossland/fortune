@@ -165,6 +165,68 @@ stage) can consume it without re-parsing beancount text. `ingest` and
 `rebuild` write sidecars automatically; `banking-pipeline dump-transactions
 <pdf>` prints the same JSONL to stdout for ad-hoc inspection.
 
+## Reports
+
+A family of read-only analytical reports over the pipeline's output. Each
+reads the latest **statement** marks, the **ledger** (via `bean-query`), or
+the JSONL **sidecars**, and writes Markdown + CSV under `reports/<name>/`
+(or, for `balance-sheet`, a standalone HTML). Run any standalone, or enable
+them in the `[post.reports]` block of `banking-pipeline.toml` so `rebuild`
+regenerates them each run. Full per-command reference — options, `--strict`,
+reconciliation caveats — is in
+[docs/architecture.md § Reports](docs/architecture.md#reports).
+
+**Wealth / valuation** — values holdings in GBP from each portfolio's latest
+statement marks; a negative cash balance (the Lombard loan) is netted by
+currency and reported separately. These need a statement source
+(`--statement <pdf>` or `--statements-dir <archive>`):
+
+```bash
+uv run banking-pipeline concentration --statements-dir <archive>        # exposure by holding / class / currency / domicile / issuer
+uv run banking-pipeline net-worth --statements-dir <archive>            # net worth over time
+uv run banking-pipeline allocation --statements-dir <archive>           # asset-class mix over time
+uv run banking-pipeline portfolio-allocation --statements-dir <archive> # per-portfolio breakdown of the latest valuation
+```
+
+**Ledger** — queried via `bean-query` (default `main.beancount`); a missing
+`bean-query` binary is a warning, not an error (`uv tool install beancount`):
+
+```bash
+uv run banking-pipeline trial-balance          # per-account balances, GBP column on Assets/Liabilities
+uv run banking-pipeline balance-sheet --open   # interactive HTML — scrub to any as-of date
+```
+
+`balance-sheet` builds a single self-contained, **offline**
+`balance-sheet.html` you open in any browser and scrub to *any* date: it
+sums each holding up to that date and values it to GBP entirely client-side,
+rendering a collapsible account tree, an allocation donut, and the
+Assets / Liabilities / net-worth totals. The artifact inlines real balances,
+so `reports/balance-sheet/` is git-ignored. Both ledger reports are the
+**ledger-faithful** view and deliberately **do not reconcile** with the
+wealth reports above — different source (ledger positions vs latest
+statement snapshot), as-of, and scope.
+
+**Income** — dividends + interest *received*, from the sidecars (default
+`--source data`):
+
+```bash
+uv run banking-pipeline income                   # by tax year & paying source, in GBP
+uv run banking-pipeline income --period calendar # ... by calendar year instead
+```
+
+Unlike `tax-report`, `income` **includes** ISA income (flagged in a wrapper
+column, not dropped) and counts UK + foreign alike.
+
+**Mandate (Pictet)** — the three-step cost / return / value-add view (these
+also read the statement archive; `mandate-scorecard` additionally queries
+the ledger for costs):
+
+```bash
+uv run banking-pipeline mandate-scorecard --statements-dir <archive>   # all-in explicit cost block
+uv run banking-pipeline mandate-returns --statements-dir <archive>     # time- & money-weighted returns
+uv run banking-pipeline benchmark --statements-dir <archive>           # value-add vs a benchmark index
+```
+
 ## UK tax reporting
 
 `banking-pipeline tax-report --year 2025-26` reads the JSONL sidecars
