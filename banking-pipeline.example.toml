@@ -111,6 +111,16 @@ income_period = "tax-year"
 # ledger. A missing ledger/binary warns and skips, never fails the rebuild.
 # trial_balance = true
 # trial_balance_ledger = "main.beancount"
+# Mandate scorecard / returns (Pictet) are opt-in. ``mandate_scorecard``
+# totals ledger-visible costs via bean-query (same ledger as trial_balance
+# — trial_balance_ledger, else the [post.check] ledger) and needs the
+# statement archive for the average-invested-assets denominator;
+# ``mandate_returns`` is holdings-based (statements only, no bean-query).
+# Both reuse ``statements`` / ``balance_statements``. ``benchmark`` compares
+# the mandate's gross return against the index levels at ``benchmark_path``.
+# mandate_scorecard = true
+# mandate_returns = true
+# benchmark = true
 # statements = [
 #     "~/Documents/Banking/**/*monthly*.pdf",
 #     "~/Documents/Vanguard/*.pdf",
