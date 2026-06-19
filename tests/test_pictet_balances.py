@@ -7,7 +7,10 @@ below are synthetic.
 
 from __future__ import annotations
 
-from banking_pipeline.balances_extract import extract_balances_from_statement
+from banking_pipeline.balances_extract import (
+    extract_balances_from_statement,
+    statement_coverage_gaps,
+)
 
 # A minimal Pictet valuation page reproducing the problem layout: a
 # quantity-led ``C/A Limit`` credit-limit line immediately above a
@@ -94,3 +97,56 @@ def test_whole_unit_rounded_display_column_does_not_drop_cash() -> None:
         "522025.77",
         "EUR",
     ) in rows
+
+
+# The newer statement layout concatenates the quantity row and the ISIN
+# marker onto one line, joined by a stray control char (here ``￾``).
+# The forward-scanning parser only looked at *following* lines, so the
+# holding was silently dropped from the valuation.
+_CONCAT_ISIN_STATEMENT = (
+    "As at 31 March 2026\n"
+    "Account no.: K-123456.001\n\n"
+    "1'743.00 Eleva-European Selection R Eur-Acc￾ISIN: LU1111643711\n"
+    "EUR 255.25 EUR 260.26\n"
+    "GBP 396'345.13\n"
+)
+
+
+def test_quantity_and_isin_on_one_line_is_parsed() -> None:
+    """A holding whose quantity and ``ISIN:`` marker share a line (joined
+    by a control char) must still be extracted, not dropped."""
+
+    rows = extract_balances_from_statement(_CONCAT_ISIN_STATEMENT)
+    assert (
+        "2026-04-01",
+        "Assets:Pic:K123456001:LU1111643711",
+        "1743.00",
+        "LU1111643711",
+    ) in rows
+
+
+def test_coverage_guard_clean_when_everything_extracted() -> None:
+    """A statement whose holdings and cash are all captured reports no
+    coverage gaps."""
+
+    assert statement_coverage_gaps(_CONCAT_ISIN_STATEMENT) == []
+    assert statement_coverage_gaps(_ES_CASH_STATEMENT) == []
+
+
+def test_coverage_guard_flags_an_uncaptured_holding() -> None:
+    """A holding whose ISIN the parser fails to extract (here a stray
+    marker with no quantity row to anchor it) is surfaced as a coverage
+    gap — the regression signal that caught the concatenated-ISIN bug."""
+
+    text = (
+        "As at 31 March 2026\n"
+        "Account no.: K-123456.001\n\n"
+        "1'743.00 Eleva-European Selection R Eur-Acc￾ISIN: LU1111643711\n"
+        "EUR 255.25 EUR 260.26\n"
+        "GBP 396'345.13\n"
+        # A second ISIN with no quantity row before it: the parser can't
+        # anchor it, so it never gets extracted, but the guard still sees it.
+        "ISIN: LU9999999999\n"
+    )
+    gaps = statement_coverage_gaps(text)
+    assert [(g.kind, g.detail) for g in gaps] == [("security", "LU9999999999")]

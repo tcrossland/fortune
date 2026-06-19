@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -264,6 +265,25 @@ def _pictet_balances(text: str) -> list[tuple[str, str, str, str]]:
         # quantity row and the ISIN line.
         m_qty = _QUANTITY_ROW_RE.match(stripped)
         if m_qty is not None:
+            # The newer statement layout concatenates the quantity row and
+            # the ISIN marker onto a single line, joined by a stray control
+            # character (``1'743.00 Eleva… <0xFFFE> ISIN: LU…``). The
+            # forward scan below only looks at *following* lines, so check
+            # this line first — otherwise the holding is silently dropped.
+            m_isin_same = _ISIN_LINE_RE.search(stripped)
+            if m_isin_same is not None:
+                isin = m_isin_same.group(1).replace(" ", "")
+                if isin not in seen_isins:
+                    seen_isins.add(isin)
+                    rows.append(
+                        (
+                            assertion_date,
+                            f"Assets:Pic:{portfolio}:{isin}",
+                            _normalise_amount(m_qty.group(1)),
+                            isin,
+                        )
+                    )
+                continue
             for j in range(i + 1, min(i + 4, len(lines))):
                 # A later quantity-led row means a *new* holding has
                 # started before we found an ISIN — so the ISIN that
@@ -294,6 +314,132 @@ def _pictet_balances(text: str) -> list[tuple[str, str, str, str]]:
                 break
 
     return rows
+
+
+# --- Coverage guard -------------------------------------------------------
+# A deliberately permissive *re-detector* run alongside the production
+# parser to catch rows it silently drops. The two cash bugs this guards
+# against — a whole-unit-rounded display column and an accented currency
+# name (``Dólar USA``) — both made a real cash row fail the strict parser
+# and vanish from the valuation, understating net cash with no error. The
+# guard re-finds cash rows and ISIN markers with looser patterns (Unicode
+# name class, balance-equality tolerance) and reports any the real parser
+# missed, so a future tightening of the parser surfaces as a coverage gap
+# rather than a silent shortfall. It is FX-free (a pure presence check, no
+# valuation), so unlike a value reconciliation it can't be fooled by the
+# HMRC-monthly-vs-statement-spot FX drift that legitimately moves a
+# multi-currency book's GBP total by ~10%.
+
+# Permissive cash-row re-detectors: the name is any run of non-digits
+# (so accents pass), and the row must end right after the second balance
+# (``$``-anchored) so a security price row — which carries further
+# columns — can't match.
+_LOOSE_EN_CASH_RE = re.compile(r"^([-\d'.]+)\s+\D+?\s+([A-Z]{3})\s+([-\d'.]+)\s*$")
+_LOOSE_ES_CASH_RE = re.compile(
+    r"^([A-Z]{3})\s+(-?[\d'][\d'.]*)\s+\D+?\s+(-?[\d'][\d'.]*)\s+[-\d'.]+\s*$"
+)
+
+
+@dataclass(frozen=True)
+class CoverageGap:
+    """A holding or cash row present in the statement text that the
+    production parser did not extract."""
+
+    kind: str  # "cash" | "security"
+    detail: str  # currency code (cash) or ISIN (security)
+
+
+def statement_coverage_gaps(text: str) -> list[CoverageGap]:
+    """Re-scan a statement and report rows the production parser dropped.
+
+    Returns ``[]`` for a document the parser doesn't recognise at all
+    (nothing extracted → nothing to reconcile against), so it never
+    fires on the Vanguard path or an anonymised fixture. Otherwise it
+    compares the set of non-zero cash currencies and ISINs visible in
+    the text against what :func:`extract_balances_from_statement`
+    captured, and returns one gap per missed row.
+    """
+
+    extracted = extract_balances_from_statement(text)
+    if not extracted:
+        return []
+    def _is_ccy(code: str) -> bool:
+        return len(code) == 3 and code.isalpha()
+
+    extracted_cash = {c for _d, _a, _q, c in extracted if _is_ccy(c)}
+    extracted_isins = {c for _d, _a, _q, c in extracted if not _is_ccy(c)}
+
+    gaps: list[CoverageGap] = []
+
+    seen_cash: set[str] = set()
+    for line in text.splitlines():
+        stripped = line.strip()
+        detected: tuple[str, str, str] | None = None  # (ccy, bal1, bal2)
+        m_en = _LOOSE_EN_CASH_RE.match(stripped)
+        if m_en is not None:
+            bal1, ccy, bal2 = m_en.groups()
+            detected = (ccy, bal1, bal2)
+        else:
+            m_es = _LOOSE_ES_CASH_RE.match(stripped)
+            if m_es is not None:
+                ccy, bal1, bal2 = m_es.groups()
+                detected = (ccy, bal1, bal2)
+        if detected is None:
+            continue
+        ccy, bal1, bal2 = detected
+        if ccy in seen_cash:
+            continue
+        a, b = Decimal(_normalise_amount(bal1)), Decimal(_normalise_amount(bal2))
+        # The doubled balances should agree (a whole-unit-rounded display
+        # column differs by < 1); a line where they diverge isn't a cash
+        # row, so it doesn't count as one the parser ought to have caught.
+        if abs(a - b) > max(Decimal("0.5"), abs(a) / 100):
+            continue
+        seen_cash.add(ccy)
+        if a != 0 and ccy not in extracted_cash:
+            gaps.append(CoverageGap("cash", ccy))
+
+    seen_isins: set[str] = set()
+    for m in _ISIN_LINE_RE.finditer(text):
+        isin = m.group(1).replace(" ", "")
+        if isin in seen_isins:
+            continue
+        seen_isins.add(isin)
+        if isin not in extracted_isins:
+            gaps.append(CoverageGap("security", isin))
+
+    return gaps
+
+
+def coverage_report(
+    statement_files: Iterable[Path],
+) -> list[tuple[Path, list[CoverageGap]]]:
+    """Run :func:`statement_coverage_gaps` over each statement file and
+    return one ``(path, gaps)`` entry per file that has at least one gap.
+
+    The reconciliation guard behind ``balances --strict``: a holding or
+    cash row visible in a statement that the parser failed to extract
+    would otherwise vanish from the valuation with no error (the two cash
+    bugs and the concatenated-ISIN bug all did exactly that). An
+    unreadable file is reported as a gap rather than crashing the run.
+    """
+
+    out: list[tuple[Path, list[CoverageGap]]] = []
+    for path in statement_files:
+        try:
+            if path.suffix.lower() == ".txt":
+                text = path.read_text(encoding="utf-8")
+            else:
+                from banking_pipeline.extractors import load_pdf
+
+                text = load_pdf(path).text
+        except Exception as exc:  # noqa: BLE001 — report, don't abort the batch
+            out.append((path, [CoverageGap("unreadable", str(exc))]))
+            continue
+        gaps = statement_coverage_gaps(text)
+        if gaps:
+            out.append((path, gaps))
+    return out
 
 
 def merge_balances(
