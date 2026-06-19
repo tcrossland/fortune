@@ -290,9 +290,43 @@ reporting feature over the existing ledger. New code is confined to
    one book, but consider a compact schema (short keys `d/a/q/c`, as the
    prototype used) and dropping pre-`as_of_min` postings.
 
-## Status: planned
+## Status: in progress — phase 1 shipped
 
-Not yet implemented. Supersedes the `reports/balance-sheet/` prototype;
-no dependency on it. Phasing: (1) `build_data` + JSON + tests →
-(2) template + `render_html` + golden → (3) CLI + config + rebuild +
-vendored chart → (4) cost basis / assertion-drift overlay.
+Supersedes the `reports/balance-sheet/` prototype; no dependency on it.
+Phasing: (1) `build_data` + JSON + tests → (2) template + `render_html` +
+golden → (3) CLI + config + rebuild + vendored chart → (4) cost basis /
+assertion-drift overlay.
+
+### Phase 1 — done
+
+`src/banking_pipeline/balance_sheet.py` + `tests/test_balance_sheet.py`.
+Pure transform (one injected `run_query` shell-out) → `BalanceSheetData`
+→ compact JSON. Verified against the real ledger: 1498 Asset/Liability
+postings, as-of 2021-07-28 → 2026-06-09, FX series for all 7 non-GBP
+currencies, ~434 KB JSON.
+
+Open-question decisions made (with reasons):
+
+1. **Price source (Q3): parse `data/prices.beancount` directly**, not via
+   bean-query's price db. Confirmed against the real file: it carries only
+   *security* marks (in the quote ccy — EUR/USD/GBP) and **no** currency→GBP
+   directives, so every non-GBP currency's GBP series is **synthesised from
+   the `GbpRateSource`** (monthly points across the data span). The plan's
+   "prices.beancount: …and currency→GBP rates" was inaccurate.
+2. **Schema (Q4): compact short keys** (`d/a/q/c`, `d/p/c`), decimals as
+   strings. Pre-`as_of_min` dropping is moot — `as_of_min` *is* the earliest
+   posting date. ~434 KB inlined is fine for one book.
+3. **Scope: query `Assets` + `Liabilities` only** (the holdings a
+   market-value sheet values; the Lombard loan is negative cash in
+   `Assets`). Equity/Income/Expense *flows* are deferred — consistent with
+   the "Income/Expense views" non-goal — keeping the artifact lean rather
+   than querying all five roots.
+4. `build_data` returns `(data | None, QueryResult)` so the CLI degrades on
+   a missing/erroring `bean-query` (mirrors trial balance). It takes
+   explicit `prices_path` / `assertions_path` (a missing file → empty).
+
+### Phase 2+ open questions (unchanged)
+
+Chart lib (Q1: lean hand-rolled SVG donut + bar) and as-of JS testing
+(Q2: Python reference impl + thin JS port) are decided-in-principle but
+land in phase 2.

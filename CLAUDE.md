@@ -227,8 +227,13 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-None active. Designed and pending:
-[docs/plans/interactive-balance-sheet.md](docs/plans/interactive-balance-sheet.md).
+[docs/plans/interactive-balance-sheet.md](docs/plans/interactive-balance-sheet.md)
+— a `balance-sheet` command emitting a single self-contained HTML file
+you can scrub to any as-of date (client-side valuation over `bean-query`
+postings). Phasing: (1) `build_data` + JSON + tests → (2) template +
+`render_html` + golden → (3) CLI + config + rebuild + vendored chart →
+(4) cost basis / assertion-drift overlay. Status (folded in the plan):
+in progress — phase 1.
 (Last shipped: docs/archive/switch-leg-pairing.md — pairing a Pictet
 switch's `SWITCH_SALIDA`/`SWITCH_ENTRADA` legs onto one shared `^<ref>`
 link via `switch_pairing`.) When you start a non-trivial task, write its
