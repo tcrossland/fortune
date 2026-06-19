@@ -59,6 +59,44 @@ it runs `bean-check` once and treats an assertion as drifted iff
 failure), drift magnitude/direction, the earliest date each account
 diverged, and coverage gaps (statement months with no assertion).
 
+## The Lombard loan is negative cash, not a liability
+
+The Pictet Lombard facility is modelled as a **negative cash balance** on
+the relevant `Assets:Pic:<portfolio>:<CCY>` sub-account — there is no
+`Liabilities:` account for it. This looks unorthodox (a loan is a
+liability), but it's the source-faithful choice and the alternative would
+break more than it fixes.
+
+Why:
+
+- **The statement reports it as negative cash, and nothing else.** Pictet
+  prints one negative balance per currency sub-account; the only other
+  loan-related line is the `C/A Limit` (the *facility size*, not a drawn
+  amount — the balance parser skips it). So the single source-of-truth
+  number is the negative cash. A `bean-check` balance assertion compares
+  like with like and ties out by construction. Splitting it into a
+  separate liability account would mean fabricating a cash-vs-loan split
+  the statement never makes — and there's no balance to assert the
+  liability account against.
+- **There's no reclassification boundary.** A revolving facility has no
+  discrete drawdown event: the cash line just goes negative as you spend.
+  Nothing distinguishes a "loan" from a transient overdraft, so any
+  liability model needs a threshold or manual tagging the data can't
+  support. Cash is commingled per currency, so a payment can't be
+  attributed to "loan-funded" against a pooled balance either.
+- **The liability *view* belongs in the reports, not the ledger.**
+  `net_worth` / `concentration` / `allocation` already treat negative
+  cash as the loan and report it separately from gross long (net worth =
+  gross long + signed net cash). You get the balance-sheet liability
+  presentation without corrupting the source-faithful ledger — see the
+  interactive-balance-sheet plan, which derives its Liabilities bucket
+  from the sign of cash rather than from an accounting tree.
+
+This is the standard beancount treatment of a margin/overdraft facility.
+A *distinct fixed-term loan* (its own account, its own statement line,
+a scheduled principal) would be different — that has a balance to assert,
+so it would warrant a real `Liabilities:` account.
+
 ## Strict-mode dispatch on an empty template result
 
 When a registered template returns `[]`, `HybridExtractor` does **not**
