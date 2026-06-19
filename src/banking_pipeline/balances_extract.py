@@ -221,21 +221,34 @@ def _pictet_balances(text: str) -> list[tuple[str, str, str, str]]:
                 cash = (ccy, bal1, bal2)
         if cash is not None:
             ccy, bal1, bal2 = cash
-            if _normalise_amount(bal1) == _normalise_amount(bal2):
+            n1, n2 = _normalise_amount(bal1), _normalise_amount(bal2)
+            # The two balance columns should agree — a symmetry guard
+            # against layout drift catching a non-cash row. But the Spanish
+            # ``ESTADO FINANCIERO`` rounds the portfolio-currency *display*
+            # column to whole units (``31'673``) while the balance column
+            # keeps cents (``31'673.01``), so an exact-equality guard
+            # silently dropped that currency's cash whenever the display
+            # column rounded. Compare numerically with a half-unit
+            # tolerance instead (the max round-to-nearest-integer error),
+            # which still rejects a genuinely mismatched cross-currency row.
+            if abs(Decimal(n1) - Decimal(n2)) <= Decimal("0.5"):
                 if ccy not in seen_currencies:
                     seen_currencies.add(ccy)
+                    # Keep the more precise column (the one carrying cents)
+                    # so the assertion matches the ledger to the cent.
+                    balance = n2 if "." in n2 else n1
                     # Skip zero-balance currencies. A statement lists a
                     # residual ``0.00`` line for currencies the account
                     # briefly held; the ledger never opens that
                     # sub-account, so asserting ``0`` against it trips
                     # bean-check's "Invalid reference to inactive
                     # account". A zero assertion is low-value anyway.
-                    if Decimal(_normalise_amount(bal1)) != 0:
+                    if Decimal(balance) != 0:
                         rows.append(
                             (
                                 assertion_date,
                                 f"Assets:Pic:{portfolio}:{ccy}",
-                                _normalise_amount(bal1),
+                                balance,
                                 ccy,
                             )
                         )
