@@ -59,11 +59,6 @@ Hard constraints that must hold on **every** change:
   committed docs, messages, or backlog/changelog entries (see
   [Anonymisation](#anonymisation-and-the-pii-guard)).
 
-## Tone
-
-Direct and professional, not chatty. Skip preamble; lead with the answer or
-the change.
-
 ## Tech / build
 
 - Python **3.14** strict (`requires-python = ">=3.14"`, `mypy strict`,
