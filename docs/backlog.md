@@ -7,6 +7,15 @@ paradigm. Shipped features are recorded in
 [../CHANGELOG.md](../CHANGELOG.md); design rationale in
 [design-decisions.md](design-decisions.md).
 
+A handful of these ideas have graduated from a one-line menu entry to a
+full implementation brief in [plans/](plans/) — designed but not yet
+built. Two are in flight today: the switch salida/entrada **leg
+pairing** (under [Bookkeeping](#bookkeeping-ingest-quality)) and the
+**interactive balance sheet** (under
+[Financial reporting](#financial-reporting)). The sections below
+cross-link each to its plan; when a plan ships, its line moves to the
+CHANGELOG and the plan moves to `archive/`.
+
 For the *correctness and robustness* gaps in the reporting subsystems
 (both tax reporting-status and the analytical reports) — as distinct from
 the new-feature ideas below — see the [reporting audit](reporting-audit.md),
@@ -68,6 +77,13 @@ not tax advice" framing.
 
 ## Bookkeeping (ingest quality)
 
+- **Switch salida/entrada leg pairing.** Link the two halves of a Pictet
+  *switch* (`SWITCH_SALIDA` + `SWITCH_ENTRADA`) so both beancount entries
+  carry the **same** `^<ref>` link and resolve as one logical operation
+  in `bean-query` / Fava — pairing on the `Switch:<ccy>` clearing
+  account's zero-netting. Fully designed:
+  [plans/switch-leg-pairing.md](plans/switch-leg-pairing.md) *(status:
+  planned, not built)*.
 - **Idempotent re-ingest (`ingest --append`).** The dedup *audit*
   (`dedup-check`) shipped; an incremental mode that merges new PDFs into
   an existing output, skipping already-present transactions, is deferred
@@ -87,6 +103,15 @@ not tax advice" framing.
 
 ## Financial reporting
 
+- **Interactive balance sheet (`balance-sheet`).** A single
+  self-contained HTML artifact with a client-side as-of date scrubber —
+  recompute every account's value, the Assets / Liabilities / net-worth
+  totals, the account tree and allocation chart for any date, offline.
+  Reads the ledger via `bean-query` (a ledger construct, like the trial
+  balance, not statement marks). Fully designed:
+  [plans/interactive-balance-sheet.md](plans/interactive-balance-sheet.md)
+  *(status: planned, not built; supersedes the git-ignored
+  `reports/balance-sheet/` prototype)*.
 - **Period reports beyond beancount/Fava.** Net-worth-over-time
   (`net-worth`), income-by-source (`income`, by tax or calendar year),
   asset-allocation-over-time (`allocation`), and per-portfolio allocation

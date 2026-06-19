@@ -216,8 +216,12 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-None in flight. (Last: docs/plans/docs-restructure.md — the three-document
-restructure, complete.) When you start a non-trivial task, write its plan to
+[docs/plans/switch-leg-pairing.md](docs/plans/switch-leg-pairing.md) —
+pair Pictet `SWITCH_SALIDA`/`SWITCH_ENTRADA` legs onto one shared
+`^<ref>` link (status: planned, not started). Also designed and pending:
+[docs/plans/interactive-balance-sheet.md](docs/plans/interactive-balance-sheet.md).
+(Last shipped: docs/archive/docs-restructure.md — the three-document
+restructure.) When you start a non-trivial task, write its plan to
 `docs/plans/<name>.md` and name it here.
 
 ## Working agreement
