@@ -156,6 +156,15 @@ src/banking_pipeline/
 ├── net_worth.py        Net-worth-over-time: values each statement snapshot
 │                         at its date and builds a combined timeline via
 │                         as-of forward-fill, deduping same-date statements
+├── trial_balance.py    Per-account trial balance from the *ledger* (via
+│                         `bean-query`, since cost-basis Realized/Unrealized
+│                         legs are computed at load time): securities in
+│                         units, cash native, plus a GBP market-value column
+│                         on Assets/Liabilities (Equity/Income/Expenses stay
+│                         native). The ledger-faithful counterpart to the
+│                         statement-based valuation reports — and by design
+│                         does **not** reconcile with them (different source /
+│                         as-of / scope; the docstring spells out why)
 ├── property.py         Off-ledger residential property: loads
 │                         data/property.toml, renders data/property.beancount
 │                         (per-property commodity held at cost + price marks,
@@ -492,6 +501,19 @@ usage examples; this is the behavioural reference.
   source, in GBP. Unlike `tax-report` it **includes** ISA income (flagged in
   a wrapper column) and counts UK + foreign alike. Writes `income.md` +
   `income.csv`.
+- `trial-balance` — per-account trial balance from the *ledger* (not the
+  statements). Runs `bean-query` over the ledger (default `main.beancount`),
+  listing each account's closing balance — securities in units, cash native
+  — with a GBP market-value column on Assets/Liabilities (latest mark
+  converted via `--rate-source`; Equity/Income/Expenses stay native). Writes
+  `trial-balance.md` + `trial-balance.csv` to `trial_balance_reports_dir`.
+  Needs the `bean-query` binary (`uv tool install beancount`); a missing
+  binary is a warning, not an error. `--strict` exits non-zero if any
+  Asset/Liability balance can't be valued in GBP. This is the
+  ledger-faithful view and **does not reconcile** with the statement-based
+  valuation reports (concentration / net-worth / allocation /
+  portfolio-allocation) — different source (ledger positions vs latest
+  statement snapshot), as-of (today vs last statement date), and scope.
 
 ### Rebuild / validation
 
@@ -506,8 +528,9 @@ usage examples; this is the behavioural reference.
   `clean → ingest per source → prices/portfolio/balances → reports →
   reconcile → check` sequence. `[post.reports]` (off by default) regenerates
   the analytical reports (income / concentration / net-worth / allocation /
-  portfolio-allocation, with per-report toggles) *before* reconcile/check so
-  they land even when `bean-check` later exits nonzero; its `statements`
+  portfolio-allocation, plus an opt-in `trial_balance` toggle, with
+  per-report toggles) *before* reconcile/check so they land even when
+  `bean-check` later exits nonzero; its `statements`
   glob falls back to `balance_statements` when unset. `[post.reconcile]`
   (off by default) runs *before* `check` for the same reason.
 
@@ -586,7 +609,8 @@ schemas don't collide.
   `net_worth_reports_dir` (`reports/net-worth`),
   `income_reports_dir` (`reports/income`),
   `allocation_reports_dir` (`reports/allocation`),
-  `portfolio_allocation_reports_dir` (`reports/portfolio-allocation`).
+  `portfolio_allocation_reports_dir` (`reports/portfolio-allocation`),
+  `trial_balance_reports_dir` (`reports/trial-balance`).
 
 **Property**
 

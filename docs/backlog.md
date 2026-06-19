@@ -7,15 +7,12 @@ paradigm. Shipped features are recorded in
 [../CHANGELOG.md](../CHANGELOG.md); design rationale in
 [design-decisions.md](design-decisions.md).
 
-For a prioritised list of *correctness and robustness* gaps in the
-reporting subsystems (both tax reporting-status and the analytical
-reports) — as distinct from the new-feature ideas below — see the
-[reporting audit](reporting-audit.md). Its **P0** (an `unknown`-status or
-unmatched disposal silently understating the return) is now fixed — see
-the CHANGELOG; the audit's **P1** items (harden `fetch_reporting_funds.py`,
-document the trial-balance-vs-statement valuation split, add `net-worth
---strict`) are the next correctness work, ahead of the new features here.
-Adopted audit items graduate into this backlog.
+For the *correctness and robustness* gaps in the reporting subsystems
+(both tax reporting-status and the analytical reports) — as distinct from
+the new-feature ideas below — see the [reporting audit](reporting-audit.md),
+now **fully resolved** (all P0 / P1 / P2 items shipped; see the CHANGELOG).
+It stays as a dated snapshot of that work, not a pointer to open tasks; any
+future correctness items graduate into this backlog.
 
 The backward-looking tax-*reporting* area is feature-complete but carries
 the correctness caveats the audit catalogues. The active *new-feature*
