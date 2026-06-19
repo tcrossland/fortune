@@ -167,6 +167,40 @@ class ReconcileStep(BaseModel):
     strict: bool = False
 
 
+class CompletenessStep(BaseModel):
+    """Configuration for the statement-completeness cross-check step.
+
+    Diffs each Pictet current-account statement (the authoritative list of
+    every cash movement for its period) against the ingested
+    ``*.transactions.jsonl`` sidecars, flagging statement lines with no
+    ingested advice (MISSING-in-ledger — a likely un-ingested document) and
+    ingested cash events with no statement line (UNMATCHED-in-ledger — a
+    possible misdated booking). See
+    :mod:`banking_pipeline.statement_completeness`.
+
+    Runs alongside reconcile (before ``check``), and is a gate in its own
+    right — MISSING fails the rebuild; UNMATCHED fails it under strict.
+
+    Off by default: it needs a glob of Financial-statement PDFs to diff
+    against, and the diff is by *transaction*, complementary to
+    reconcile's by-*balance* check.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Whether to run the completeness cross-check at the end of a rebuild.
+    enabled: bool = False
+
+    # Globs selecting the Financial-statement PDFs to cross-check (the
+    # annual statements under the archive's ``reports/`` dirs). ``~`` is
+    # expanded; relative globs resolve against the project root.
+    statements: list[str] = Field(default_factory=list)
+
+    # When true, escalate UNMATCHED-in-ledger events to a failed rebuild.
+    # MISSING-in-ledger always fails once the step is enabled.
+    strict: bool = False
+
+
 class ReportsStep(BaseModel):
     """Configuration for the read-only analytical report post-steps.
 
@@ -302,6 +336,12 @@ class PostSteps(BaseModel):
     # its drift report lands even though bean-check exits nonzero on the
     # same drift. Off by default (needs balance assertions to compare).
     reconcile: ReconcileStep = Field(default_factory=ReconcileStep)
+
+    # Statement-completeness cross-check — diffs the current-account
+    # statement against the sidecars by transaction (complementary to
+    # reconcile's by-balance check). Runs alongside reconcile, before
+    # ``check``. Off by default (needs a Financial-statement glob).
+    completeness: CompletenessStep = Field(default_factory=CompletenessStep)
 
     # bean-check validation step — runs after every other post-step so
     # it sees the freshly-built ledger. Defaults to enabled; set

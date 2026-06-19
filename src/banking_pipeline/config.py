@@ -121,6 +121,11 @@ class Settings(BaseSettings):
     # ``drift.csv`` here.
     reconciliation_dir: Path = Path("reports/reconciliation")
 
+    # Output directory for ``completeness`` (statement current-account vs.
+    # ingested-sidecar diff): writes ``summary.txt`` and ``findings.csv``
+    # here.
+    completeness_dir: Path = Path("reports/completeness")
+
     # Output directory for ``concentration`` (portfolio exposure
     # breakdown): writes ``concentration.md`` and ``holdings.csv`` here.
     concentration_reports_dir: Path = Path("reports/concentration")

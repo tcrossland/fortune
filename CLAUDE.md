@@ -227,17 +227,21 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-[docs/plans/interactive-balance-sheet.md](docs/plans/interactive-balance-sheet.md)
-— a `balance-sheet` command emitting a single self-contained HTML file
-you can scrub to any as-of date (client-side valuation over `bean-query`
-postings). Phasing: (1) `build_data` + JSON + tests → (2) template +
-`render_html` + golden → (3) CLI + config + rebuild + vendored chart →
-(4) cost basis / assertion-drift overlay. Status (folded in the plan):
-in progress — phase 1.
-(Last shipped: docs/archive/switch-leg-pairing.md — pairing a Pictet
-switch's `SWITCH_SALIDA`/`SWITCH_ENTRADA` legs onto one shared `^<ref>`
-link via `switch_pairing`.) When you start a non-trivial task, write its
-plan to `docs/plans/<name>.md` and name it here.
+_No active plan._ Resume one of the paused plans below, or write a new
+plan to `docs/plans/<name>.md` and name it here when you start a
+non-trivial task.
+
+- Paused: [docs/plans/revolut-contra-leg-equity.md](docs/plans/revolut-contra-leg-equity.md).
+- Last shipped: [docs/archive/interactive-balance-sheet.md](docs/archive/interactive-balance-sheet.md)
+  — the `balance-sheet` command: a self-contained, offline HTML balance
+  sheet you scrub to any as-of date (client-side valuation over
+  `bean-query` postings). MVP shipped (phases 1–3: dataset → artifact →
+  CLI + rebuild wiring); phase 4 (cost-basis column + assertion-drift
+  overlay) deferred as non-goals.
+- Last shipped: [docs/archive/statement-completeness.md](docs/archive/statement-completeness.md)
+  — the `completeness` command + `[post.completeness]` rebuild step,
+  diffing the Pictet current-account statement against the JSONL sidecars
+  by transaction (validated 0 missing / 0 unmatched across 2021–2023).
 
 ## Working agreement
 

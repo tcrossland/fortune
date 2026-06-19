@@ -60,6 +60,36 @@ it runs `bean-check` once and treats an assertion as drifted iff
 failure), drift magnitude/direction, the earliest date each account
 diverged, and coverage gaps (statement months with no assertion).
 
+## Completeness is checked by transaction, against the statement cash ledger
+
+`reconcile` checks *balances*; `completeness` checks *transactions*. They
+catch different gaps. A balance assertion only fires monthly and only
+trips if an error lands on the wrong side of a checkpoint — two
+equal-and-opposite mistakes, or an error after the last checkpoint, slip
+through. The Pictet current-account statement, by contrast, is the
+authoritative line-by-line list of every cash movement for its period, so
+diffing it against the ingested sidecars localises the *exact* missing
+advice. Three choices make that diff trustworthy rather than noisy:
+
+- **Reads the sidecars, not the ledger** — same substrate invariant as the
+  tax pipeline; the ledger is a rendering, the `*.transactions.jsonl` are
+  the data.
+- **Sign from the running balance, not the column.** `pdftotext`/pypdfium2
+  don't preserve the DEBIT/CREDIT columns reliably, and pypdfium2 (the
+  pipeline's loader) also repeats the page header and drops the page-break
+  balance. So each movement's sign is recovered from the printed
+  running-balance delta, which doubles as a self-check: a row that doesn't
+  reconcile to ±its magnitude raises rather than emitting a
+  plausible-but-wrong line. The balance is tracked per currency so a
+  repeated same-currency page header can't wipe the chain.
+- **Knows what legitimately isn't there.** Securities settlements
+  (`switch_*`, `liquidacion_recepcion_de_valores`) post to a `Switch`
+  sub-account or an `Equity:…:Transfers` in-specie leg, never the EUR/USD
+  current account, so they're excluded — not flagged as drift. The
+  FX/transfer counter-leg (one sidecar row, two statement lines) is
+  expanded so both legs match. Validated against 2021–2023: zero
+  unexplained findings.
+
 ## The Lombard loan is negative cash, not a liability
 
 The Pictet Lombard facility is modelled as a **negative cash balance** on

@@ -256,6 +256,28 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Bookkeeping & accounting
 
+- **`completeness` — statement-vs-sidecar transaction cross-check** — the
+  transaction-level counterpart to `reconcile`'s balance-level check. Parses
+  the Pictet current-account cash ledger out of a `Financial-statement` PDF
+  (the authoritative list of every cash movement for its period) and diffs it
+  against the ingested `*.transactions.jsonl` sidecars, flagging statement
+  lines with no ingested advice (MISSING — a likely un-ingested document) and
+  ingested cash events with no statement line (UNMATCHED — a possible misdated
+  booking). Each movement's sign is recovered from the printed running-balance
+  delta, which doubles as a self-check (a row that won't reconcile to ±its
+  magnitude raises rather than emitting a wrong line); the balance is tracked
+  per currency so pypdfium2's repeated page headers and number-less page-break
+  carried-forward lines can't break the chain. Securities settlements
+  (`switch_*`, in-specie receipts — they post off the current account) and
+  out-of-window events are excluded, not flagged; the FX/transfer counter-leg
+  (one sidecar row, two statement lines) is expanded so both legs match.
+  Writes one `summary-<portfolio>-<period-end>.txt` + `findings-<…>.csv` per
+  statement under `reports/completeness/`. Available as the `completeness`
+  command and an optional `[post.completeness]` rebuild step (MISSING fails
+  the rebuild; UNMATCHED under `strict`). Validated against 2021–2023: zero
+  unexplained findings. (`statement_completeness.py`, `cli/_main.py`,
+  `cli/reports.py`, `cli/rebuild.py`, `batch_config.py`, `config.py`; see
+  `docs/design-decisions.md`)
 - **`--strict --check` no longer aborts with a bean-check usage error** —
   the strict path appended `-w` to `bean-check` to "treat warnings as
   errors", but beancount v3's bean-check removed that flag (and has no

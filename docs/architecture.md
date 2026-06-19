@@ -127,6 +127,9 @@ src/banking_pipeline/
 ├── reconcile.py        Statement-balance reconciliation: parses bean-check
 │                         assertion failures into a drift report (drift rows +
 │                         earliest-drift + coverage gaps)
+├── statement_completeness.py  Statement-completeness cross-check: parses the
+│                         current-account cash ledger and diffs it against the
+│                         sidecars by transaction (missing / unmatched)
 ├── valuation.py        Statement-valuation core (shared engine): the
 │                         `RawHolding` model, `raw_from_statement` parser,
 │                         and `value_holdings` (securities at qty×mark, cash
@@ -573,15 +576,39 @@ usage examples; this is the behavioural reference.
   reports the whole grid instead of aborting on the first failure. Exits
   nonzero on any drift; `--strict` also fails on coverage gaps. Defaults:
   `ledger=main.beancount`, `--balances=data/balances.beancount`.
+- `completeness` — statement-*completeness* cross-check, the
+  transaction-level counterpart to `reconcile`'s balance-level one. Parses
+  each Pictet current-account statement (the authoritative list of every
+  cash movement for its period — see
+  [`statement_completeness.py`](../src/banking_pipeline/statement_completeness.py))
+  and diffs it against the `*.transactions.jsonl` sidecars under
+  `--source` (default `data`). Writes one
+  `summary-<portfolio>-<period-end>.txt` +
+  `findings-<portfolio>-<period-end>.csv` per statement (keyed so
+  successive runs or multiple portfolios don't clobber) under `completeness_dir`
+  (`reports/completeness`): **MISSING-in-ledger** (a statement line with no
+  ingested advice — a likely un-ingested document) and
+  **UNMATCHED-in-ledger** (an ingested cash event with no statement line —
+  a possible misdated booking). Securities settlements (`switch_*`,
+  `liquidacion_recepcion_de_valores`, which post off the current account)
+  and events outside the statement's window are excluded, not flagged.
+  Match key is `(currency, amount, date≈)`; the FX/transfer counter-leg is
+  expanded so both legs match. Pass statements via `--statement`
+  (repeatable) and/or `--statements-dir` (scans `Financial-statement-*.pdf`
+  recursively). Exits non-zero on any MISSING; `--strict` also fails on
+  UNMATCHED.
 - `rebuild` — end-to-end run driven by `banking-pipeline.toml`. Owns the
   `clean → ingest per source → prices/portfolio/balances → reports →
-  reconcile → check` sequence. `[post.reports]` (off by default) regenerates
-  the analytical reports (income / concentration / net-worth / allocation /
-  portfolio-allocation, plus an opt-in `trial_balance` toggle, with
-  per-report toggles) *before* reconcile/check so they land even when
-  `bean-check` later exits nonzero; its `statements`
+  reconcile → completeness → check` sequence. `[post.reports]` (off by
+  default) regenerates the analytical reports (income / concentration /
+  net-worth / allocation / portfolio-allocation, plus an opt-in
+  `trial_balance` toggle, with per-report toggles) *before* reconcile/check
+  so they land even when `bean-check` later exits nonzero; its `statements`
   glob falls back to `balance_statements` when unset. `[post.reconcile]`
   (off by default) runs *before* `check` for the same reason.
+  `[post.completeness]` (off by default; needs a `statements` glob of
+  Financial-statement PDFs) runs alongside reconcile — MISSING fails the
+  rebuild, UNMATCHED fails it under `strict`.
 
 ### UK tax
 
@@ -654,6 +681,7 @@ schemas don't collide.
 **Report output directories**
 
 - `reconciliation_dir` (`reports/reconciliation`),
+  `completeness_dir` (`reports/completeness`),
   `concentration_reports_dir` (`reports/concentration`),
   `net_worth_reports_dir` (`reports/net-worth`),
   `income_reports_dir` (`reports/income`),

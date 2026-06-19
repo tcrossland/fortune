@@ -9,12 +9,11 @@ paradigm. Shipped features are recorded in
 
 A handful of these ideas have graduated from a one-line menu entry to a
 full implementation brief in [plans/](plans/) — designed but not yet
-built. One is in flight today: the **interactive balance sheet** (under
-[Financial reporting](#financial-reporting)). The section below
-cross-links it to its plan; when a plan ships, its line moves to the
-CHANGELOG and the plan moves to `archive/`. (Most recently shipped: the
-switch salida/entrada **leg pairing** — see the CHANGELOG and
-`archive/switch-leg-pairing.md`.)
+built. None is in flight right now; the one open brief is the **Revolut
+contra-leg reclass** (a bookkeeping tidy-up). When a plan ships, its line
+moves to the CHANGELOG and the plan moves to `archive/`. (Most recently
+shipped: the **statement-completeness** transaction cross-check — see the
+CHANGELOG and `archive/statement-completeness.md`.)
 
 For the *correctness and robustness* gaps in the reporting subsystems
 (both tax reporting-status and the analytical reports) — as distinct from

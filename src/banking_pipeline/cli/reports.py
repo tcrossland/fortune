@@ -31,6 +31,7 @@ from banking_pipeline.cli._main import (
     _load_properties,
     _load_sidecar_transactions,
     _load_statement_context,
+    _run_completeness,
     app,
     err_console,
 )
@@ -817,3 +818,117 @@ def benchmark(
             f"[yellow]{len(report.skipped)} benchmark(s) skipped — no "
             "overlapping data: " + ", ".join(report.skipped) + "[/yellow]"
         )
+
+
+def _discover_financial_statements(directory: Path) -> list[Path]:
+    """Walk ``directory`` (recursive) for ``Financial-statement-*.pdf``.
+
+    Case-insensitive on the suffix so ``.PDF`` siblings are picked up, like
+    the prices/scan discovery. Returns a sorted, de-duplicated list.
+    """
+
+    pattern = "Financial-statement-*.pdf"
+    seen: set[Path] = set()
+    for pat in {pattern, pattern.lower(), pattern.upper()}:
+        for candidate in directory.rglob(pat):
+            if candidate.is_file():
+                seen.add(candidate)
+    return sorted(seen)
+
+
+@app.command()
+def completeness(
+    statements: Annotated[
+        list[Path],
+        typer.Option(
+            "--statement",
+            "-S",
+            help="A Financial-statement PDF (repeatable). Combine with "
+            "--statements-dir to scan a tree.",
+        ),
+    ] = [],  # noqa: B006 — list-option default lives here
+    statements_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--statements-dir",
+            help="Directory scanned recursively for "
+            "``Financial-statement-*.pdf``.",
+        ),
+    ] = None,
+    source: Annotated[
+        Path,
+        typer.Option(
+            "--source",
+            help="Directory holding the ``*.transactions.jsonl`` sidecars. "
+            "Defaults to ``data``.",
+        ),
+    ] = Path("data"),
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``completeness_dir`` (``reports/completeness``).",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            "-s",
+            help="Also exit non-zero on UNMATCHED-in-ledger events (an "
+            "ingested cash event with no statement line). MISSING-in-ledger "
+            "always fails regardless of this flag.",
+        ),
+    ] = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """Cross-check the statement cash ledger against the ingested sidecars.
+
+    The Pictet current-account statement is the authoritative list of every
+    cash movement for its period. This diffs that list against the
+    ``*.transactions.jsonl`` sidecars and writes one
+    ``summary-<portfolio>-<period-end>.txt`` +
+    ``findings-<portfolio>-<period-end>.csv`` per statement (keyed so
+    successive runs / multiple portfolios don't clobber): statement
+    lines with no ingested advice (MISSING-in-ledger — a likely un-ingested
+    document), and ingested cash events with no statement line
+    (UNMATCHED-in-ledger — a possible misdated booking). Securities
+    settlements and out-of-period events are excluded, not flagged. Exits
+    non-zero on any MISSING; with ``--strict`` also on any UNMATCHED.
+    """
+
+    _configure_logging(verbose)
+
+    paths = list(statements)
+    if statements_dir is not None:
+        discovered = _discover_financial_statements(statements_dir)
+        paths += discovered
+        err_console.print(
+            f"[dim]Discovered {len(discovered)} statement(s) under "
+            f"{statements_dir}[/dim]"
+        )
+    if not paths:
+        err_console.print(
+            "[red]No statements given — pass --statement or "
+            "--statements-dir.[/red]"
+        )
+        raise typer.Exit(code=2)
+
+    out_dir = out or settings.completeness_dir
+    total_missing, total_unmatched, written = _run_completeness(
+        paths, source, out_dir
+    )
+
+    if written == 0:
+        err_console.print(
+            "[yellow]No parseable current-account statements.[/yellow]"
+        )
+        raise typer.Exit(code=0)
+
+    err_console.print(
+        f"Wrote {written} completeness report(s) to {out_dir} "
+        f"({total_missing} missing, {total_unmatched} unmatched)"
+    )
+    if total_missing or (strict and total_unmatched):
+        raise typer.Exit(code=1)

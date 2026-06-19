@@ -71,6 +71,7 @@ from banking_pipeline.cli._main import (
     _load_sidecar_transactions,
     _resolve_commodities,
     _run_check_or_exit,
+    _run_completeness,
     _statement_text,
     app,
     err_console,
@@ -691,6 +692,28 @@ def _do_rebuild(
             if report is not None and (
                 report.has_drift or (rec_strict and report.coverage_gaps)
             ):
+                raise typer.Exit(code=1)
+
+    # --- Step 4b: completeness cross-check -------------------------------
+    # Transaction-level counterpart to reconcile's balance-level check:
+    # diffs each current-account statement against the sidecars. Runs
+    # before ``check`` so its per-statement reports always land. A gate in
+    # its own right — MISSING fails the rebuild; UNMATCHED fails it under
+    # strict.
+    if cfg.post.completeness.enabled:
+        comp = cfg.post.completeness
+        stmt_paths = _expand_globs(comp.statements, project_root)
+        comp_strict = comp.strict or strict
+        err_console.print(
+            f"[bold]completeness[/bold] {len(stmt_paths)} statement(s)"
+            + (" (strict)" if comp_strict else "")
+        )
+        if not dry_run:
+            out_dir = _resolve_report_dir(settings.completeness_dir, project_root)
+            missing, unmatched, _written = _run_completeness(
+                stmt_paths, data_dir, out_dir
+            )
+            if missing or (comp_strict and unmatched):
                 raise typer.Exit(code=1)
 
     # --- Step 5: bean-check validation -----------------------------------

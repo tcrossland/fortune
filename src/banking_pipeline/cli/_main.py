@@ -12,6 +12,7 @@ import ``app`` and these helpers from here and register their
 
 from __future__ import annotations
 
+import json
 import sys
 from collections.abc import Iterable
 from pathlib import Path
@@ -23,6 +24,7 @@ from rich.console import Console
 from banking_pipeline import (
     bean_check,
     prices_extract,
+    statement_completeness,
 )
 from banking_pipeline.batch_config import (
     Source,
@@ -271,5 +273,84 @@ def _load_sidecar_transactions(source: Path) -> list[Transaction]:
     for path in sorted(source.rglob("*.transactions.jsonl")):
         txns.extend(load_transactions(path))
     return txns
+
+
+def _load_sidecar_rows(source: Path) -> list[dict[str, object]]:
+    """Read every ``*.transactions.jsonl`` row under ``source`` as a dict.
+
+    The completeness diff matches on raw sidecar fields, so it consumes the
+    JSONL verbatim rather than via the :class:`Transaction` model. The
+    per-file schema-header line (carrying ``_schema``) is skipped.
+    """
+
+    rows: list[dict[str, object]] = []
+    for path in sorted(source.rglob("*.transactions.jsonl")):
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            stripped = raw.strip()
+            if not stripped:
+                continue
+            obj = json.loads(stripped)
+            if isinstance(obj, dict) and "_schema" not in obj:
+                rows.append(obj)
+    return rows
+
+
+def _run_completeness(
+    statement_paths: list[Path], sidecar_dir: Path, out_dir: Path
+) -> tuple[int, int, int]:
+    """Diff each statement against the sidecars; write per-date reports.
+
+    Shared by the ``completeness`` command and the ``rebuild`` post-step so
+    both behave identically (cf. ``_run_reconcile``). Writes one
+    ``summary-<key>.txt`` + ``findings-<key>.csv`` per statement, keyed by
+    ``<portfolio>-<period-end>`` so neither a repeated run nor two
+    portfolios sharing a period clobber each other. Returns
+    ``(total_missing, total_unmatched, written)`` and leaves the
+    fail-or-not decision to the caller.
+
+    A statement whose running balance won't reconcile raises
+    :class:`~banking_pipeline.statement_completeness.StatementParseError`
+    (surfaced as a printed ``typer.Exit``); one with no current-account
+    section is warned and skipped.
+    """
+
+    rows = _load_sidecar_rows(sidecar_dir)
+    total_missing = total_unmatched = written = 0
+    for path in statement_paths:
+        text = _statement_text(path)
+        try:
+            lines = statement_completeness.parse_current_account(text)
+        except statement_completeness.StatementParseError as exc:
+            err_console.print(
+                f"[red]{path.name}: statement parse failed — {exc}[/red]"
+            )
+            raise typer.Exit(code=1) from exc
+        if not lines:
+            err_console.print(
+                f"[yellow]{path.name}: no current-account section found "
+                "— skipped[/yellow]"
+            )
+            continue
+        portfolio = lines[0].portfolio
+        period = statement_completeness.parse_statement_period(text)
+        report = statement_completeness.diff(
+            lines, rows, period=period, portfolio=portfolio
+        )
+        # Key on portfolio + period end so two portfolios sharing a period
+        # (or a repeated run) each get their own report, never clobbering.
+        key = f"{portfolio}-{period[1] if period is not None else path.stem}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / f"summary-{key}.txt").write_text(
+            statement_completeness.render_summary(path.name, report),
+            encoding="utf-8",
+        )
+        (out_dir / f"findings-{key}.csv").write_text(
+            statement_completeness.render_csv(path.name, report),
+            encoding="utf-8",
+        )
+        total_missing += len(report.missing_in_ledger)
+        total_unmatched += len(report.unmatched_in_ledger)
+        written += 1
+    return total_missing, total_unmatched, written
 
 
