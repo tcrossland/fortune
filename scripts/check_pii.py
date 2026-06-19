@@ -23,6 +23,10 @@ Usage
   files (``git config core.hooksPath scripts/git-hooks`` to install).
 - Ad hoc: ``python3 scripts/check_pii.py --all`` scans the whole working
   tree (handy to verify a history scrub left nothing behind).
+- Explicit: ``python3 scripts/check_pii.py <file> [<file> …]`` scans just
+  those paths, read from disk. Use it to vet a *git-ignored* file (e.g. a
+  generated report under ``reports/``) before deciding it's safe to
+  commit — ``--all`` only covers tracked files, so it can't.
 
 Exit status is non-zero when anything is found, with ``file:line`` and the
 rule that fired. Stdlib only — no uv / venv needed at commit time.
@@ -112,8 +116,23 @@ def _scan_line(line: str, deny: list[re.Pattern[str]]) -> list[str]:
     return hits
 
 
-def _iter_targets(root: Path, scan_all: bool) -> list[tuple[str, str]]:
-    """Return ``(path, content)`` for each file to scan."""
+def _iter_targets(
+    root: Path, scan_all: bool, explicit: list[str]
+) -> list[tuple[str, str]]:
+    """Return ``(path, content)`` for each file to scan.
+
+    Precedence: explicit paths (read from disk, so git-ignored files are
+    in scope) → ``--all`` (every tracked file) → the staged set (the
+    hook's default).
+    """
+    if explicit:
+        picked: list[tuple[str, str]] = []
+        for rel in explicit:
+            try:
+                picked.append((rel, Path(rel).read_text("utf-8")))
+            except (UnicodeDecodeError, OSError) as exc:
+                print(f"check_pii: cannot read {rel}: {exc}", file=sys.stderr)
+        return picked
     if scan_all:
         # Tracked files only — gitignored local data (the real ledger,
         # reports) is intentionally never committed, so it's out of scope.
@@ -139,11 +158,12 @@ def _iter_targets(root: Path, scan_all: bool) -> list[tuple[str, str]]:
 
 def main(argv: list[str]) -> int:
     scan_all = "--all" in argv
+    explicit = [a for a in argv if not a.startswith("-")]
     root = _repo_root()
     deny = _load_deny_patterns(root)
 
     violations: list[str] = []
-    for path, content in _iter_targets(root, scan_all):
+    for path, content in _iter_targets(root, scan_all, explicit):
         # The guard's own allow-list/placeholder file is exempt.
         if path in {"scripts/check_pii.py", f"{_DENY_FILE}.example"}:
             continue
