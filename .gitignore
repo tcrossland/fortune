@@ -67,7 +67,10 @@ wheels/
 # Virtual environments
 .venv
 
-.claude
+# Track committed agent config (rules + subagents); ignore local-only bits.
+.claude/*
+!.claude/rules/
+!.claude/agents/
 
 # Local PII hard-block list for the pre-commit guard (scripts/check_pii.py)
 .pii-deny

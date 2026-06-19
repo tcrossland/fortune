@@ -2,8 +2,9 @@
 
 The *why* behind the non-obvious choices, gathered so the rationale
 outlives the implementation briefs it was first written into. For *how*
-the code is laid out see [CLAUDE.md](../CLAUDE.md); for *how to use* the
-tool see [README.md](../README.md).
+the code is laid out see [architecture.md](architecture.md); for the hard
+constraints that bind every change see [CLAUDE.md](../CLAUDE.md); for *how
+to use* the tool see [README.md](../README.md).
 
 ## GBP as posting metadata, not embedded `{cost}`
 
@@ -142,7 +143,22 @@ guidance; none of this is tax advice):
 
 ## Licence hygiene
 
-Output is plain beancount text; the pipeline never `import`s `beancount`
-(GPL-2.0) and validation shells out to the `bean-check` binary. No
-AGPL/GPL runtime dependency is added (notably **not** PyMuPDF). The
-README's "Libraries and licenses" section is the authoritative list.
+This project is MIT, and every runtime dependency is MIT / BSD / Apache-2.0
+except `python-stdnum` (LGPL-2.1+, fine for the dynamic linking we do). The
+README's "Libraries and licenses" table is the authoritative per-dependency
+list; this is the reasoning behind the two notable *exclusions*.
+
+**Why not PyMuPDF?** `PyMuPDF` (`pymupdf`) is the most popular MuPDF binding,
+but it is **AGPL-3.0** — viral copyleft — unless you buy a commercial licence
+from Artifex. For a permissive project that is a non-starter. `pypdfium2`
+(Google's PDFium bindings, Apache-2.0 / BSD-3-Clause) is the drop-in
+replacement: similar speed, maintained. When PDFium chokes on a file,
+`pdfplumber` (MIT, on `pdfminer.six`) is the second backend.
+
+**Why not `import beancount`?** `beancount` itself is **GPL-2.0**. The
+pipeline avoids linking against it and emits beancount **plain text**
+directly; to validate that output it shells out to the `bean-check` CLI as a
+separate process — a normal program invocation, not library linking, so it
+doesn't bind this codebase to the GPL. This is why the tax pipeline computes
+everything from the JSONL sidecars rather than loading the ledger through
+beancount's Python API.
