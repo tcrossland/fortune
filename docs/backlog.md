@@ -96,15 +96,18 @@ not tax advice" framing.
 
 ## Financial reporting
 
-- **Interactive balance sheet (`balance-sheet`).** A single
-  self-contained HTML artifact with a client-side as-of date scrubber —
-  recompute every account's value, the Assets / Liabilities / net-worth
-  totals, the account tree and allocation chart for any date, offline.
+- **Interactive balance sheet (`balance-sheet`) — MVP shipped.** A single
+  self-contained, offline HTML artifact with a client-side as-of date
+  scrubber: recompute every account's value, the Assets / Liabilities /
+  net-worth totals, the account tree and allocation donut for any date.
   Reads the ledger via `bean-query` (a ledger construct, like the trial
-  balance, not statement marks). Fully designed:
-  [plans/interactive-balance-sheet.md](plans/interactive-balance-sheet.md)
-  *(status: planned, not built; supersedes the git-ignored
-  `reports/balance-sheet/` prototype)*.
+  balance, not statement marks). Phases 1–3 (dataset → artifact → CLI +
+  rebuild wiring) shipped — see
+  [archive/interactive-balance-sheet.md](archive/interactive-balance-sheet.md).
+  Still open (phase 4, deferred as non-goals): a **cost-basis / unrealised
+  P&L column** (needs per-date FIFO booking) and the **statement-assertion
+  drift overlay** (the dataset already carries the assertions; rendering
+  overlaps `reconcile`).
 - **Period reports beyond beancount/Fava.** Net-worth-over-time
   (`net-worth`), income-by-source (`income`, by tax or calendar year),
   asset-allocation-over-time (`allocation`), and per-portfolio allocation

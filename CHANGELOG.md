@@ -87,6 +87,22 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **Interactive balance sheet (`balance-sheet`)** — a single
+  self-contained, **offline** `balance-sheet.html` (+ a JSON sidecar) you
+  open in any browser and scrub to *any* as-of date. A ledger construct
+  (like `trial-balance`): one `bean-query` returns the Asset/Liability
+  postings, and the browser sums each holding up to the chosen date and
+  values it to GBP entirely client-side — a collapsible account tree, a
+  hand-rolled SVG allocation donut, and the Assets / Liabilities (the
+  Lombard loan = negative cash) / net-worth totals. FX comes from the
+  `GbpRateSource` (the security marks carry no currency→GBP rate); an
+  unpriced holding is flagged, never zeroed. Standalone command (`--open`
+  to view) or via the `[post.reports] balance_sheet` rebuild toggle; the
+  artifact carries real balances so `reports/balance-sheet/` is git-ignored.
+  Phases 1–3 (dataset → artifact → wiring); cost-basis and assertion-drift
+  overlay deferred as non-goals. (`balance_sheet.py`,
+  `balance_sheet_template.html`, `cli/reports.py`, `cli/rebuild.py`;
+  README § Reports + design-decisions.md)
 - **`net-worth` table is newest-first** — the net-worth-over-time Markdown
   table now lists rows in descending date order (most recent at the top);
   each row's Δ keeps its chronological meaning (change since the previous,

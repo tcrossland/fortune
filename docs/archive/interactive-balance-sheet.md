@@ -290,12 +290,16 @@ reporting feature over the existing ledger. New code is confined to
    one book, but consider a compact schema (short keys `d/a/q/c`, as the
    prototype used) and dropping pre-`as_of_min` postings.
 
-## Status: in progress — phases 1–3 shipped (MVP complete)
+## Status: shipped (MVP) — archived
 
-Supersedes the `reports/balance-sheet/` prototype; no dependency on it.
-Phasing: (1) `build_data` + JSON + tests → (2) template + `render_html` +
-golden → (3) CLI + config + rebuild + vendored chart → (4) cost basis /
-assertion-drift overlay.
+The MVP is shipped across four commits (`3f9fb0e` plan → `e36862f` phase 1
+→ `bb8f9c4` phase 2 → `49a3dd7` phase 3; the user-facing README reports
+catalog followed in `7a2cbc4`). Supersedes the `reports/balance-sheet/`
+prototype; no dependency on it. Phasing: (1) `build_data` + JSON + tests →
+(2) template + `render_html` + golden → (3) CLI + config + rebuild → (4)
+cost basis / assertion-drift overlay (**not built** — deferred as
+non-goals; see "Phase 4 — remaining" below). Phases 1–3 are the MVP and
+are done; this plan is archived.
 
 ### Phase 1 — done
 
