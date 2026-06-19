@@ -26,12 +26,14 @@ just a signed-negative cash leg through the same shape).
 Empty periods
 -------------
 A statement for a drained / £0 account carries no ``Activity`` section
-and legitimately yields ``[]``. Because this doctype normally emits, the
-extractor logs that empty result at WARN ("investigate if a regression")
-and ``--strict`` raises on it — a false positive for a genuinely
-nil-activity statement. Normal ``ingest`` / ``rebuild`` are unaffected
-(exit 0, no output emitted); only ``--strict`` runs need such statements
-excluded from their source glob.
+and legitimately yields ``[]``. Because this doctype normally emits, an
+empty extraction is otherwise read as a regression — so this template
+implements the optional :meth:`is_expected_empty` hook (see
+:class:`banking_pipeline.templates.Template`): when no ``Activity``
+section is present the empty result is *expected* and ``--strict`` no
+longer raises. A statement that *does* carry an ``Activity`` section but
+still extracts nothing is left to the regression path (its rows drifted)
+— the conservative line keeps strict mode honest about real breakage.
 """
 
 from __future__ import annotations
@@ -72,6 +74,19 @@ _MONEY_RE = re.compile(r"(-?)£\s*([\d,]+\.\d{2})")
 @dataclass
 class VanguardRegularStatementTemplate:
     template_id: str = "vanguard_uk.vanguard_regular_statement.v1"
+
+    def is_expected_empty(self, doc: RawDocument) -> bool:
+        """True for a nil-activity statement (no ``Activity`` section).
+
+        The hybrid extractor consults this when ``extract`` returned ``[]``
+        to distinguish a genuinely nil period — a drained / £0 account
+        whose statement omits the ``Activity`` table — from a template
+        regression. Scoped deliberately to the *no-section* case: a
+        statement that has an ``Activity`` section but yields no bookable
+        rows is left to the regression path rather than silently excused.
+        """
+
+        return _ACTIVITY_RE.search(doc.text) is None
 
     def extract(self, doc: RawDocument) -> list[Transaction]:
         text = doc.text

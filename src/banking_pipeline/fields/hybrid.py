@@ -211,6 +211,21 @@ class HybridExtractor:
                     )
                     return [], warnings
 
+                # Per-document expected-empty: a template that normally
+                # emits but legitimately yields nothing for *this* document
+                # (e.g. a nil-activity statement) can say so via the
+                # optional ``is_expected_empty`` hook. Duck-typed so only
+                # the templates that need it implement it.
+                is_expected_empty = getattr(template, "is_expected_empty", None)
+                if callable(is_expected_empty) and is_expected_empty(doc):
+                    _log.info(
+                        "template_expected_empty",
+                        template_id=classification.template_id,
+                        doc_type=doc_type.value,
+                        path=str(doc.path),
+                    )
+                    return [], warnings
+
                 _log.warning(
                     "template_extraction_empty",
                     template_id=classification.template_id,

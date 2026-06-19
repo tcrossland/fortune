@@ -68,6 +68,11 @@ class PictetLabels:
     trade_date: str
     value_date: str
     booking_date: str
+    # Order-placement date. Pictet ES: ``Fecha de la orden`` / EN:
+    # ``Order date``. The line carries a trailing time
+    # (``Fecha de la orden 27.07.2023 a las 13:15:38``); only the leading
+    # ``dd.mm.yyyy`` is parsed. Read for the switch-pairing corroborator.
+    order_date: str
     # Operation-type accepts a tuple because Pictet renamed this field across
     # document generations: 2023+ advices say ``Tipo de operación`` while
     # 2021-era advices say ``Tipo de ejecución``. Helpers try each in order
@@ -117,6 +122,7 @@ EN_LABELS = PictetLabels(
     trade_date="Trade date",
     value_date="Value date",
     booking_date="Booking date",
+    order_date="Order date",
     operation_type=("Operation type",),
     executed_quantity="Executed quantity",
     execution_price="Execution price",
@@ -164,6 +170,7 @@ ES_LABELS = PictetLabels(
     trade_date="Fecha de transacción",
     value_date="Fecha valor",
     booking_date="Fecha contable",
+    order_date="Fecha de la orden",
     # 2023+ advices use ``Tipo de operación``; 2021-era advices use ``Tipo de
     # ejecución`` for the same field. Both carry ``Compra`` / ``Venta`` as
     # values, so ``expected_operations`` checks still apply uniformly.
@@ -889,6 +896,10 @@ def extract_simple_trade_advice(
 
     value_date_raw = find_field(text, labels.value_date)
     booking_date_raw = find_field(text, labels.booking_date)
+    # ``Order date`` carries a trailing time on the same line; parse only
+    # when it leads with a ``dd.mm.yyyy`` so non-Pictet date shapes (or a
+    # missing field) leave ``order_date`` unset rather than raising.
+    order_date_raw = find_field(text, labels.order_date)
     quantity_raw = find_field(text, labels.executed_quantity)
     price_match = find_amount_field(text, labels.execution_price)
 
@@ -917,6 +928,11 @@ def extract_simple_trade_advice(
         ),
         booking_date=(
             parse_pictet_date(booking_date_raw) if booking_date_raw else None
+        ),
+        order_date=(
+            parse_pictet_date(order_date_raw)
+            if order_date_raw and _DATE_RE.search(order_date_raw)
+            else None
         ),
         narration=narration,
         title=title,

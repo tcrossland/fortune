@@ -384,7 +384,7 @@ class Language(StrEnum):
 #     ``Equity:Uncategorized`` placeholder, and the failure is logged
 #     loudly (or raised, in strict mode).
 #
-# Two families:
+# Three families:
 #
 #   - **Paired-advice openings**: ``FX_FORWARD`` /
 #     ``CAMBIO_DE_DIVISAS_APERTURA`` /
@@ -398,6 +398,13 @@ class Language(StrEnum):
 #     events have already been booked by the per-trade and
 #     per-cash-movement advices that fed them, so emitting any
 #     postings would double-count.
+#   - **Companion / disclosure documents**: ``INTEREST_SCALE`` (the
+#     per-day rate ledger behind an ``INTEREST_PAYMENT``), ``FACTURA``
+#     (the Spanish tax invoice for the fee a ``DEBITO_DE_GASTOS`` advice
+#     actually books), and ``ORDER_INFORMATION_REPORT`` (a pre-trade
+#     cost *simulation*, not a historical event). Each restates an event
+#     a sibling advice already carries — or no cash event at all — so the
+#     template returns ``[]`` by design and the cash leg lives elsewhere.
 NO_OUTPUT_DOCTYPES: frozenset[DocumentType] = frozenset({
     DocumentType.FX_FORWARD,
     DocumentType.CAMBIO_DE_DIVISAS_APERTURA,
@@ -423,6 +430,10 @@ NO_OUTPUT_DOCTYPES: frozenset[DocumentType] = frozenset({
     DocumentType.VANGUARD_CASH_HOLDING_STATEMENT,
     DocumentType.VANGUARD_COSTS_AND_CHARGES,
     DocumentType.VANGUARD_DIRECT_DEBIT_CONFIRMATION,
+    # Companion / disclosure documents (see the third family above).
+    DocumentType.INTEREST_SCALE,
+    DocumentType.FACTURA,
+    DocumentType.ORDER_INFORMATION_REPORT,
 })
 
 
@@ -527,6 +538,14 @@ class Transaction(BaseModel):
     # this rather than ``trade_date`` for the entry-date posting on advices
     # that carry one — booking is when the cash actually moved.
     booking_date: date | None = None
+    # Pictet ES: ``Fecha de la orden`` / EN: ``Order date``. When the client
+    # placed the order, distinct from when it executed (``trade_date``) or
+    # booked (``booking_date``). Not rendered by the writer; it's the
+    # corroborating key the switch-pairing layer uses to tie a
+    # ``SWITCH_SALIDA`` to its ``SWITCH_ENTRADA`` — both legs of one switch
+    # carry the same order date even when the FX-converted clearing amounts
+    # don't net to the cent. ``None`` on advices that don't print it.
+    order_date: date | None = None
 
     # --- Narration ------------------------------------------------------
     narration: str
@@ -691,8 +710,9 @@ class Transaction(BaseModel):
     # legs of a switch, which share a single link so ``bean-query`` can
     # retrieve both with one filter. The extractor doesn't fill this from
     # the document alone (the legs reference each other through external
-    # pairing, not through any in-document field); a higher pipeline layer
-    # sets it after detecting a salida/entrada pair. When ``None`` the
+    # pairing, not through any in-document field);
+    # :mod:`banking_pipeline.switch_pairing` sets it during ``ingest``
+    # after detecting a salida/entrada pair. When ``None`` the
     # writer falls back to ``transaction_number`` for switches and emits
     # no link at all for non-switch entries.
     link_id: str | None = None

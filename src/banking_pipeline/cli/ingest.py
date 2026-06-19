@@ -31,17 +31,60 @@ from banking_pipeline.cli_options import (
 )
 from banking_pipeline.config import settings
 from banking_pipeline.fields import HybridExtractor, TemplateExtractionError
-from banking_pipeline.models import Transaction
+from banking_pipeline.models import ExtractionResult, Transaction
 from banking_pipeline.pipeline import Pipeline
 from banking_pipeline.revolut import import_csvs as revolut_import_csvs
 from banking_pipeline.revolut import render as revolut_render
 from banking_pipeline.revolut.render import render_open_directives as revolut_open_directives
+from banking_pipeline.switch_pairing import pair_switches
 from banking_pipeline.transaction_sidecar import (
     dump_transactions,
     load_transactions,
     sidecar_path,
     transactions_to_jsonl,
 )
+from banking_pipeline.writer.builders.switch_trade import SWITCH_TYPES
+
+
+def _apply_switch_pairing(txns: list[Transaction], *, strict: bool) -> None:
+    """Pair switch legs in ``txns`` and stamp the shared ``link_id`` in place.
+
+    Runs the pure :func:`pair_switches` matcher, applies each assignment to
+    the in-memory ``Transaction`` (so both the rendered ledger and the
+    sidecar carry the shared link by construction), warns on every unpaired
+    leg, and — under ``strict`` — fails when an in-batch orphan (an
+    opposite-side counterpart that should have paired but didn't) is found.
+    """
+
+    pairing = pair_switches(txns)
+    for tx in txns:
+        # Apply only to switch legs: assignments are keyed by
+        # ``transaction_number``, and though Pictet numbers are per-advice
+        # unique, guarding on the doctype means a non-switch advice that
+        # ever collided on a number can't inherit a switch's link.
+        if tx.document_type not in SWITCH_TYPES:
+            continue
+        link = pairing.assignments.get(tx.transaction_number or "")
+        if link is not None:
+            tx.link_id = link
+
+    for tx in pairing.unpaired:
+        when = tx.booking_date or tx.trade_date
+        err_console.print(
+            f"[yellow]warning:[/yellow] unpaired switch leg "
+            f"{tx.transaction_number} "
+            f"({tx.currency} {tx.amount}, booked {when}) — kept its own link"
+        )
+
+    if strict and pairing.in_batch_orphans:
+        numbers = ", ".join(
+            str(tx.transaction_number) for tx in pairing.in_batch_orphans
+        )
+        err_console.print(
+            f"[red]error:[/red] switch legs share a batch but didn't pair "
+            f"(likely an extraction bug): {numbers}"
+        )
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -94,7 +137,11 @@ def ingest(
 
     pipeline = Pipeline(extractor=HybridExtractor(strict=strict))
 
-    chunks: list[str] = []
+    # Collect every result first, then pair switch legs across the whole
+    # batch, then render — a switch's salida↔entrada link can't be known
+    # until both legs are in hand, so rendering can't happen inside the
+    # per-document loop (see ``switch_pairing``).
+    results: list[ExtractionResult] = []
     all_txns: list[Transaction] = []
     for path in pdf_paths:
         try:
@@ -104,10 +151,12 @@ def ingest(
                 f"[red]extraction error:[/red] {exc}"
             )
             raise typer.Exit(code=1) from exc
-        chunks.append(beancount_writer.render(result))
+        results.append(result)
         all_txns.extend(result.transactions)
 
-    rendered = "\n\n".join(chunks)
+    _apply_switch_pairing(all_txns, strict=strict)
+
+    rendered = "\n\n".join(beancount_writer.render(result) for result in results)
 
     # No ``close`` directives here. ingest output is a partial slice of
     # history that the portfolio aggregate ``include``s; a per-batch close

@@ -104,9 +104,10 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     lines: list[str] = []
 
     # --- Header ---------------------------------------------------------
-    # Link precedence: ``link_id`` wins (set by a future pairing layer
-    # that can resolve the salida↔entrada cross-reference); otherwise
-    # fall back to ``transaction_number`` so a switch leg processed in
+    # Link precedence: ``link_id`` wins (set by the pairing layer in
+    # :mod:`banking_pipeline.switch_pairing`, which resolves the
+    # salida↔entrada cross-reference during ``ingest``); otherwise fall
+    # back to ``transaction_number`` so a switch leg processed in
     # isolation still carries a discoverable link.
     parts: list[str] = [str(entry_date), "*"]
     if tx.title:
@@ -220,7 +221,7 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
 
     # --- Trailing reference comment ------------------------------------
     # The ``no:`` comment carries the document's own transaction number,
-    # which differs from the link on entrada when pairing is wired up
+    # which differs from the link on a paired entrada
     # (link = salida's txn, no: = entrada's own txn).
     trailer = transaction_number_comment(tx)
     if trailer:

@@ -200,6 +200,14 @@ src/banking_pipeline/
 ├── dedup.py            Duplicate-transaction audit: content-keys each
 │                         transaction and groups double-counted events
 │                         (read-only; feeds `dedup-check`)
+├── switch_pairing.py   Pure matcher that pairs a Pictet switch's
+│                         `SWITCH_SALIDA` + `SWITCH_ENTRADA` legs onto one
+│                         shared `^<link>`. Buckets by (account, clearing
+│                         currency, booking date) then pairs by shared
+│                         `order_date` (the FX-robust key), with amount-
+│                         netting only as a fallback for legs lacking it.
+│                         `ingest` runs it across the batch before render
+│                         (see the `ingest` note below)
 ├── extractors/
 │   └── pdf_text.py     pypdfium2-based PDF → text
 ├── classifiers/
@@ -301,6 +309,11 @@ manifest. Beancount goldens sit next to their text fixtures with a
   re-parsing beancount: `gbp_rate`; `gross_income` / `withholding_tax` /
   `withholding_country`; `accrued_interest`; and `document_type` provenance
   stamped by `Pipeline` after classification.
+- `link_id` is the shared beancount `^<link>` threading a switch's two legs;
+  `order_date` (Pictet's `Fecha de la orden`) is the corroborating key
+  `switch_pairing` uses to set it. Both are `None` until `ingest`'s pairing
+  phase runs. `order_date` isn't rendered — it exists only as the pairing
+  signal (and rides along in the sidecar).
 
 ## The UK-tax pipeline
 
@@ -314,8 +327,9 @@ The tax pipeline reads the JSONL sidecars, never the ledger.
   `Transaction.is_tax_exempt` is true when it is in `TAX_EXEMPT_WRAPPERS`.
   `tax-report` filters `[tx for tx … if not tx.is_tax_exempt]` immediately
   after loading the sidecars — a **single choke point**, before any
-  `compute_*` / `match_history`. (Sidecar schema `…/v3`; a v2 sidecar still
-  loads, `account_wrapper` defaulting to `None`.)
+  `compute_*` / `match_history`. (Sidecar schema `…/v4`; older sidecars
+  still load — additive fields like `account_wrapper` and `order_date`
+  default to `None`.)
 - GBP cost basis is carried as posting metadata (`gbp-rate`, `trade-date`)
   and as `Transaction.gbp_rate`. All section 104 / same-day / 30-day
   matching happens in `tax/uk/section_104.py` from the sidecar — beancount's
@@ -410,8 +424,13 @@ returns `[]`:
 
 - Doctype in `NO_OUTPUT_DOCTYPES` → log INFO, return `[]`. Expected.
 - No template registered → fall through to regex / LLM.
-- Template registered but empty → log WARN, return `[]`, **skip** the
-  regex/LLM fallback. With `strict=True` raise `TemplateExtractionError`.
+- Template's optional `is_expected_empty(doc)` hook returns `True` → log
+  INFO, return `[]`. Expected. Per-document escape hatch for a doctype
+  that normally emits but is legitimately empty on some inputs (a
+  nil-activity `vanguard_regular_statement`).
+- Template registered but empty (no escape above) → log WARN, return `[]`,
+  **skip** the regex/LLM fallback. With `strict=True` raise
+  `TemplateExtractionError`.
 
 The skip is deliberate: falling through historically papered over template
 regressions with `Equity:Uncategorized`-balanced placeholder entries. The
@@ -419,8 +438,10 @@ fix surfaces the empty result as a missing entry (so the next `bean-check`
 notices the imbalance) or as an exception under `--strict`.
 
 `ingest --strict` and `rebuild --strict` both turn this on; `rebuild
---strict` also escalates `bean-check` warnings to errors and reconcile
-coverage gaps to a failed rebuild.
+--strict` also escalates reconcile coverage gaps to a failed rebuild.
+bean-check fails on any error irrespective of `--strict` — beancount v3's
+bean-check has no warnings-as-errors flag (the v2-era `-w` was removed), so
+strict adds nothing to that step.
 
 ## CLI reference
 
@@ -449,6 +470,12 @@ usage examples; this is the behavioural reference.
 - `ingest` — classify + extract + render one or more PDFs; supports
   `--check <ledger>` and `--strict`. Always writes a
   `<stem>.transactions.jsonl` sidecar next to the output `.beancount`.
+  Runs in two phases: it **collects** every document's transactions for
+  the batch, runs `switch_pairing.pair_switches` to stamp the shared
+  `link_id` on paired switch legs, then **renders** — a switch's
+  salida↔entrada link can't be known until both legs are in hand. Unpaired
+  switch legs warn; under `--strict` an in-batch pair that should have
+  netted but didn't is escalated to a hard error.
 - `dump-transactions` — extract one or more PDFs and print the JSONL sidecar
   to stdout (no ledger touch).
 - `dedup-check` — read-only audit. Walks `*.transactions.jsonl` sidecars

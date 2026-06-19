@@ -17,9 +17,11 @@ shape differences from the salida path:
   - **Cross-leg link** — the ``^<id>`` link references the *salida's*
     transaction number, not this document's, so ``bean-query`` can
     retrieve both legs of the switch with one filter. The entrada
-    document doesn't carry that reference, so the test sets
-    ``link_id`` manually; in production a higher-level pairing pass
-    would resolve it from a salida + entrada batch.
+    document doesn't carry that reference, so this render test sets
+    ``link_id`` manually to exercise the writer in isolation; in
+    production :mod:`banking_pipeline.switch_pairing` resolves it from a
+    salida + entrada batch during ``ingest`` (covered end-to-end by
+    ``tests/test_switch_pairing_ingest.py``).
 """
 
 from __future__ import annotations

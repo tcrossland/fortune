@@ -25,6 +25,15 @@ class Template(Protocol):
 
     def extract(self, doc: RawDocument) -> list[Transaction]: ...
 
+    # Optional hook (duck-typed, not part of the required surface). A
+    # template that *normally* emits but can legitimately yield ``[]`` for
+    # specific documents may implement ``is_expected_empty(doc) -> bool``;
+    # the hybrid extractor calls it when ``extract`` returned nothing to
+    # tell a per-document expected-empty (e.g. a nil-activity statement)
+    # apart from a template regression, so ``--strict`` doesn't raise on
+    # the former. Templates that don't implement it are treated as before
+    # (empty ⇒ regression unless the doctype is in ``NO_OUTPUT_DOCTYPES``).
+
 
 # Registry binding comes first, populate-by-mutation second. The order matters:
 # loading the bank subpackages eventually re-enters this module via

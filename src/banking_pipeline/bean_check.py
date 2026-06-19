@@ -74,10 +74,18 @@ def run_bean_check(
 ) -> CheckResult:
     """Run ``bean-check`` on ``ledger`` and return the combined result.
 
-    ``strict`` adds ``-w`` so ``bean-check`` treats warnings as errors
-    (returns nonzero if any warning fires). ``extra_args`` is passed
-    through verbatim — useful for callers that want to add
-    ``-v`` / ``--auto`` / etc. without us tracking every flag.
+    ``extra_args`` is passed through verbatim — useful for callers that
+    want to add ``-v`` / ``--auto`` / etc. without us tracking every flag.
+
+    ``strict`` is accepted because the whole check path threads one
+    ``strict`` flag, but it has **no effect on the binary invocation**:
+    beancount v3's ``bean-check`` has no warnings-as-errors option (the
+    v2-era ``-w`` was removed, and v3 has no warning/error severity split
+    — every diagnostic it reports is an error that already makes the
+    return code nonzero). The caller (:func:`_run_check_or_exit`) treats
+    any nonzero return as fatal, so a clean ledger is required under both
+    strict and non-strict. Passing ``-w`` to a v3 binary is a hard usage
+    error (``rc=2``), so we don't.
 
     Returns a :class:`CheckResult` rather than raising. The caller
     decides whether a nonzero return is fatal — the rebuild flow
@@ -100,9 +108,10 @@ def run_bean_check(
             binary_missing=True,
         )
 
+    # NB: no ``-w`` — v3 bean-check has no warnings-as-errors flag (see
+    # the docstring). ``strict`` is intentionally unused here.
+    _ = strict
     cmd: list[str] = [str(binary)]
-    if strict:
-        cmd.append("-w")
     cmd.extend(extra_args)
     cmd.append(str(ledger))
 

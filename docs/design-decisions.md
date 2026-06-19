@@ -107,8 +107,45 @@ historically papered over template regressions with
 `Equity:Uncategorized`-balanced placeholder entries that landed silently
 in the ledger. Surfacing the empty result instead means the next
 `bean-check` notices the imbalance — a loud failure beats a silent wrong
-number. Doctypes that legitimately emit nothing are listed in
+number. Doctypes that *always* emit nothing are listed in
 `NO_OUTPUT_DOCTYPES` and short-circuit cleanly.
+
+A doctype that **normally** emits but is legitimately empty on some inputs
+(a nil-activity `vanguard_regular_statement` with no `Activity` section)
+doesn't fit a doctype-level set — putting it in `NO_OUTPUT_DOCTYPES` would
+blind strict mode to real regressions on the statements that *do* carry
+activity. So templates may implement an optional `is_expected_empty(doc)`
+hook (duck-typed; see `templates.Template`), consulted only when `extract`
+returned `[]`, to declare a *specific document* a legitimate empty. It's
+deliberately conservative — keyed on a structurally-empty input (no
+`Activity` section), not on "extraction found nothing" — so a statement
+whose rows drifted still surfaces as a regression.
+
+## Switch legs pair on order date, not amount-netting
+
+A Pictet fund switch is two advices — `SWITCH_SALIDA` (sell) and
+`SWITCH_ENTRADA` (buy) — that should share one beancount `^<link>`.
+`switch_pairing` reconciles them. The obvious key is the
+`Assets:<prefix>:<portfolio>:Switch:<ccy>` clearing leg: the salida posts
+proceeds *in*, the entrada draws cost *out*, so the pair "should" net to
+zero. It doesn't, for **FX switches**: when the entrada buys a fund priced
+in another currency, its clearing amount is an *independent* FX conversion
+of the underlying buy, not the same cash the salida produced — the two
+legs land ~0.33 apart, not within a cent. An amount-netting tolerance loose
+enough to absorb that drift is also loose enough to mis-pair two distinct
+same-day switches of similar size.
+
+So the **primary key is the shared order date** (Pictet's
+`Fecha de la orden`, captured into `Transaction.order_date`): both legs of
+one switch always carry the same order date, even when their clearing
+amounts don't tie. The matcher buckets by `(account, clearing currency,
+booking date)` and pairs legs that share an order date, with no amount gate
+for the unambiguous 1:1 and 1:many cases — the four shared facts are
+conclusive. Amount-netting survives only as a conservative *fallback* for
+legs that carry no order date, and it refuses to guess on a tie (two
+indistinguishable switches are left unpaired and warned, never mis-linked).
+This is why `order_date` is a model field even though the writer never
+renders it: it exists to make FX-switch pairing deterministic.
 
 ## UK residence and the FIG regime
 

@@ -172,13 +172,24 @@ on you, not the guard. Details:
 
 - Doctype in `NO_OUTPUT_DOCTYPES` → return `[]`. Expected.
 - No template registered → fall through to regex / LLM.
-- Template registered but empty → log WARN, return `[]`, **skip** the
-  fallback. Under `strict=True` raise `TemplateExtractionError`.
+- Template implements `is_expected_empty(doc)` and it returns `True` for
+  *this* document → return `[]`. Expected. The per-document escape hatch
+  for a doctype that **normally** emits but legitimately yields nothing on
+  some inputs (e.g. a nil-activity `vanguard_regular_statement` with no
+  `Activity` section). Duck-typed; only templates that need it implement
+  it. Scope it tightly — a structurally-empty input, not "extraction
+  happened to find nothing".
+- Template registered but empty (and neither escape above applies) → log
+  WARN, return `[]`, **skip** the fallback. Under `strict=True` raise
+  `TemplateExtractionError`.
 
 The skip is deliberate: falling through historically papered over template
 regressions with `Equity:Uncategorized` placeholders. `ingest --strict` and
 `rebuild --strict` turn this on (and `rebuild --strict` also escalates
-`bean-check` warnings + reconcile coverage gaps to failures). Rationale:
+reconcile coverage gaps to failures). Note: bean-check itself fails on any
+error regardless of `--strict` — beancount v3's bean-check has **no**
+warnings-as-errors flag (the v2-era `-w` is gone), so strict adds nothing
+to the bean-check step. Rationale:
 [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Beancount output conventions
@@ -216,13 +227,12 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-[docs/plans/switch-leg-pairing.md](docs/plans/switch-leg-pairing.md) —
-pair Pictet `SWITCH_SALIDA`/`SWITCH_ENTRADA` legs onto one shared
-`^<ref>` link (status: planned, not started). Also designed and pending:
+None active. Designed and pending:
 [docs/plans/interactive-balance-sheet.md](docs/plans/interactive-balance-sheet.md).
-(Last shipped: docs/archive/docs-restructure.md — the three-document
-restructure.) When you start a non-trivial task, write its plan to
-`docs/plans/<name>.md` and name it here.
+(Last shipped: docs/archive/switch-leg-pairing.md — pairing a Pictet
+switch's `SWITCH_SALIDA`/`SWITCH_ENTRADA` legs onto one shared `^<ref>`
+link via `switch_pairing`.) When you start a non-trivial task, write its
+plan to `docs/plans/<name>.md` and name it here.
 
 ## Working agreement
 

@@ -240,6 +240,49 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Bookkeeping & accounting
 
+- **`--strict --check` no longer aborts with a bean-check usage error** —
+  the strict path appended `-w` to `bean-check` to "treat warnings as
+  errors", but beancount v3's bean-check removed that flag (and has no
+  warning/error severity split), so the invocation died with
+  `Error: No such option: -w` (`rc=2`) on every strict check since the v3
+  pin. Dropped `-w`; bean-check fails on any error regardless of `--strict`
+  (a clean ledger passes either way). The `strict` parameter is retained
+  for call-site symmetry but documented as inert at the bean-check level.
+  Guarded by `tests/test_bean_check.py`. (`bean_check.py`, `cli/rebuild.py`)
+- **Nil-activity Vanguard statements no longer break `--strict`** — a
+  `vanguard_regular_statement` for a drained / £0 account carries no
+  `Activity` section and legitimately extracts nothing, but strict mode
+  read that empty result as a template regression and aborted. Templates
+  can now implement an optional `is_expected_empty(doc)` hook (duck-typed;
+  consulted only when `extract` returned `[]`); `regular_statement`
+  returns `True` when there's no `Activity` section, so a genuinely-nil
+  statement is treated as expected — while a statement that *does* carry
+  activity but extracts nothing still raises (a real regression). Guarded
+  by `tests/test_vanguard_nil_statement.py`. (`fields/hybrid.py`,
+  `templates/__init__.py`, `templates/vanguard_uk/regular_statement.py`)
+- **`FACTURA` / `INTEREST_SCALE` / `ORDER_INFORMATION_REPORT` registered as
+  no-output** — these three Pictet templates return `[]` by design (the
+  cash leg lives on a sibling `DEBITO_DE_GASTOS` / `INTEREST_PAYMENT`
+  advice, or the document is a pre-trade cost *simulation*), but their
+  doctypes were missing from `NO_OUTPUT_DOCTYPES`. Under `--strict` the
+  empty result was therefore treated as a template regression and
+  `rebuild --strict` aborted on the first such document. Added all three
+  (a "companion / disclosure" family) to the set; regression-guarded by
+  `tests/test_no_output_strict.py`. (`models.py`)
+- **Switch salida/entrada leg pairing** — a Pictet fund switch's two
+  advices (`SWITCH_SALIDA` + `SWITCH_ENTRADA`) now render with one shared
+  beancount `^<link>` (the salida's number), so the pair resolves as a
+  single logical operation in `bean-query` / Fava; each leg keeps its own
+  number as the `no:` reference. `ingest` collects the whole batch, runs
+  the pure `switch_pairing.pair_switches` matcher, then renders. Legs pair
+  on a shared **order date** (`Fecha de la orden`, captured into
+  `Transaction.order_date`) rather than clearing-account netting — FX
+  switches don't net to the cent, but always share an order date. Amount-
+  netting is a conservative fallback that refuses to guess on a tie.
+  Unpaired legs warn; `--strict` fails on a non-netting in-batch pair.
+  Sidecar schema → `…/v4` (additive). (`switch_pairing.py`, `cli/ingest.py`,
+  `models.py`, `templates/pictet/_common.py`; see
+  `docs/design-decisions.md`)
 - **`import` files periodic statements** — the `import` command now files
   Pictet monthly / quarterly / annual valuation statements (both locales),
   not just transaction advices. Statements carry no transaction reference,

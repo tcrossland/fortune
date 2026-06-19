@@ -9,12 +9,12 @@ paradigm. Shipped features are recorded in
 
 A handful of these ideas have graduated from a one-line menu entry to a
 full implementation brief in [plans/](plans/) — designed but not yet
-built. Two are in flight today: the switch salida/entrada **leg
-pairing** (under [Bookkeeping](#bookkeeping-ingest-quality)) and the
-**interactive balance sheet** (under
-[Financial reporting](#financial-reporting)). The sections below
-cross-link each to its plan; when a plan ships, its line moves to the
-CHANGELOG and the plan moves to `archive/`.
+built. One is in flight today: the **interactive balance sheet** (under
+[Financial reporting](#financial-reporting)). The section below
+cross-links it to its plan; when a plan ships, its line moves to the
+CHANGELOG and the plan moves to `archive/`. (Most recently shipped: the
+switch salida/entrada **leg pairing** — see the CHANGELOG and
+`archive/switch-leg-pairing.md`.)
 
 For the *correctness and robustness* gaps in the reporting subsystems
 (both tax reporting-status and the analytical reports) — as distinct from
@@ -77,13 +77,6 @@ not tax advice" framing.
 
 ## Bookkeeping (ingest quality)
 
-- **Switch salida/entrada leg pairing.** Link the two halves of a Pictet
-  *switch* (`SWITCH_SALIDA` + `SWITCH_ENTRADA`) so both beancount entries
-  carry the **same** `^<ref>` link and resolve as one logical operation
-  in `bean-query` / Fava — pairing on the `Switch:<ccy>` clearing
-  account's zero-netting. Fully designed:
-  [plans/switch-leg-pairing.md](plans/switch-leg-pairing.md) *(status:
-  planned, not built)*.
 - **Idempotent re-ingest (`ingest --append`).** The dedup *audit*
   (`dedup-check`) shipped; an incremental mode that merges new PDFs into
   an existing output, skipping already-present transactions, is deferred

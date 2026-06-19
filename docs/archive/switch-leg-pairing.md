@@ -235,8 +235,47 @@ the common (1:1) case.
    data; defer the cross-source pass until a real straddling pair
    appears (the warning will flag it).
 
-## Status: planned
+## Status: shipped
 
-Not yet implemented. Single-document goldens are expected to stay
-byte-stable; the only new output appears when both legs are ingested in
+Implemented. Single-document goldens stayed byte-stable (verified: full
+suite green); the shared link appears only when both legs are ingested in
 one batch.
+
+### What shipped
+
+- `Transaction.order_date` (Pictet `Fecha de la orden` / EN `Order date`),
+  extracted in `extract_simple_trade_advice`; sidecar schema bumped to
+  `…/v4` (additive).
+- `switch_pairing.pair_switches` — the pure matcher. Returns a
+  `SwitchPairing` (`assignments` + `unpaired` + `in_batch_orphans`).
+- `ingest` restructured to collect → pair → render
+  (`_apply_switch_pairing` applies the `link_id`s, warns on unpaired,
+  fails under `--strict` on a non-netting in-batch pair).
+- Tests: `tests/test_switch_pairing.py` (matcher),
+  `tests/test_switch_pairing_ingest.py` (e2e shared-link + strict).
+
+### Deviations from the original design (with reasons)
+
+1. **Order date is the primary key, not amount-netting.** The plan keyed on
+   the `Switch:<ccy>` clearing leg netting to ~zero. Verification against
+   the real `switch_*.2021` FX fixture showed FX switches net ~0.33 apart
+   (the entrada's clearing amount is an independent FX conversion), which
+   the planned `±0.01 × leg-count` tolerance rejects — and `rebuild
+   --strict` would then hard-fail every FX switch. The "Investigation"
+   section already flagged the shared order date as a corroborator; it was
+   promoted to the **primary** key (user decision). Amount-netting remains
+   only as a fallback for legs lacking an order date. Rationale folded into
+   `docs/design-decisions.md`.
+2. **No general subset-sum.** With order date as the key, the 1:many split
+   (one sell funding two buys, same order date) closes directly in the
+   order-date phase, so the planned subset-sum machinery was unnecessary.
+   The netting fallback does conservative cent-exact 1:1 matching only and
+   refuses to guess on a tie.
+3. **Return type is a single `SwitchPairing`, not `list[PairingResult]`** —
+   one object carrying assignments + diagnostics reads more cleanly at the
+   call site.
+
+### Open questions (unchanged)
+
+The full-history cross-source pass is still deferred; the unpaired warning
+will flag the first straddling pair if one appears.

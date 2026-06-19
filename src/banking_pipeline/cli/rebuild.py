@@ -103,10 +103,11 @@ def check(
         typer.Option(
             "--strict",
             "-s",
-            help="Treat bean-check warnings as errors. Off by default — "
-            "beancount emits warnings on benign conditions (missing "
-            "prices for stale holdings etc.) that would otherwise noise "
-            "up the output. Turn on for a strict CI gate.",
+            help="Accepted for symmetry with ``ingest`` / ``rebuild``, but "
+            "currently has no extra effect: beancount v3's bean-check has "
+            "no warnings-as-errors flag (the v2-era ``-w`` is gone) and "
+            "reports only errors, which already make the check fail. A "
+            "clean ledger passes; any error fails — strict or not.",
         ),
     ] = False,
 ) -> None:
@@ -372,14 +373,14 @@ def rebuild(
         typer.Option(
             "--strict",
             "-s",
-            help="Fail on quality issues instead of warning. Three effects: "
+            help="Fail on quality issues instead of warning. Two effects: "
             "(a) when a per-template extractor returns zero transactions "
             "for a doctype that should produce output, raise instead of "
-            "silently skipping the document; (b) the bean-check post-step "
-            "treats warnings as errors regardless of the [post.check] "
-            "config setting; (c) the balances step reconciles each "
-            "statement against itself and fails on any holding / cash row "
-            "the parser dropped.",
+            "silently skipping the document; (b) the balances step "
+            "reconciles each statement against itself and fails on any "
+            "holding / cash row the parser dropped. (The bean-check "
+            "post-step fails on any error regardless of --strict; "
+            "beancount v3 has no warnings-as-errors flag to escalate.)",
         ),
     ] = False,
     allow_missing_sources: Annotated[
@@ -693,9 +694,10 @@ def _do_rebuild(
     # from bean-check raises typer.Exit so cron / CI notices.
     if cfg.post.check.enabled:
         ledger = _resolve_ledger(cfg.post.check.ledger, data_dir)
-        # CLI ``--strict`` overrides the config — when set, escalate
-        # bean-check warnings to errors regardless of what
-        # ``[post.check] strict`` says.
+        # ``check_strict`` is threaded through and surfaced in the banner,
+        # but beancount v3's bean-check has no warnings-as-errors flag, so
+        # it no longer changes the invocation — bean-check fails on any
+        # error either way (see ``bean_check.run_bean_check``).
         check_strict = cfg.post.check.strict or strict
         err_console.print(
             f"[bold]check[/bold] {ledger}"
