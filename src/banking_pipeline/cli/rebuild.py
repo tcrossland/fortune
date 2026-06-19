@@ -372,12 +372,14 @@ def rebuild(
         typer.Option(
             "--strict",
             "-s",
-            help="Fail on quality issues instead of warning. Two effects: "
+            help="Fail on quality issues instead of warning. Three effects: "
             "(a) when a per-template extractor returns zero transactions "
             "for a doctype that should produce output, raise instead of "
             "silently skipping the document; (b) the bean-check post-step "
             "treats warnings as errors regardless of the [post.check] "
-            "config setting.",
+            "config setting; (c) the balances step reconciles each "
+            "statement against itself and fails on any holding / cash row "
+            "the parser dropped.",
         ),
     ] = False,
     allow_missing_sources: Annotated[
@@ -612,6 +614,18 @@ def _do_rebuild(
             err_console.print(
                 f"  wrote {output_path} ({total} balance assertion(s))"
             )
+            if strict:
+                gaps = balances_extract.coverage_report(statements)
+                if gaps:
+                    for path, file_gaps in gaps:
+                        for gap in file_gaps:
+                            err_console.print(
+                                f"  [red]coverage gap[/red] {path.name}: "
+                                f"{gap.kind} {gap.detail} present in statement "
+                                f"but not extracted"
+                            )
+                    raise typer.Exit(code=1)
+                err_console.print("  coverage check passed")
 
     # --- Step 3.5: reports -----------------------------------------------
     # Read-only analytical reports. Runs before reconcile/check so the

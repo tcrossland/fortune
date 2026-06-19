@@ -262,6 +262,16 @@ def balances(
             "``<data_dir>/balances.beancount``.",
         ),
     ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="Reconcile each statement against itself: re-scan for "
+            "holdings / cash rows the parser dropped (a row visible in the "
+            "statement but absent from the extraction silently understates "
+            "the valuation). Reports any gap and exits non-zero.",
+        ),
+    ] = False,
     verbose: VerboseOpt = False,
 ) -> None:
     """Extract per-holding and per-cash-sub-account balance
@@ -284,6 +294,19 @@ def balances(
         f"Wrote {output_path} ({total} balance assertion(s) "
         f"from {len(statements)} statement(s))"
     )
+
+    if strict:
+        gaps = balances_extract.coverage_report(statements)
+        if gaps:
+            for path, file_gaps in gaps:
+                for gap in file_gaps:
+                    err_console.print(
+                        f"[red]coverage gap[/red] {path.name}: "
+                        f"{gap.kind} {gap.detail} present in statement but "
+                        f"not extracted"
+                    )
+            raise typer.Exit(code=1)
+        err_console.print("Coverage check passed: every statement reconciles.")
 
 
 @app.command()
