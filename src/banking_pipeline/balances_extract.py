@@ -79,18 +79,21 @@ _QUANTITY_ROW_RE = re.compile(
 )
 # Cash-currency row: ``<balance> <Currency Name> <CCY> <balance>``,
 # where the two balance amounts repeat. The currency name is one or
-# more capitalised words (``Pound United Kingdom``, ``Euro``, ``Yen
-# Japan``, ``Dollar USA``, ``Franc Switzerland``, etc.).
+# more capitalised words. The character class spans accented Latin
+# letters (``À-ÿ``) as well as ASCII because the Spanish statement
+# localises the names (``Dólar USA``, ``Yen Japón``) — an ASCII-only
+# class silently failed to match those rows and dropped that currency's
+# cash from the valuation entirely.
 _CASH_ROW_RE = re.compile(
-    r"^([-\d'.]+)\s+([A-Z][A-Za-z\s]+?)\s+([A-Z]{3})\s+([-\d'.]+)\s*$"
+    r"^([-\d'.]+)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s]+?)\s+([A-Z]{3})\s+([-\d'.]+)\s*$"
 )
 # Spanish cash row: ``<CCY> <balance> <Currency Name> <balance> <%>`` — the
 # currency leads, the two balances repeat, and a trailing weight column the
 # English layout doesn't have. Requires a digit in each balance so a
 # dash-only zero row (``USD - Dólar USA - -``) can't match.
 _ES_CASH_ROW_RE = re.compile(
-    r"^([A-Z]{3})\s+(-?[\d'][\d'.]*)\s+([A-Z][A-Za-z\s]+?)\s+(-?[\d'][\d'.]*)"
-    r"\s+[-\d'.]+\s*$"
+    r"^([A-Z]{3})\s+(-?[\d'][\d'.]*)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s]+?)\s+"
+    r"(-?[\d'][\d'.]*)\s+[-\d'.]+\s*$"
 )
 
 

@@ -52,3 +52,45 @@ def test_zero_balance_currency_row_is_skipped() -> None:
         "12345.67",
         "DKK",
     ) in rows
+
+
+# The Spanish ``ESTADO FINANCIERO`` localises the currency name (``Dólar
+# USA``) and rounds the portfolio-currency display column to whole units
+# (``522'026``) while the balance column keeps cents (``522'025.77``).
+# Both used to drop the row — the accented ``ó`` failed the name class,
+# and the rounded column failed the exact-equality symmetry guard.
+_ES_CASH_STATEMENT = """\
+al 31 Enero 2023
+K-123456.001
+
+522'026 Euro EUR 522'025.77
+1'039'817.4 Dólar USA USD 1'039'817.40
+"""
+
+
+def test_accented_currency_name_cash_row_is_parsed() -> None:
+    """A cash row whose currency name carries an accent (``Dólar USA``)
+    must still be captured — an ASCII-only name class silently dropped the
+    USD cash leg and understated net cash."""
+
+    rows = extract_balances_from_statement(_ES_CASH_STATEMENT)
+    assert (
+        "2023-02-01",
+        "Assets:Pic:K123456001:USD",
+        "1039817.40",
+        "USD",
+    ) in rows
+
+
+def test_whole_unit_rounded_display_column_does_not_drop_cash() -> None:
+    """When the display column rounds to whole units (``522'026``) but the
+    balance column keeps cents (``522'025.77``), the row is still kept and
+    the cent-precise balance is asserted."""
+
+    rows = extract_balances_from_statement(_ES_CASH_STATEMENT)
+    assert (
+        "2023-02-01",
+        "Assets:Pic:K123456001:EUR",
+        "522025.77",
+        "EUR",
+    ) in rows
