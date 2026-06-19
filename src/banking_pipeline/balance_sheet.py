@@ -529,3 +529,21 @@ def render_html(data: BalanceSheetData) -> str:
     template = _TEMPLATE_PATH.read_text(encoding="utf-8")
     inlined = to_json(data).replace("</", "<\\/")
     return template.replace(_DATA_TOKEN, inlined)
+
+
+def write_artifact(data: BalanceSheetData, out_dir: Path) -> Path:
+    """Write the standalone HTML artifact and its JSON sidecar into
+    ``out_dir`` (created if absent). Returns the HTML path.
+
+    Both files carry real balances / holdings — the default
+    ``reports/balance-sheet`` is git-ignored by the repo-root ``.gitignore``
+    (``reports/*/``), so the artifact never lands in version control.
+    """
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    html_path = out_dir / "balance-sheet.html"
+    html_path.write_text(render_html(data), encoding="utf-8")
+    (out_dir / "balance-sheet-data.json").write_text(
+        to_json(data), encoding="utf-8"
+    )
+    return html_path

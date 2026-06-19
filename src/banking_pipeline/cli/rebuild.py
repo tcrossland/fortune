@@ -28,6 +28,9 @@ from banking_pipeline import (
     prices_extract,
 )
 from banking_pipeline import (
+    balance_sheet as balance_sheet_mod,
+)
+from banking_pipeline import (
     concentration as concentration_mod,
 )
 from banking_pipeline import (
@@ -644,6 +647,7 @@ def _do_rebuild(
                 ("allocation", rep.allocation),
                 ("portfolio-allocation", rep.portfolio_allocation),
                 ("trial-balance", rep.trial_balance),
+                ("balance-sheet", rep.balance_sheet),
                 ("mandate-scorecard", rep.mandate_scorecard),
                 ("mandate-returns", rep.mandate_returns),
                 ("benchmark", rep.benchmark),
@@ -839,6 +843,34 @@ def _run_rebuild_reports(
                 "trial-balance.csv",
                 trial_balance_mod.render_csv_rows(tb),
             )
+    if rep.balance_sheet:
+        # Ledger-based (bean-query), like trial-balance: build the
+        # self-contained HTML artifact from the queried Asset/Liability
+        # postings + prices + FX. Missing ledger / binary warns and skips.
+        if not trial_balance_ledger.is_file():
+            err_console.print(
+                f"[yellow]balance-sheet skipped:[/yellow] ledger "
+                f"{trial_balance_ledger} not found"
+            )
+        else:
+            bs_data, bs_result = balance_sheet_mod.build_data(
+                trial_balance_ledger,
+                commodities=commodities_map,
+                rate_source=rates,
+                prices_path=data_dir / "prices.beancount",
+                assertions_path=data_dir / "balances.beancount",
+            )
+            if bs_data is None:
+                err_console.print(
+                    f"[yellow]balance-sheet skipped:[/yellow] {bs_result.error}"
+                )
+            else:
+                balance_sheet_mod.write_artifact(
+                    bs_data,
+                    _resolve_report_dir(
+                        settings.balance_sheet_reports_dir, project_root
+                    ),
+                )
     if rep.mandate_scorecard:
         # Ledger-based (bean-query, like trial-balance) for the costs, plus
         # the statement archive for the average-invested denominator. A

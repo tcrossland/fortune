@@ -270,6 +270,53 @@ def test_render_html_inlines_data_token_and_stays_offline() -> None:
     assert "http" not in html
 
 
+def test_balance_sheet_cli_writes_artifact(
+    monkeypatch, tmp_path: Path  # type: ignore[no-untyped-def]
+) -> None:
+    from typer.testing import CliRunner
+
+    from banking_pipeline import cli
+
+    monkeypatch.setattr(
+        bs, "run_query",
+        lambda ledger, bql: QueryResult(
+            rows=[["2021-01-15", "Assets:Pic:K1:EUR", "1000 EUR"]]
+        ),
+    )
+    ledger = tmp_path / "main.beancount"
+    ledger.write_text("", encoding="utf-8")
+    out = tmp_path / "out"
+
+    result = CliRunner().invoke(
+        cli.app, ["balance-sheet", str(ledger), "--out", str(out)]
+    )
+    assert result.exit_code == 0, result.output
+    assert (out / "balance-sheet.html").exists()
+    assert (out / "balance-sheet-data.json").exists()
+
+
+def test_balance_sheet_cli_degrades_on_missing_binary(
+    monkeypatch, tmp_path: Path  # type: ignore[no-untyped-def]
+) -> None:
+    from typer.testing import CliRunner
+
+    from banking_pipeline import cli
+
+    monkeypatch.setattr(
+        bs, "run_query",
+        lambda ledger, bql: QueryResult(binary_missing=True, error="no bean-query"),
+    )
+    ledger = tmp_path / "main.beancount"
+    ledger.write_text("", encoding="utf-8")
+    out = tmp_path / "out"
+
+    result = CliRunner().invoke(
+        cli.app, ["balance-sheet", str(ledger), "--out", str(out)]
+    )
+    assert result.exit_code == 0, result.output  # warn + skip, never crash
+    assert not out.exists()
+
+
 def test_render_html_escapes_script_breakout() -> None:
     data = bs.BalanceSheetData(
         operating_currency="GBP",

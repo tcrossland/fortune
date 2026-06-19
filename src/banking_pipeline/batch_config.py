@@ -205,6 +205,13 @@ class ReportsStep(BaseModel):
     # ``inferred_tolerance_default`` options so the isolated query balances.
     trial_balance_ledger: str = ""
 
+    # ``balance_sheet`` is opt-in (default off): like ``trial_balance`` it
+    # reads the *ledger* via ``bean-query`` (reusing ``trial_balance_ledger``,
+    # falling back to the ``[post.check]`` ledger). Writes the self-contained
+    # ``balance-sheet.html`` artifact (+ JSON). Warns and skips on a missing
+    # binary / ledger rather than failing the rebuild.
+    balance_sheet: bool = False
+
     # ``mandate_scorecard`` is opt-in (default off): like ``trial_balance`` it
     # reads the *ledger* via ``bean-query`` (for the ``Expenses:Pic`` costs),
     # but it also needs the statement archive for the average-invested

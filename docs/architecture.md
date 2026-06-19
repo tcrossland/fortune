@@ -165,6 +165,13 @@ src/banking_pipeline/
 │                         statement-based valuation reports — and by design
 │                         does **not** reconcile with them (different source /
 │                         as-of / scope; the docstring spells out why)
+├── balance_sheet.py    Dataset + artifact for the `balance-sheet` command:
+│                         one `bean-query` over Asset/Liability postings →
+│                         `BalanceSheetData` → compact JSON, inlined into the
+│                         committed `balance_sheet_template.html` to produce a
+│                         single offline HTML you scrub to any as-of date.
+│                         `value_as_of` is the Python reference the template's
+│                         JS ports
 ├── property.py         Off-ledger residential property: loads
 │                         data/property.toml, renders data/property.beancount
 │                         (per-property commodity held at cost + price marks,
@@ -541,6 +548,21 @@ usage examples; this is the behavioural reference.
   valuation reports (concentration / net-worth / allocation /
   portfolio-allocation) — different source (ledger positions vs latest
   statement snapshot), as-of (today vs last statement date), and scope.
+- `balance-sheet` — a single self-contained `balance-sheet.html` (+ a
+  `balance-sheet-data.json` sidecar) you can **scrub to any as-of date**
+  entirely client-side. Like `trial-balance` it's a ledger construct:
+  `bean-query` returns the Asset/Liability postings once, and the browser
+  sums units ≤ the chosen date and values each holding to GBP (chaining
+  commodity → quote currency → GBP), rendering the Assets / Liabilities
+  (the Lombard loan = negative cash) / net-worth totals, a collapsible
+  account tree, and a hand-rolled SVG allocation donut. Offline by
+  construction (no CDN, nothing vendored). FX comes from the
+  `GbpRateSource` (security marks in `data/prices.beancount` carry no
+  currency→GBP rate); an unpriced holding is flagged, never zeroed. Needs
+  `bean-query` (a missing binary warns + skips). Writes to
+  `balance_sheet_reports_dir` — git-ignored, the artifact carries real
+  balances. The module map entry is `balance_sheet.py` (+ the committed,
+  data-free `balance_sheet_template.html`).
 
 ### Rebuild / validation
 

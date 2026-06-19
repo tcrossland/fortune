@@ -216,3 +216,68 @@ def test_rebuild_trial_balance_skips_gracefully_on_bad_ledger(tmp_path: Path) ->
     assert "trial-balance skipped" in flat
     # Nothing written for the skipped report.
     assert not (root / "reports" / "trial-balance").exists()
+
+
+# --- balance-sheet in [post.reports] --------------------------------------
+
+
+def test_reports_step_balance_sheet_defaults_off() -> None:
+    assert ReportsStep().balance_sheet is False
+
+
+def test_reports_step_parses_balance_sheet() -> None:
+    cfg = BatchConfig.model_validate(
+        {
+            "sources": [{"label": "x", "glob": "nope/*.pdf"}],
+            "post": {
+                "prices": False, "portfolio": False,
+                "reports": {
+                    "enabled": True, "income": False,
+                    "balance_sheet": True,
+                    "trial_balance_ledger": "main.beancount",
+                },
+            },
+        }
+    )
+    assert cfg.post.reports.balance_sheet is True
+
+
+def test_rebuild_balance_sheet_skips_gracefully_on_bad_ledger(tmp_path: Path) -> None:
+    # Ledger-based (bean-query), like trial-balance: a missing ledger must
+    # warn + skip, never fail the rebuild or write a partial artifact.
+    root = tmp_path / "project"
+    (root / "data").mkdir(parents=True)
+    config = textwrap.dedent("""
+        data_dir = "data"
+        clean_glob = ""
+
+        [[sources]]
+        label = "x"
+        glob = "nope/*.pdf"
+
+        [post]
+        prices = false
+        portfolio = false
+        balances = false
+
+        [post.reports]
+        enabled = true
+        income = false
+        concentration = false
+        net_worth = false
+        allocation = false
+        portfolio_allocation = false
+        balance_sheet = true
+        trial_balance_ledger = "does-not-exist.beancount"
+
+        [post.check]
+        enabled = false
+    """)
+    (root / "banking-pipeline.toml").write_text(config, encoding="utf-8")
+
+    result = runner.invoke(cli.app, ["rebuild", "--project-root", str(root)])
+    assert result.exit_code == 0, result.output
+    flat = " ".join(result.output.split())
+    assert "balance-sheet" in flat
+    assert "balance-sheet skipped" in flat
+    assert not (root / "reports" / "balance-sheet").exists()

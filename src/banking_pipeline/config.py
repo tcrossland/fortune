@@ -146,6 +146,11 @@ class Settings(BaseSettings):
     # and ``trial-balance.csv`` here.
     trial_balance_reports_dir: Path = Path("reports/trial-balance")
 
+    # Output directory for ``balance-sheet``: writes the self-contained
+    # ``balance-sheet.html`` artifact and ``balance-sheet-data.json`` here.
+    # Both carry real balances / holdings, so the directory is git-ignored.
+    balance_sheet_reports_dir: Path = Path("reports/balance-sheet")
+
     # Output directory for ``mandate-scorecard``: writes
     # ``mandate-scorecard.md`` and ``.csv`` here.
     mandate_scorecard_reports_dir: Path = Path("reports/mandate-scorecard")

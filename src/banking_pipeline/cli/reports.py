@@ -17,6 +17,7 @@ from typing import Annotated, cast
 import typer
 
 from banking_pipeline import allocation as allocation_mod
+from banking_pipeline import balance_sheet as balance_sheet_mod
 from banking_pipeline import concentration as concentration_mod
 from banking_pipeline import income as income_mod
 from banking_pipeline import mandate_benchmark as mandate_benchmark_mod
@@ -516,6 +517,84 @@ def trial_balance(
         )
         if strict:
             raise typer.Exit(code=1)
+
+
+@app.command("balance-sheet")
+def balance_sheet(
+    ledger: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            readable=True,
+            help="Beancount ledger to query. Defaults to ``main.beancount``.",
+        ),
+    ] = Path("main.beancount"),
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``balance_sheet_reports_dir`` (``reports/balance-sheet``).",
+        ),
+    ] = None,
+    commodities: CommoditiesOpt = None,
+    rate_source: ValuationRateSourceOpt = None,
+    open_browser: Annotated[
+        bool,
+        typer.Option(
+            "--open",
+            help="Open the generated HTML in the default browser.",
+        ),
+    ] = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """Build the interactive balance-sheet HTML you can scrub to any date.
+
+    One self-contained, offline ``balance-sheet.html`` (+ a
+    ``balance-sheet-data.json`` sidecar): the whole book's Asset/Liability
+    holdings queried once via ``bean-query``, valued client-side to GBP at
+    whatever as-of date you pick. Needs the ``bean-query`` binary (``uv tool
+    install beancount``); a missing binary is a warning, not an error. The
+    output carries real balances, so its directory is git-ignored.
+    """
+
+    _configure_logging(verbose)
+    eff_settings = (
+        settings.model_copy(update={"gbp_rate_source": rate_source})
+        if rate_source is not None
+        else settings
+    )
+    rates = build_rate_source(eff_settings)
+    cpath = commodities or settings.commodities_metadata_path
+    commodities_map = (
+        load_commodities(cpath) if cpath is not None and cpath.is_file() else {}
+    )
+    data_dir = ledger.parent / "data"
+
+    data, result = balance_sheet_mod.build_data(
+        ledger,
+        commodities=commodities_map,
+        rate_source=rates,
+        prices_path=data_dir / "prices.beancount",
+        assertions_path=data_dir / "balances.beancount",
+    )
+    if result.binary_missing:
+        err_console.print(f"[yellow]warning:[/yellow] {result.error}")
+        raise typer.Exit(code=0)
+    if data is None:
+        err_console.print(f"[red]bean-query failed[/red]:\n{result.error}")
+        raise typer.Exit(code=1)
+
+    out_dir = out or settings.balance_sheet_reports_dir
+    html_path = balance_sheet_mod.write_artifact(data, out_dir)
+    err_console.print(
+        f"Wrote {html_path} ({len(data.postings)} posting(s), "
+        f"as-of {data.as_of_min}…{data.as_of_max})"
+    )
+    if open_browser:
+        import webbrowser
+
+        webbrowser.open(html_path.resolve().as_uri())
 
 
 @app.command("mandate-scorecard")

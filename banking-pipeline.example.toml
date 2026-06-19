@@ -111,6 +111,11 @@ income_period = "tax-year"
 # ledger. A missing ledger/binary warns and skips, never fails the rebuild.
 # trial_balance = true
 # trial_balance_ledger = "main.beancount"
+# Balance sheet is opt-in: also ledger-based (bean-query, reusing
+# trial_balance_ledger). Writes the self-contained balance-sheet.html you
+# can scrub to any as-of date (+ a JSON sidecar) into reports/balance-sheet/.
+# Same missing-ledger/binary → warn + skip behaviour.
+# balance_sheet = true
 # Mandate scorecard / returns (Pictet) are opt-in. ``mandate_scorecard``
 # totals ledger-visible costs via bean-query (same ledger as trial_balance
 # — trial_balance_ledger, else the [post.check] ledger) and needs the

@@ -290,7 +290,7 @@ reporting feature over the existing ledger. New code is confined to
    one book, but consider a compact schema (short keys `d/a/q/c`, as the
    prototype used) and dropping pre-`as_of_min` postings.
 
-## Status: in progress — phases 1 & 2 shipped
+## Status: in progress — phases 1–3 shipped (MVP complete)
 
 Supersedes the `reports/balance-sheet/` prototype; no dependency on it.
 Phasing: (1) `build_data` + JSON + tests → (2) template + `render_html` +
@@ -346,9 +346,35 @@ ports) + tests.
   scrubbing all recompute correctly and match `value_as_of`; no console
   errors.
 
-### Phase 3 — next
+### Phase 3 — done
 
-CLI command `balance-sheet`, `Settings.balance_sheet_reports_dir`, the
-`[post.reports] balance_sheet` toggle + rebuild wiring, the
-`reports/balance-sheet/.gitignore`, and the README/architecture docs (no
-chart-lib licence line needed — nothing vendored).
+CLI + config + rebuild wiring. The feature is now usable end-to-end.
+
+- `balance-sheet` command in `cli/reports.py` (mirrors `trial-balance`):
+  `[LEDGER] --out --commodities --rate-source --open`. Degrades (warn,
+  exit 0) on a missing `bean-query`; writes `balance-sheet.html` +
+  `balance-sheet-data.json` via the shared `balance_sheet.write_artifact`.
+- `Settings.balance_sheet_reports_dir` (`reports/balance-sheet`).
+- `[post.reports] balance_sheet` toggle (default off, reusing
+  `trial_balance_ledger`) + the rebuild build block (warn + skip on a
+  missing ledger/binary), documented in `banking-pipeline.example.toml`.
+- Docs: architecture.md module map + CLI reference. **Verified end-to-end**
+  against the real ledger (1498 postings → 446 KB artifact).
+
+Deviations from the plan:
+
+- **No nested `reports/balance-sheet/.gitignore`.** The repo-root
+  `.gitignore` already has `reports/*/`, which fully ignores the artifact
+  dir (verified with `git check-ignore`); a nested file is redundant *and*
+  uncommittable without `-f` inside an already-ignored dir.
+- **No README subsection / chart-lib licence line.** README has no
+  reports-catalog section (the other reports aren't documented there
+  either), and nothing was vendored, so there's no licence to record. The
+  canonical surface doc is architecture.md's CLI reference, which is
+  updated.
+
+### Phase 4 — remaining (deferred, per Non-goals)
+
+Cost-basis / unrealised-P&L column and the statement-assertion drift
+overlay (the dataset already carries the `assertions`). Both need
+per-date booking / `reconcile` overlap; out of scope for the MVP.
