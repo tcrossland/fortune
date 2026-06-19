@@ -179,3 +179,108 @@ def test_build_data_degrades_when_bean_query_missing(
     )
     assert data is None
     assert result.binary_missing
+
+
+# --- as-of valuation (the JS reference) ------------------------------------
+
+
+def _valuation_data() -> bs.BalanceSheetData:
+    return bs.BalanceSheetData(
+        operating_currency="GBP",
+        as_of_min=date(2021, 1, 1),
+        as_of_max=date(2021, 1, 31),
+        postings=(
+            bs.Posting(date(2021, 1, 10), "Assets:Pic:K1:GBP", Decimal("500"), "GBP"),
+            bs.Posting(date(2021, 1, 15), "Assets:Pic:K1:EUR", Decimal("1000"), "EUR"),
+            bs.Posting(date(2021, 1, 20), f"Assets:Pic:K1:{_ISIN}", Decimal("10"), _ISIN),
+        ),
+        prices={
+            _ISIN: (bs.PricePoint(date(2021, 1, 5), Decimal("50"), "USD"),),
+            "EUR": (bs.PricePoint(date(2021, 1, 1), Decimal("0.85"), "GBP"),),
+            "USD": (bs.PricePoint(date(2021, 1, 1), Decimal("0.75"), "GBP"),),
+        },
+        commodities={_ISIN: bs.CommodityInfo("Apple", "equity-etf", "US")},
+        assertions=(),
+    )
+
+
+def test_value_as_of_chains_to_gbp_and_classes() -> None:
+    v = bs.value_as_of(_valuation_data(), date(2021, 1, 20))
+    # GBP 500 (1:1) + EUR 1000×0.85=850 (cash) + 10×50 USD ×0.75=375 (equity).
+    assert v.assets_gbp == Decimal("1725")
+    assert v.liabilities_gbp == Decimal("0")
+    assert v.net_worth_gbp == Decimal("1725")
+    assert v.by_asset_class == {"cash": Decimal("1350.00"), "equity-etf": Decimal("375.00")}
+    assert {a.account: a.value_gbp for a in v.accounts} == {
+        "Assets:Pic:K1:EUR": Decimal("850.00"),
+        "Assets:Pic:K1:GBP": Decimal("500"),
+        f"Assets:Pic:K1:{_ISIN}": Decimal("375.00"),
+    }
+
+
+def test_value_as_of_excludes_future_postings() -> None:
+    v = bs.value_as_of(_valuation_data(), date(2021, 1, 16))
+    # The security (booked 01-20) isn't held yet on 01-16.
+    assert v.assets_gbp == Decimal("1350.00")  # GBP 500 + EUR 850
+    assert f"Assets:Pic:K1:{_ISIN}" not in {a.account for a in v.accounts}
+
+
+def test_value_as_of_negative_cash_is_a_liability() -> None:
+    data = bs.BalanceSheetData(
+        operating_currency="GBP",
+        as_of_min=date(2021, 3, 1), as_of_max=date(2021, 3, 31),
+        postings=(
+            bs.Posting(date(2021, 3, 1), "Assets:Pic:K1:EUR", Decimal("-2000"), "EUR"),
+        ),
+        prices={"EUR": (bs.PricePoint(date(2021, 3, 1), Decimal("0.85"), "GBP"),)},
+        commodities={}, assertions=(),
+    )
+    v = bs.value_as_of(data, date(2021, 3, 15))
+    assert v.assets_gbp == Decimal("0")
+    assert v.liabilities_gbp == Decimal("1700.00")
+    assert v.net_worth_gbp == Decimal("-1700.00")
+
+
+def test_value_as_of_missing_price_flagged_not_zeroed() -> None:
+    data = bs.BalanceSheetData(
+        operating_currency="GBP",
+        as_of_min=date(2021, 1, 1), as_of_max=date(2021, 1, 31),
+        postings=(
+            bs.Posting(date(2021, 1, 5), f"Assets:Pic:K1:{_ISIN}", Decimal("10"), _ISIN),
+        ),
+        prices={},  # no mark for the security
+        commodities={_ISIN: bs.CommodityInfo("Apple", "equity-etf", "US")},
+        assertions=(),
+    )
+    v = bs.value_as_of(data, date(2021, 1, 20))
+    assert v.assets_gbp == Decimal("0")
+    assert v.missing == (f"Assets:Pic:K1:{_ISIN}:{_ISIN}",)
+    assert v.accounts == ()
+
+
+# --- artifact rendering ----------------------------------------------------
+
+
+def test_render_html_inlines_data_token_and_stays_offline() -> None:
+    html = bs.render_html(_valuation_data())
+    assert '"__DATA_PLACEHOLDER__"' not in html  # token substituted
+    assert bs.to_json(_valuation_data()).replace("</", "<\\/") in html
+    # Offline by construction: no CDN / external resource references at all
+    # (inline SVG is built via innerHTML, so even the SVG namespace URL is absent).
+    assert "http" not in html
+
+
+def test_render_html_escapes_script_breakout() -> None:
+    data = bs.BalanceSheetData(
+        operating_currency="GBP",
+        as_of_min=date(2021, 1, 1), as_of_max=date(2021, 1, 1),
+        postings=(),
+        prices={},
+        commodities={_ISIN: bs.CommodityInfo("</script><x>evil", "other", "")},
+        assertions=(),
+    )
+    html = bs.render_html(data)
+    # The data-derived close tag is neutralised; only the template's own
+    # real </script> survives.
+    assert "</script><x>evil" not in html
+    assert "<\\/script><x>evil" in html

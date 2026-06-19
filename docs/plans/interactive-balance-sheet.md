@@ -290,7 +290,7 @@ reporting feature over the existing ledger. New code is confined to
    one book, but consider a compact schema (short keys `d/a/q/c`, as the
    prototype used) and dropping pre-`as_of_min` postings.
 
-## Status: in progress — phase 1 shipped
+## Status: in progress — phases 1 & 2 shipped
 
 Supersedes the `reports/balance-sheet/` prototype; no dependency on it.
 Phasing: (1) `build_data` + JSON + tests → (2) template + `render_html` +
@@ -325,8 +325,30 @@ Open-question decisions made (with reasons):
    a missing/erroring `bean-query` (mirrors trial balance). It takes
    explicit `prices_path` / `assertions_path` (a missing file → empty).
 
-### Phase 2+ open questions (unchanged)
+### Phase 2 — done
 
-Chart lib (Q1: lean hand-rolled SVG donut + bar) and as-of JS testing
-(Q2: Python reference impl + thin JS port) are decided-in-principle but
-land in phase 2.
+`src/banking_pipeline/balance_sheet_template.html` (data-free, committed)
++ `render_html` + `value_as_of` (the Python reference the template's JS
+ports) + tests.
+
+- **Chart (Q1): hand-rolled SVG donut**, built via `innerHTML` (no
+  `createElementNS`, so the artifact contains no `http` substring at all —
+  not even the SVG namespace URL). No vendored lib, no CDN, no licence line
+  to add. A top-N bar wasn't needed; the donut + legend covers allocation.
+- **As-of JS testing (Q2): Python reference impl** (`value_as_of`,
+  fully tested) mirrored by a thin JS port; no node in CI.
+- `render_html` substitutes the JSON for a single `"__DATA_PLACEHOLDER__"`
+  token and escapes `</` so a fund description can't break out of the
+  `<script>`. Golden tests assert the token is gone, the JSON is present,
+  and `"http" not in html` (the offline guarantee).
+- **Verified in a browser** against a scrubbed fixture: totals, collapsible
+  tree (loan shown as negative red cash), allocation donut, and as-of
+  scrubbing all recompute correctly and match `value_as_of`; no console
+  errors.
+
+### Phase 3 — next
+
+CLI command `balance-sheet`, `Settings.balance_sheet_reports_dir`, the
+`[post.reports] balance_sheet` toggle + rebuild wiring, the
+`reports/balance-sheet/.gitignore`, and the README/architecture docs (no
+chart-lib licence line needed — nothing vendored).

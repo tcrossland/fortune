@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Balance sheet</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a2029; --ink: #e6edf3; --muted: #8b949e;
+    --line: #2d333b; --pos: #3fb950; --neg: #f85149; --accent: #58a6ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  header { padding: 20px 24px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0 0 12px; font-size: 20px; }
+  h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase;
+       letter-spacing: .04em; color: var(--muted); }
+  .asof { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .asof input[type=range] { flex: 1; min-width: 200px; accent-color: var(--accent); }
+  .asof time { font-variant-numeric: tabular-nums; font-weight: 600; }
+  main { padding: 24px; display: grid; gap: 24px; max-width: 1100px; margin: 0 auto; }
+  .totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line);
+          border-radius: 10px; padding: 16px; }
+  .card .amount { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .net .amount { color: var(--accent); }
+  .cols { display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start; }
+  @media (max-width: 820px) { .cols { grid-template-columns: 1fr; } .totals { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line);
+           border-radius: 10px; padding: 16px; }
+  ul.tree { list-style: none; margin: 0; padding: 0; }
+  ul.tree ul { list-style: none; margin: 0; padding-left: 18px; }
+  .node { display: flex; justify-content: space-between; gap: 12px;
+          padding: 3px 0; cursor: default; }
+  .node.branch > .label { cursor: pointer; }
+  .node .label::before { content: ""; display: inline-block; width: 12px; }
+  .node.branch > .label::before { content: "\25be"; color: var(--muted); }
+  li.collapsed > .node.branch > .label::before { content: "\25b8"; }
+  li.collapsed > ul { display: none; }
+  .node .val { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+  .node .val.pos { color: var(--ink); }
+  .node .val.neg { color: var(--neg); }
+  .legend { margin-top: 12px; }
+  .legend-row { display: flex; align-items: center; gap: 8px; padding: 2px 0;
+                font-variant-numeric: tabular-nums; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+  .legend-row .lv { margin-left: auto; color: var(--muted); }
+  .chart svg { display: block; margin: 0 auto; }
+  .missing { border-color: var(--neg); }
+  .missing ul { margin: 0; padding-left: 18px; color: var(--muted); }
+  .empty { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Balance sheet <span class="empty" id="ccy"></span></h1>
+  <div class="asof">
+    <label>As of <input type="date" id="asof-date"></label>
+    <input type="range" id="asof-range" min="0" value="0">
+    <time id="asof-label"></time>
+  </div>
+</header>
+<main>
+  <section class="totals">
+    <div class="card"><h2>Assets</h2><div class="amount pos" id="t-assets"></div></div>
+    <div class="card"><h2>Liabilities</h2><div class="amount neg" id="t-liabilities"></div></div>
+    <div class="card net"><h2>Net worth</h2><div class="amount" id="t-net"></div></div>
+  </section>
+  <section class="cols">
+    <div class="panel"><h2>Accounts</h2><div id="tree"></div></div>
+    <div>
+      <div class="panel"><h2>Allocation</h2><div class="chart" id="chart"></div>
+        <div class="legend" id="legend"></div></div>
+      <div class="panel missing" id="missing-panel" hidden style="margin-top:24px">
+        <h2>Unpriced holdings</h2><ul id="missing"></ul></div>
+    </div>
+  </section>
+</main>
+<script>
+"use strict";
+// Inlined at build time by balance_sheet.render_html (replaces the quoted
+// token with the dataset object). Offline by construction — no network.
+const DATA = "__DATA_PLACEHOLDER__";
+
+const GBP = DATA.operating_currency;
+// Colours per asset class (cash + the AssetClass literals + a fallback).
+const COLORS = {
+  "cash": "#58a6ff", "equity-etf": "#3fb950", "equity-fund": "#56d364",
+  "bond": "#d29922", "money-market": "#a371f7", "other": "#8b949e",
+};
+const fmt = (x) => (x < 0 ? "−" : "") + Math.abs(x).toLocaleString("en-GB",
+  { style: "currency", currency: GBP, minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// --- as-of valuation (a thin port of balance_sheet.value_as_of) ----------
+// ISO date strings compare lexicographically, so no Date parsing needed.
+function latest(series, asOf) {
+  let best = null;
+  for (const pt of series || []) { if (pt.d <= asOf) best = pt; else break; }
+  return best;
+}
+function isCurrency(c) { return c.length === 3 && /^[A-Za-z]+$/.test(c); }
+function valueLeg(commodity, qty, asOf) {
+  if (commodity === GBP) return qty;
+  if (isCurrency(commodity)) {
+    const r = latest(DATA.prices[commodity], asOf);
+    return r ? qty * parseFloat(r.p) : null;
+  }
+  const mark = latest(DATA.prices[commodity], asOf);
+  if (!mark) return null;
+  const value = qty * parseFloat(mark.p);
+  if (mark.c === GBP) return value;
+  const r = latest(DATA.prices[mark.c], asOf);
+  return r ? value * parseFloat(r.p) : null;
+}
+function valueAsOf(asOf) {
+  const bal = new Map();
+  for (const p of DATA.postings) {
+    if (p.d <= asOf) bal.set(p.a + "\t" + p.c, (bal.get(p.a + "\t" + p.c) || 0) + parseFloat(p.q));
+  }
+  const accounts = new Map(), byClass = new Map(), missing = [];
+  for (const [key, qty] of bal) {
+    if (qty === 0) continue;
+    const [account, commodity] = key.split("\t");
+    const gbp = valueLeg(commodity, qty, asOf);
+    if (gbp === null) { missing.push(account + ":" + commodity); continue; }
+    accounts.set(account, (accounts.get(account) || 0) + gbp);
+    if (gbp > 0) {
+      const cls = isCurrency(commodity) ? "cash"
+        : (DATA.commodities[commodity] || { asset_class: "other" }).asset_class;
+      byClass.set(cls, (byClass.get(cls) || 0) + gbp);
+    }
+  }
+  let assets = 0, liabilities = 0;
+  for (const v of accounts.values()) { if (v > 0) assets += v; else liabilities -= v; }
+  return { asOf, accounts, assets, liabilities, net: assets - liabilities,
+           byClass, missing: missing.sort() };
+}
+
+// --- rendering -----------------------------------------------------------
+function buildTree(accounts) {
+  const root = { name: "", children: new Map(), value: 0 };
+  for (const [account, value] of accounts) {
+    let node = root; root.value += value;
+    for (const part of account.split(":")) {
+      if (!node.children.has(part)) node.children.set(part, { name: part, children: new Map(), value: 0 });
+      node = node.children.get(part); node.value += value;
+    }
+  }
+  return root;
+}
+function renderNode(node) {
+  const li = document.createElement("li");
+  const row = document.createElement("div");
+  row.className = "node" + (node.children.size ? " branch" : "");
+  const label = document.createElement("span");
+  label.className = "label"; label.textContent = node.name;
+  const val = document.createElement("span");
+  val.className = "val " + (node.value >= 0 ? "pos" : "neg");
+  val.textContent = fmt(node.value);
+  row.append(label, val); li.append(row);
+  if (node.children.size) {
+    const ul = document.createElement("ul");
+    for (const child of [...node.children.values()].sort((a, b) => b.value - a.value))
+      ul.append(renderNode(child));
+    li.append(ul);
+    label.addEventListener("click", () => li.classList.toggle("collapsed"));
+  }
+  return li;
+}
+function donut(byClass) {
+  const slices = [...byClass.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const total = slices.reduce((s, [, v]) => s + v, 0);
+  const R = 80, W = 36, C = 2 * Math.PI * R;
+  let off = 0, arcs = "";
+  for (const [cls, v] of slices) {
+    const len = total ? (v / total) * C : 0;
+    arcs += `<circle r="${R}" cx="100" cy="100" fill="none" stroke="${COLORS[cls] || COLORS.other}"`
+      + ` stroke-width="${W}" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}"`
+      + ` transform="rotate(-90 100 100)"></circle>`;
+    off += len;
+  }
+  document.getElementById("chart").innerHTML = total
+    ? `<svg viewBox="0 0 200 200" width="200" height="200">${arcs}`
+      + `<text x="100" y="105" text-anchor="middle" fill="#e6edf3" font-size="15">${fmt(total)}</text></svg>`
+    : `<p class="empty">Nothing to allocate.</p>`;
+  const legend = document.getElementById("legend");
+  legend.innerHTML = "";
+  for (const [cls, v] of slices) {
+    const row = document.createElement("div"); row.className = "legend-row";
+    const sw = document.createElement("span"); sw.className = "swatch";
+    sw.style.background = COLORS[cls] || COLORS.other;
+    const name = document.createElement("span"); name.textContent = cls;
+    const amt = document.createElement("span"); amt.className = "lv";
+    amt.textContent = fmt(v) + "  " + (total ? (100 * v / total).toFixed(1) : "0") + "%";
+    row.append(sw, name, amt); legend.append(row);
+  }
+}
+function render(asOf) {
+  const v = valueAsOf(asOf);
+  document.getElementById("asof-label").textContent = asOf;
+  document.getElementById("asof-date").value = asOf;
+  document.getElementById("t-assets").textContent = fmt(v.assets);
+  document.getElementById("t-liabilities").textContent = fmt(v.liabilities);
+  document.getElementById("t-net").textContent = fmt(v.net);
+  const tree = document.getElementById("tree"); tree.innerHTML = "";
+  const root = buildTree(v.accounts);
+  if (root.children.size) {
+    const ul = document.createElement("ul"); ul.className = "tree";
+    for (const child of [...root.children.values()].sort((a, b) => b.value - a.value))
+      ul.append(renderNode(child));
+    tree.append(ul);
+  } else { tree.innerHTML = `<p class="empty">No holdings on this date.</p>`; }
+  donut(v.byClass);
+  const mp = document.getElementById("missing-panel"), ml = document.getElementById("missing");
+  ml.innerHTML = ""; mp.hidden = v.missing.length === 0;
+  for (const m of v.missing) { const li = document.createElement("li"); li.textContent = m; ml.append(li); }
+}
+
+// --- as-of control -------------------------------------------------------
+// Slider steps over the distinct dates where a balance or price changed, so
+// every notch is a meaningful state; the date input allows an exact pick.
+const STOPS = [...new Set([
+  ...DATA.postings.map((p) => p.d),
+  ...Object.values(DATA.prices).flat().map((pt) => pt.d),
+].filter((d) => d >= DATA.as_of_min && d <= DATA.as_of_max))].sort();
+if (STOPS[STOPS.length - 1] !== DATA.as_of_max) STOPS.push(DATA.as_of_max);
+
+document.getElementById("ccy").textContent = "(" + GBP + ")";
+const range = document.getElementById("asof-range");
+const dateInput = document.getElementById("asof-date");
+range.max = String(STOPS.length - 1); range.value = String(STOPS.length - 1);
+dateInput.min = DATA.as_of_min; dateInput.max = DATA.as_of_max;
+range.addEventListener("input", () => render(STOPS[parseInt(range.value, 10)]));
+dateInput.addEventListener("change", () => {
+  const d = dateInput.value;
+  // snap the slider to the last stop on or before the picked date
+  let i = 0; for (let k = 0; k < STOPS.length; k++) if (STOPS[k] <= d) i = k;
+  range.value = String(i); render(d < DATA.as_of_min ? DATA.as_of_min : d > DATA.as_of_max ? DATA.as_of_max : d);
+});
+render(STOPS[STOPS.length - 1]);
+</script>
+</body>
+</html>

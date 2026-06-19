@@ -345,6 +345,123 @@ def build_data(
     return data, result
 
 
+@dataclass(frozen=True)
+class AccountValue:
+    """One account's signed GBP market value at an as-of date."""
+
+    account: str
+    value_gbp: Decimal
+
+
+@dataclass(frozen=True)
+class Valuation:
+    """The whole book valued at one as-of date — the reference the
+    template's JavaScript mirrors (see :func:`value_as_of`)."""
+
+    as_of: date
+    accounts: tuple[AccountValue, ...]
+    assets_gbp: Decimal
+    liabilities_gbp: Decimal  # positive magnitude of the negative balances
+    net_worth_gbp: Decimal
+    by_asset_class: dict[str, Decimal]  # gross-long GBP per class
+    missing: tuple[str, ...]  # "account:commodity" with no price <= as_of
+
+
+def _latest(series: tuple[PricePoint, ...], as_of: date) -> PricePoint | None:
+    """The last price point on or before ``as_of`` (series is ascending)."""
+
+    best: PricePoint | None = None
+    for pt in series:
+        if pt.date <= as_of:
+            best = pt
+        else:
+            break
+    return best
+
+
+def _value_leg(
+    data: BalanceSheetData, commodity: str, qty: Decimal, as_of: date
+) -> Decimal | None:
+    """GBP value of ``qty`` units of ``commodity`` at ``as_of``, or ``None``
+    when no price (mark or FX rate) is available on or before that date.
+
+    Chains commodity → quote-currency → GBP: GBP cash is 1:1, other cash
+    uses its synthesised GBP series, and a security uses its mark then (if
+    quoted in a foreign currency) that currency's GBP series.
+    """
+
+    if commodity == OPERATING_CURRENCY:
+        return qty
+    if _is_currency(commodity):
+        rate = _latest(data.prices.get(commodity, ()), as_of)
+        return qty * rate.price if rate is not None else None
+    mark = _latest(data.prices.get(commodity, ()), as_of)
+    if mark is None:
+        return None
+    value = qty * mark.price
+    if mark.currency == OPERATING_CURRENCY:
+        return value
+    rate = _latest(data.prices.get(mark.currency, ()), as_of)
+    return value * rate.price if rate is not None else None
+
+
+def value_as_of(data: BalanceSheetData, as_of: date) -> Valuation:
+    """Value the whole book at ``as_of`` — the Python reference for the
+    client-side aggregation.
+
+    Sums posting units per ``(account, commodity)`` up to ``as_of`` (FIFO
+    never changes total units, so this is exact), values each holding to
+    GBP, and folds into per-account totals, the Assets / Liabilities /
+    net-worth figures (positive account balances are assets; negative ones
+    — the Lombard loan — are liabilities), and a gross-long allocation by
+    asset class. A holding with no price is surfaced in ``missing``, never
+    valued at zero. The template's JavaScript is a thin port of this.
+    """
+
+    balances: dict[tuple[str, str], Decimal] = {}
+    for p in data.postings:
+        if p.date <= as_of:
+            key = (p.account, p.commodity)
+            balances[key] = balances.get(key, Decimal(0)) + p.quantity
+
+    account_totals: dict[str, Decimal] = {}
+    by_class: dict[str, Decimal] = {}
+    missing: list[str] = []
+    for (account, commodity), qty in balances.items():
+        if qty == 0:
+            continue
+        gbp = _value_leg(data, commodity, qty, as_of)
+        if gbp is None:
+            missing.append(f"{account}:{commodity}")
+            continue
+        account_totals[account] = account_totals.get(account, Decimal(0)) + gbp
+        if gbp > 0:
+            cls = "cash" if _is_currency(commodity) else _asset_class_of(
+                data, commodity
+            )
+            by_class[cls] = by_class.get(cls, Decimal(0)) + gbp
+
+    accounts = tuple(
+        AccountValue(a, v) for a, v in sorted(account_totals.items()) if v != 0
+    )
+    assets = sum((v for v in account_totals.values() if v > 0), Decimal(0))
+    liabilities = -sum((v for v in account_totals.values() if v < 0), Decimal(0))
+    return Valuation(
+        as_of=as_of,
+        accounts=accounts,
+        assets_gbp=assets,
+        liabilities_gbp=liabilities,
+        net_worth_gbp=assets - liabilities,
+        by_asset_class=by_class,
+        missing=tuple(sorted(missing)),
+    )
+
+
+def _asset_class_of(data: BalanceSheetData, commodity: str) -> str:
+    info = data.commodities.get(commodity)
+    return info.asset_class if info is not None else "other"
+
+
 def to_json(data: BalanceSheetData) -> str:
     """Serialise to the compact, browser-facing JSON.
 
@@ -392,3 +509,23 @@ def to_json(data: BalanceSheetData) -> str:
         ],
     }
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+
+
+_TEMPLATE_PATH = Path(__file__).with_name("balance_sheet_template.html")
+_DATA_TOKEN = '"__DATA_PLACEHOLDER__"'
+
+
+def render_html(data: BalanceSheetData) -> str:
+    """Inline ``data`` into the committed template → a standalone HTML file.
+
+    The template carries one ``"__DATA_PLACEHOLDER__"`` token (a quoted JS
+    string); substituting the JSON object for it yields a single
+    self-contained, offline artifact — no server, no network. ``</`` in the
+    JSON is escaped so a stray ``</script>`` inside a fund description can't
+    break out of the script element (``<\\/script>`` still parses back to
+    the original inside JSON).
+    """
+
+    template = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    inlined = to_json(data).replace("</", "<\\/")
+    return template.replace(_DATA_TOKEN, inlined)
