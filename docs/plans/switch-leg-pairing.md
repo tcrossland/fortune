@@ -100,6 +100,9 @@ Algorithm:
 Tie-breakers when a bucket holds several candidates:
 
 - exact amount first;
+- **shared order date** (`Fecha de la orden`) — both legs of one switch
+  carry the same order date (see Investigation below); a strong
+  corroborator, though not currently captured in the model;
 - prefer salida.ISIN ≠ entrada.ISIN (a switch changes holding);
 - transaction-number proximity as a *weak* last resort only
   (`812960461→462` are adjacent, but `826450556→560` are 4 apart, so it
@@ -198,16 +201,37 @@ The change is concentrated in the new `switch_pairing.py` and the
 - **Changing the non-switch builders** to emit links — explicitly
   declined; the `no:` metadata remains the reference for those.
 
+## Investigation: is there a deterministic order reference? (settled — no)
+
+Checked both legs of two real pairs — `812960461`/`812960462`
+(2022-10-12) and `826450556`/`826450560` (2022-12-02). Findings:
+
+- **No shared order/operation number.** The advices print only
+  `N° de transacción` (per-leg) and `N° de cuenta` (the account). There
+  is **no** `N° de orden` / `N° de operación` field. The only ≥6-char
+  token both legs share is the account number itself.
+- **Order date *is* shared; order time is not.** Both legs carry the
+  same `Fecha de la orden` date (e.g. `06.10.2022`, `28.11.2022`) but
+  different times (~45s apart — the legs are placed as two separate
+  orders moments apart). So order date corroborates a pair but can't
+  uniquely key one (multiple switches could be ordered the same day).
+- **Booking date is the shared date, not trade date.** The legs'
+  `Fecha de transacción` (trade/settlement) **differ** (07.10 vs 11.10;
+  29.11 vs 30.11 — settlement lag), while `Fecha de publicación`
+  (booking) is identical (12.10; 02.12). This **confirms the matcher
+  must bucket by `booking_date`**, which is exactly the ledger
+  `entry_date` — not by trade date.
+
+**Conclusion:** amount-netting on the `Switch:<ccy>` clearing account is
+the correct primary key — there is no exact reference to lean on.
+Optionally capture `Fecha de la orden` into the model as a new field to
+use as the corroborating tie-breaker above; cheap, and it tightens
+disambiguation when several same-day switches collide. Not required for
+the common (1:1) case.
+
 ## Open questions
 
-1. **Is there a deterministic order reference on the PDFs?** The ideal
-   key is a *shared order/operation number* printed on both advices
-   (distinct from each leg's `transaction_number`). The sidecar carries
-   only `transaction_number` today. Before relying on amount-netting,
-   grep the salida/entrada source text for a common reference — if
-   Pictet prints one, capture it into the model and pair exactly,
-   keeping amount-netting as the fallback.
-2. **Full-history pass now or later?** Same-day batching covers observed
+1. **Full-history pass now or later?** Same-day batching covers observed
    data; defer the cross-source pass until a real straddling pair
    appears (the warning will flag it).
 
