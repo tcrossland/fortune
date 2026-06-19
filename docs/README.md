@@ -10,6 +10,7 @@ Each document has one job:
 | [backlog.md](backlog.md) | **What's next** — open, unimplemented ideas only. |
 | [design-decisions.md](design-decisions.md) | **Why it's built this way** — the durable rationale behind the load-bearing choices. |
 | [reporting-audit.md](reporting-audit.md) | **Point-in-time audit** — what's solid / missing in the reporting subsystems (tax reporting-status + the analytical reports), prioritised. A dated snapshot; adopted items move to the backlog. |
+| [plans/](plans/) | **In-flight plans** — implementation briefs for features not yet built. When a plan ships, move it to `archive/`. |
 | [archive/](archive/) | **Historical record** — the implementation briefs / plans that built shipped features (kept for provenance; not current guidance). |
 
 If you're adding a doc, place it by *role*, not by topic: a how-to goes
