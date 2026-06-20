@@ -227,11 +227,13 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-_No active plan._ Resume one of the paused plans below, or write a new
-plan to `docs/plans/<name>.md` and name it here when you start a
-non-trivial task.
+**Active:** [docs/plans/revolut-contra-leg-equity.md](docs/plans/revolut-contra-leg-equity.md)
+— reclass the Revolut self-to-self contra-leg from `Assets:Revolut:<ccy>`
+to `Equity:Transfers:Revolut:<ccy>`, so day-to-day-untracked Revolut
+transfers stop inflating the balance sheet (the counter-leg is a perimeter
+crossing, not a holding). Sidecars / tax math unchanged — only the rendered
+account path moves.
 
-- Paused: [docs/plans/revolut-contra-leg-equity.md](docs/plans/revolut-contra-leg-equity.md).
 - Last shipped: [docs/archive/interactive-balance-sheet.md](docs/archive/interactive-balance-sheet.md)
   — the `balance-sheet` command: a self-contained, offline HTML balance
   sheet you scrub to any as-of date (client-side valuation over
@@ -252,6 +254,10 @@ non-trivial task.
 - **One plan file, status folded in.** Each plan is a sequence of Stages
   worked in order; status lives in the same file. After a compaction or
   restart, resume from the active plan.
+- **Don't blind-`Write` a plan/doc path.** Before creating a new file under
+  `docs/plans/` (or any doc), confirm the path doesn't already exist —
+  untracked files have no git history to recover if you overwrite them. A
+  stale "Active/Paused" pointer in this file is not proof the file is gone.
 - **One session, one worktree.** Never run two sessions in the same working
   directory. Stage explicit paths; commits and pushes are reviewed by me.
 - **Review before merge.** Run the `code-reviewer` subagent

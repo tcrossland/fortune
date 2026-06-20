@@ -91,6 +91,32 @@ def cash_account(prefix: str, account_number: str | None, currency: str) -> str:
     return f"Assets:{prefix}:{portfolio_segment(account_number)}:{currency}"
 
 
+# Root for the counter-leg of a self-to-self transfer to an account this
+# ledger does not otherwise track (e.g. Revolut). Such a transfer crosses
+# the tracked perimeter, so the counter-leg is booked to Equity — a
+# perimeter crossing, not an ``Assets`` holding. The day-to-day activity on
+# that external account is never imported, so an ``Assets:`` balance would
+# only ever be "net moved between here and there" and would stand as a
+# phantom cash balance on the balance sheet (which sums Assets / Liabilities
+# only). Equity keeps it off the sheet by construction; the sidecars still
+# carry ``Transaction.counter_account`` unchanged, so the tax substrate is
+# untouched. See docs/design-decisions.md.
+SELF_TRANSFER_ROOT = "Equity:Transfers"
+
+
+def self_transfer_account(counter_account: str, currency: str) -> str:
+    """Build the counter-leg account for a self-to-self external transfer.
+
+    Format: ``Equity:Transfers:<counter_account>:<currency>`` — e.g.
+    ``Equity:Transfers:Revolut:GBP``. ``counter_account`` is the bank
+    segment resolved from
+    :data:`banking_pipeline.config.settings.beneficiary_bank_map`. See
+    :data:`SELF_TRANSFER_ROOT` for why this is Equity, not Assets.
+    """
+
+    return f"{SELF_TRANSFER_ROOT}:{counter_account}:{currency}"
+
+
 def inline_open_directive(
     tx: Transaction, doc_type: DocumentType, prefix: str
 ) -> str:

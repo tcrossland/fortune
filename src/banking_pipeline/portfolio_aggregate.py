@@ -534,9 +534,9 @@ def generate(
 # bank+account stream: ``2025-K`` is all of Pictet ``K-123456.001``,
 # ``vanguard-isa`` is the whole ISA. So splitting is "group the source
 # files by account, then run the same open/close scan per group". A
-# counterparty leg (e.g. ``Assets:Revolut:GBP`` on a Pictet payment) is a
-# minority posting with no bank prefix, so the majority key still pins the
-# file to its owning account.
+# counterparty leg (e.g. ``Equity:Transfers:Revolut:GBP`` on a Pictet
+# payment) is a minority posting with no bank prefix, so the majority key
+# still pins the file to its owning account.
 
 
 # Known bank account-name prefixes, longest first so a multi-segment
@@ -558,8 +558,8 @@ def _account_key(account: str) -> str | None:
     the remainder against the known bank prefixes. A multi-segment prefix
     (``Vgd:ISA``) is itself the key; a single-segment one (``Pic``) takes
     the following portfolio segment too (``Pic:K123456001``). Accounts with
-    no bank prefix — counterparties like ``Assets:Revolut:GBP`` — return
-    ``None`` so they don't form a group of their own.
+    no bank prefix — counterparties like ``Equity:Transfers:Revolut:GBP`` —
+    return ``None`` so they don't form a group of their own.
     """
 
     body = account.split(":")[1:]  # drop Assets / Income / Expenses / …

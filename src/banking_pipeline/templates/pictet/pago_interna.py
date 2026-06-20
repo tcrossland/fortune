@@ -15,7 +15,7 @@ is looked up against
 :data:`banking_pipeline.config.settings.beneficiary_bank_map`; when
 the bank resolves (e.g. ``REVOLUT PAYMENTS UAB`` → ``Revolut``) we
 populate ``counter_account`` so the writer can emit a clean two-leg
-entry ``Assets:<counter_account>:<ccy>`` ↔
+entry ``Equity:Transfers:<counter_account>:<ccy>`` ↔
 ``Assets:Pic:<portfolio>:<ccy>``. When the bank doesn't resolve the
 template still extracts but ``counter_account`` stays ``None`` and
 the writer falls back to the elastic ``Income:Pic:<portfolio>:Other``

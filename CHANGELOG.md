@@ -256,6 +256,18 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Bookkeeping & accounting
 
+- **Revolut self-to-self contra-leg → `Equity:Transfers`** — the
+  Pictet↔Revolut transfer counter-leg now books to
+  `Equity:Transfers:Revolut:<ccy>` instead of `Assets:Revolut:<ccy>`.
+  Revolut's day-to-day activity is never imported, so the
+  `Assets:Revolut:*` balance was only ever "net moved between Pictet and
+  Revolut" — a phantom the balance sheet (which sums Assets/Liabilities
+  postings) counted as real net worth. Booking it to Equity (a perimeter
+  crossing, not a holding) excludes it by construction, no report-side
+  filter. Only the rendered account string moves —
+  `Transaction.counter_account` is unchanged, so the JSONL sidecars, tax
+  pipeline, and reconcile/completeness are untouched. (`writer/format.py`,
+  `writer/builders/payment.py`; see `docs/design-decisions.md`)
 - **`completeness` — statement-vs-sidecar transaction cross-check** — the
   transaction-level counterpart to `reconcile`'s balance-level check. Parses
   the Pictet current-account cash ledger out of a `Financial-statement` PDF

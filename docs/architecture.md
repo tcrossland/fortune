@@ -652,9 +652,10 @@ schemas don't collide.
 
 - `anthropic_api_key`, `anthropic_model`, `rule_confidence_threshold`,
   `default_currency`.
-- `beneficiary_bank_map` (self-to-self destinations like Revolut) and
-  `counterparty_account_map` (third-party named counterparties → account
-  segments), both under `[settings.<map>]`.
+- `beneficiary_bank_map` (self-to-self destinations like Revolut → the
+  counter-leg account `Equity:Transfers:<segment>:<ccy>`; see
+  design-decisions) and `counterparty_account_map` (third-party named
+  counterparties → account segments), both under `[settings.<map>]`.
 
 **UK tax** (all optional, default to no-op)
 

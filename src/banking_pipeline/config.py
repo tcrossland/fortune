@@ -307,15 +307,19 @@ class Settings(BaseSettings):
 
     # Maps Pictet's printed beneficiary-bank name (the ``Bank`` field on
     # an outgoing ``PAYMENT TRANSACTIONS / Payment`` advice) to the short
-    # account-name segment used in beancount cash-leg paths
-    # (``Assets:<segment>:<currency>``). Keyed on a substring that
-    # uniquely identifies the bank in the Pictet text — e.g. the entry
-    # for Revolut matches ``REVOLUT BANK UAB, SUCURSAL EN ESPAN`` and
-    # any other Revolut-branded variants.
+    # account-name segment used in the self-to-self counter-leg path
+    # (``Equity:Transfers:<segment>:<currency>``). Keyed on a substring
+    # that uniquely identifies the bank in the Pictet text — e.g. the
+    # entry for Revolut matches ``REVOLUT BANK UAB, SUCURSAL EN ESPAN``
+    # and any other Revolut-branded variants.
     #
     # Used by the writer's self-to-self-payment path to route the
-    # destination leg to ``Assets:Revolut:<ccy>`` (instead of an elastic
-    # ``Expenses:<prefix>:Other`` posting). Set under
+    # destination leg to ``Equity:Transfers:Revolut:<ccy>`` (instead of
+    # an elastic ``Expenses:<prefix>:Other`` posting). The Equity root —
+    # a perimeter crossing, not a holding — keeps the day-to-day-untracked
+    # external account off the balance sheet (see
+    # :func:`banking_pipeline.writer.format.self_transfer_account`). Set
+    # under
     # ``[settings.beneficiary_bank_map]`` in ``banking-pipeline.toml`` (or
     # override via the ``BANKPIPE_BENEFICIARY_BANK_MAP`` env var as a
     # JSON-encoded dict).

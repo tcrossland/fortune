@@ -160,7 +160,7 @@ class DocumentType(StrEnum):
     # account (e.g. Revolut → Pictet). Pictet prints the title in all caps
     # (``PAGO ENTRANTE``) on this variant; structurally it's the same as
     # the third-party variant below but bookkeeps to a different posting
-    # shape (Assets:Revolut → Assets:Pictet rather than
+    # shape (Equity:Transfers:Revolut → Assets:Pictet rather than
     # Income:External → Assets:*). The classifier discriminates against
     # ``PAGO_ENTRANTE`` via the title's case-sensitivity.
     PAGO_INTERNA = "pago_interna"
@@ -641,9 +641,11 @@ class Transaction(BaseModel):
     # segment for the destination bank, looked up from
     # :data:`banking_pipeline.config.settings.beneficiary_bank_map`
     # against the document's ``Bank`` field. The writer uses both to
-    # emit a three-leg entry: destination credited with ``gross_amount``,
-    # source debited with ``amount`` (net), Pictet's wire fee posted to
-    # ``Expenses:<prefix>:Fees:<ccy>``. Both fields ``None`` on
+    # emit a three-leg entry: destination (``Equity:Transfers:<segment>``
+    # — a perimeter crossing, not a holding) credited with
+    # ``gross_amount``, source debited with ``amount`` (net), Pictet's
+    # wire fee posted to ``Expenses:<prefix>:Fees:<ccy>``. Both fields
+    # ``None`` on
     # genuine third-party outgoing payments — the writer falls back to
     # the elastic ``Expenses:<prefix>:Other`` shape for those.
     gross_amount: Decimal | None = None
@@ -662,7 +664,8 @@ class Transaction(BaseModel):
     # advices that don't resolve, falling back to the elastic shape.
     #
     # Distinct from ``counter_account`` (which carries an account-name
-    # *segment* used in self-to-self routing as ``Assets:<segment>:<ccy>``);
+    # *segment* used in self-to-self routing as
+    # ``Equity:Transfers:<segment>:<ccy>``);
     # ``counterparty_account`` carries a path *segment* used as
     # ``Income:<segment>`` / ``Expenses:<segment>``.
     counterparty_account: str | None = None

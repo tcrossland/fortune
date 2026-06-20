@@ -38,7 +38,9 @@ def test_account_key_vanguard_is_the_two_segment_prefix() -> None:
 
 def test_account_key_counterparty_is_none() -> None:
     # No recognised bank prefix → no group of its own.
-    assert portfolio_aggregate._account_key("Assets:Revolut:GBP") is None
+    assert (
+        portfolio_aggregate._account_key("Equity:Transfers:Revolut:GBP") is None
+    )
     assert portfolio_aggregate._account_key("Equity:Property:Bristol") is None
 
 
@@ -52,7 +54,7 @@ def _data_dir(tmp_path: Path) -> Path:
     # minority key must not split the file off into a Revolut group.
     (data / "2025-K.beancount").write_text(
         '2025-01-02 * "Payment" "x"\n'
-        "  Assets:Revolut:GBP                100.00 GBP\n"
+        "  Equity:Transfers:Revolut:GBP      100.00 GBP\n"
         "  Assets:Pic:K123456001:GBP        -100.00 GBP\n"
         "  Expenses:Pic:K123456001:Other\n",
         encoding="utf-8",
@@ -122,7 +124,7 @@ def test_generate_per_account_writes_independent_ledgers(tmp_path: Path) -> None
     assert "2025-P.beancount" not in k_text
     assert "vanguard-isa.beancount" not in k_text
     # The counterparty account is centrally opened (so the file balances).
-    assert "open Assets:Revolut:GBP" in k_text
+    assert "open Equity:Transfers:Revolut:GBP" in k_text
 
 
 def test_generate_per_account_threads_extra_options(tmp_path: Path) -> None:

@@ -175,7 +175,7 @@ class PictetPaymentTemplate:
             # regression or a Pictet format change worth surfacing.
             # Silent downgrade would misroute the destination credit
             # to ``Expenses:<prefix>:Other`` instead of
-            # ``Assets:<counter_account>:<ccy>``.
+            # ``Equity:Transfers:<counter_account>:<ccy>``.
             assert section is not None  # counter_account ⇒ section was found
             gross_match = find_amount_field(section, "Gross amount")
             if gross_match is None:

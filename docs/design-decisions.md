@@ -128,6 +128,45 @@ A *distinct fixed-term loan* (its own account, its own statement line,
 a scheduled principal) would be different — that has a balance to assert,
 so it would warrant a real `Liabilities:` account.
 
+## The self-to-self counter-leg is `Equity:Transfers`, not `Assets`
+
+A Pictet self-to-self payment (Pictet ↔ Revolut) is **one** `Transaction`
+carrying both legs; the writer books the external-account leg to
+`Equity:Transfers:<bank>:<ccy>` (resolved from `beneficiary_bank_map`), not
+to `Assets:<bank>:<ccy>`. The destination account's *own* day-to-day
+activity is never imported.
+
+Why:
+
+- **An `Assets:` leg would be a phantom balance.** With only the
+  Pictet-facing legs recorded, `Assets:Revolut:*` is not a cash position —
+  it's "net moved between Pictet and Revolut". It stood at large positives
+  (Pictet→Revolut funding dominates the history) that the balance sheet —
+  which sums `Assets`/`Liabilities` postings — counted at face value,
+  overstating net worth by that amount. Booking the leg to Equity (a
+  *perimeter crossing*, not a holding) excludes it by construction: the
+  balance-sheet query is `Assets|Liabilities` only, so no report-side filter
+  is needed. Money sent out of the perimeter drops tracked net worth; money
+  received into it raises net worth — both truthful given the destination is
+  untracked.
+- **`Transfers`, not `Drawings`.** The flow is bidirectional (Revolut→Pictet
+  seeded the portfolio), so the one-way "withdrawal" reading is wrong for
+  the inbound legs. `Equity:Transfers` is direction-neutral and matches the
+  existing `Equity:Opening-Balances` idiom.
+- **Not `Equity:Uncategorized`.** This is a *named* account; the
+  no-`Uncategorized` invariant targets the elastic placeholder the
+  self-to-self path was built to eliminate, not all Equity.
+- **Tax substrate untouched.** Only the *rendered* account string changed;
+  `Transaction.counter_account` still carries the bank segment, so the JSONL
+  sidecars, `tax-report`, and `reconcile`/`completeness` (which read the
+  sidecars, not this leg) are unaffected.
+
+The escape hatch if the external account is later tracked for real: the
+dormant Revolut **CSV importer** writes `Assets:Revolut:Personal:*`. If those
+imports land, the inbound Pictet transfer would want to net against the real
+balance there rather than sit in `Equity:Transfers` — reconciling the two
+naming schemes is a separate task, deliberately out of scope here.
+
 ## Strict-mode dispatch on an empty template result
 
 When a registered template returns `[]`, `HybridExtractor` does **not**

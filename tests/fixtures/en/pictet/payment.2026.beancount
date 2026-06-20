@@ -1,5 +1,5 @@
 2026-03-19 * "Payment" "First LASTNAMES - Liquidity"
-  Assets:Revolut:EUR                               12000.00 EUR ; Gross amount
+  Equity:Transfers:Revolut:EUR                     12000.00 EUR ; Gross amount
   Assets:Pic:P123456002:EUR                       -12015.00 EUR ; Net amount
   Expenses:Pic:P123456002:Wire:EUR                    15.00 EUR ; Payment fees
   no: 1176078173

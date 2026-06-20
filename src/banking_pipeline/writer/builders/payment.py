@@ -22,6 +22,7 @@ from banking_pipeline.writer.format import (
     format_amount,
     header_line,
     portfolio_segment,
+    self_transfer_account,
     transaction_number_comment,
 )
 
@@ -44,9 +45,9 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     their own external accounts, e.g. Pictet → Revolut)::
 
         <booking_date> * "<title>" "<narration>"
-          Assets:<counter_account>:<currency>     <gross_amount> <ccy> ; Gross amount
-          Assets:<prefix>:<portfolio>:<currency>  <amount>      <ccy> ; Net amount
-          Expenses:<prefix>:<portfolio>:Wire:<ccy>  <abs_fees>  <ccy> ; Payment fees
+          Equity:Transfers:<counter_account>:<currency>  <gross_amount> <ccy> ; Gross amount
+          Assets:<prefix>:<portfolio>:<currency>         <amount>      <ccy> ; Net amount
+          Expenses:<prefix>:<portfolio>:Wire:<ccy>       <abs_fees>    <ccy> ; Payment fees
           no: <transaction_number>
 
     Three legs that balance arithmetically: the user receives
@@ -60,8 +61,8 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     Pictet portfolio, e.g. Revolut → Pictet)::
 
         <booking_date> * "<title>" "<narration>"
-          Assets:<prefix>:<portfolio>:<currency>  <amount>  <ccy>
-          Assets:<counter_account>:<currency>     -<amount> <ccy>
+          Assets:<prefix>:<portfolio>:<currency>         <amount>  <ccy>
+          Equity:Transfers:<counter_account>:<currency>  -<amount> <ccy>
           no: <transaction_number>
 
     Two legs that balance: Pictet portfolio credited with the cash
@@ -99,10 +100,12 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
     if tx.counter_account is not None and tx.gross_amount is not None:
         # Destination leg — user's external account credited with the
         # principal sent. Positive amount, no portfolio (the external
-        # bank's account naming is its own concern).
+        # bank's account naming is its own concern). Booked to
+        # ``Equity:Transfers:<bank>`` — a perimeter crossing, not a
+        # holding (see :func:`self_transfer_account`).
         lines.append(
             align(
-                f"Assets:{tx.counter_account}:{tx.currency}",
+                self_transfer_account(tx.counter_account, tx.currency),
                 format_amount(tx.gross_amount),
                 tx.currency,
                 extras=" ; Gross amount",
@@ -153,10 +156,11 @@ def render(tx: Transaction, doc_type: DocumentType, prefix: str) -> str:
             )
         )
         # Source leg — user's external account debited with the same
-        # amount, sign-flipped to balance.
+        # amount, sign-flipped to balance. Booked to
+        # ``Equity:Transfers:<bank>`` (see :func:`self_transfer_account`).
         lines.append(
             align(
-                f"Assets:{tx.counter_account}:{tx.currency}",
+                self_transfer_account(tx.counter_account, tx.currency),
                 format_amount(-tx.amount),
                 tx.currency,
             )

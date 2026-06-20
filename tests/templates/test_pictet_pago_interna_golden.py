@@ -6,7 +6,8 @@ Pins the two-leg shape ``PAGO_INTERNA`` produces by routing through
   - Destination leg — Pictet portfolio credited with the cash in,
     ``Assets:<prefix>:<portfolio>:<ccy>`` signed positive.
   - Source leg — user's external account debited with the same
-    amount, ``Assets:<counter_account>:<ccy>`` signed negative.
+    amount, ``Equity:Transfers:<counter_account>:<ccy>`` signed
+    negative (a perimeter crossing, not a holding).
   - Trailing ``no:`` reference comment if present.
 
 This replaces the legacy ``_CASH_IN_TEMPLATE`` shape that posted to
