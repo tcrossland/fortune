@@ -151,7 +151,14 @@ function buildTree(accounts) {
   }
   return root;
 }
-function renderNode(node) {
+// Per-path collapse overrides, persisted across renders so scrolling the
+// as-of date never expands or collapses the tree. Absent a user override, a
+// node is collapsed by default once it sits below the third level (DEFAULT_DEPTH),
+// so the tree opens showing three levels.
+const DEFAULT_DEPTH = 3;
+const collapseState = new Map();
+function renderNode(node, depth, parentPath) {
+  const path = parentPath ? parentPath + ":" + node.name : node.name;
   const li = document.createElement("li");
   const row = document.createElement("div");
   row.className = "node" + (node.children.size ? " branch" : "");
@@ -162,11 +169,15 @@ function renderNode(node) {
   val.textContent = fmt(node.value);
   row.append(label, val); li.append(row);
   if (node.children.size) {
+    const collapsed = collapseState.has(path)
+      ? collapseState.get(path) : depth >= DEFAULT_DEPTH;
+    if (collapsed) li.classList.add("collapsed");
     const ul = document.createElement("ul");
     for (const child of [...node.children.values()].sort((a, b) => b.value - a.value))
-      ul.append(renderNode(child));
+      ul.append(renderNode(child, depth + 1, path));
     li.append(ul);
-    label.addEventListener("click", () => li.classList.toggle("collapsed"));
+    label.addEventListener("click", () =>
+      collapseState.set(path, li.classList.toggle("collapsed")));
   }
   return li;
 }
@@ -210,7 +221,7 @@ function render(asOf) {
   if (root.children.size) {
     const ul = document.createElement("ul"); ul.className = "tree";
     for (const child of [...root.children.values()].sort((a, b) => b.value - a.value))
-      ul.append(renderNode(child));
+      ul.append(renderNode(child, 1, ""));
     tree.append(ul);
   } else { tree.innerHTML = `<p class="empty">No holdings on this date.</p>`; }
   donut(v.byClass);
