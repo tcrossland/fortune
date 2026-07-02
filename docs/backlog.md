@@ -131,7 +131,68 @@ not tax advice" framing.
   decimal commas and
   multi-line ISIN/header wrapping, so robust number tokenisation is the
   bulk of the work. An example of each was inspected 2026-05-26;
-  structure confirmed viable.
+  structure confirmed viable. A second, full-detail pair (as-of
+  2026-06-30) was inspected 2026-07-02 — same layout, so nothing new to
+  design.
+- **Pictet tax reports as a reconciliation target (not a parsed report).**
+  Distinct from the parsing item above: rather than surface Pictet's
+  numbers as our own `pnl` report, use them to *cross-check* what the
+  pipeline already derives — the same idea as `completeness`, aimed at
+  cost basis and disposals. Two checks fall out of the two reports:
+  (a) the **realised** report enumerates every disposal Pictet booked in
+  the period, so assert each appears as a sale in the sidecars (catches a
+  missing trade confirmation), and sanity-check the acquisition lot/date
+  Pictet matched against ours; (b) the **unrealised** report is a per-lot
+  cost-basis + market-value snapshot at a date — the ready-made target the
+  deferred **balance-sheet phase 4** assertion-drift / cost-basis overlay
+  needs (above). Same caveats as the parsing item — Spanish FIFO/EUR
+  figures, informative-only, indicative prices — but for a *tolerance
+  cross-check* those matter far less than for a headline number: we compare
+  raw lot facts (dates, quantities, proceeds, cost), not Pictet's gain
+  method, and never feed any of it to the UK tax pipeline. Wants plan-mode
+  first (touches the balance-sheet plan and the reconcile grain).
+  *Filing prerequisite (shared first stage, also needed by the parsing
+  item above):* the `[import]` archive step doesn't file these today — it
+  only recognises transaction advices and periodic valuation statements,
+  and a "Simulación fiscal" P&L report is neither (it also prints a bare
+  `999999`, not the `N° de cuenta:` header `archive.py`'s Pictet parser
+  keys on), so it returns `no-match` and leaves them unfiled; historically
+  they've been dropped into `<year>/tax/` by hand under inconsistent names.
+  So the first stage is a classifier doctype + an `archive.py` filing
+  branch that self-files them into `<year>/tax/` with a normalised name
+  keyed on the report's own as-of date + realised/unrealised flavour. Only
+  once they land in the tree consistently can either the parse or the
+  reconcile reader glob for them.
+  *Caveat — no portfolio dimension, and both mandates hold securities:*
+  the reports are consolidated at the **taxpayer (NIF) level**, not per
+  mandate — every lot is labelled with the bare client number `999999`,
+  never `K-999999.001` / `P-999999.002` (verified on the 2026-01-07 and
+  2026-06-30 reports). This genuinely matters: **both** mandates hold
+  securities and the report commingles them. K-999999.001 holds the core
+  funds; P-999999.002 is a *leveraged (Lombard)* mandate whose net
+  valuation is negative (the loan dominates) but which holds a real equity
+  sleeve — thematic ETFs plus single stocks (e.g. Fujifilm, Kratos) that
+  show up as disposals in the realised report. So a cross-check must match
+  on **security + lot (date/qty/cost)**, not portfolio, and cannot attribute
+  a P&L row to a mandate. Parsing wrinkle for whoever picks this up: the two
+  source statements identify holdings differently — the K "Financial
+  Statement" prints ISINs, the P one lists holdings **by name only (no
+  ISIN)** — so mapping a consolidated P&L row back to the per-portfolio
+  ledger means matching K by ISIN and P by name/quantity. Don't assume a
+  security lives in K.
+  *Which snapshots to archive:* the portal re-cuts both reports on
+  booking-event days only (not a daily schedule — no weekends, variable
+  publication times, irregular missing weekdays all point to
+  activity-triggered generation, and the unrealised MTM would regenerate
+  every trading day if it were price-driven). Don't hoard the daily
+  stream: realised is cumulative within the tax year (the latest report
+  supersedes all earlier ones for YTD disposals), and unrealised daily
+  deltas are mostly price noise the reconciliation doesn't consume. Keep a
+  principled subset — the final realised report per tax year (plus one
+  month-end each to catch any Pictet restatement), month-end + calendar-
+  year-end + UK-tax-year-end (5 Apr) unrealised snapshots as cost-basis
+  anchors, and optionally the first report after each disposal for a
+  tight audit trail.
 
 ## Financial planning & budgeting
 
