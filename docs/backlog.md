@@ -179,7 +179,9 @@ not tax advice" framing.
   Statement" prints ISINs, the P one lists holdings **by name only (no
   ISIN)** — so mapping a consolidated P&L row back to the per-portfolio
   ledger means matching K by ISIN and P by name/quantity. Don't assume a
-  security lives in K.
+  security lives in K. A name→ISIN resolver already exists for exactly this
+  — `build_statement_name_index` over `commodities.toml` `statement_names`
+  (added by the P-mandate reconcile fix) — reuse it rather than rebuild.
   *Which snapshots to archive:* the portal re-cuts both reports on
   booking-event days only (not a daily schedule — no weekends, variable
   publication times, irregular missing weekdays all point to

@@ -227,13 +227,19 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-**Active:** [docs/plans/revolut-contra-leg-equity.md](docs/plans/revolut-contra-leg-equity.md)
-— reclass the Revolut self-to-self contra-leg from `Assets:Revolut:<ccy>`
-to `Equity:Transfers:Revolut:<ccy>`, so day-to-day-untracked Revolut
-transfers stop inflating the balance sheet (the counter-leg is a perimeter
-crossing, not a holding). Sidecars / tax math unchanged — only the rendered
-account path moves.
+**Active:** [docs/plans/pictet-pnl-tax-archive.md](docs/plans/pictet-pnl-tax-archive.md)
+— import, name, and prune Pictet's Realised/Unrealised P&L tax reports:
+auto-file each into `<year>/tax/` under a canonical
+`<Type> PL <YYYYMMDD>.pdf` name, add a `prune-tax-reports` retention
+command (keep month-end + year-end anchors; move daily noise to
+`_superseded/`), then normalise + prune the ~950 legacy files. Archiving
+only — these reports are never ingested or fed to the tax pipeline.
 
+- Last shipped: [docs/archive/revolut-contra-leg-equity.md](docs/archive/revolut-contra-leg-equity.md)
+  — reclass the Revolut self-to-self contra-leg from `Assets:Revolut:<ccy>`
+  to `Equity:Transfers:Revolut:<ccy>`, so day-to-day-untracked Revolut
+  transfers stop inflating the balance sheet (a perimeter crossing, not a
+  holding). Sidecars / tax math unchanged — only the rendered account path.
 - Last shipped: [docs/archive/pictet-p-mandate-reconciliation.md](docs/archive/pictet-p-mandate-reconciliation.md)
   — close the P-mandate reconciliation hole: parse Pictet's by-name
   "Financial Statement" layout (holdings resolved name→ISIN via
