@@ -209,15 +209,40 @@ _TAX_UNREALISED_AS_OF = re.compile(r"\bAl\s+(\d{2})\.(\d{2})\.(\d{4})")
 _TAX_REALISED_AS_OF = re.compile(
     r"\bDel\s+\d{2}\.\d{2}\.\d{4}\s+al\s+(\d{2})\.(\d{2})\.(\d{4})"
 )
+# The annual tax-authority filings state their period end in prose, in two
+# languages, and their as-of month-day is fixed by the filing kind: ETE /
+# Modelo 720 close on 31 Dec (``31 Diciembre|December <year>``); the UK income
+# & capital-gains report on 5 Apr (the UK tax-year end, ``5 April <year>``).
+# Only the year is scraped; the month-day is supplied per doctype.
+_TAX_YEAR_END = re.compile(r"\b31\s+(?:Diciembre|December)\s+(\d{4})\b", re.I)
+_UK_TAX_YEAR_END = re.compile(r"\b5\s+April\s+(\d{4})\b")
+_TAX_FIXED_ASOF: dict[DocumentType, tuple[re.Pattern[str], int, int]] = {
+    DocumentType.DECLARACION_ETE: (_TAX_YEAR_END, 12, 31),
+    DocumentType.MODELO_720: (_TAX_YEAR_END, 12, 31),
+    DocumentType.INCOME_CAPITAL_GAINS_UK: (_UK_TAX_YEAR_END, 4, 5),
+}
 
 
 def _pictet_tax_as_of(text: str, doc_type: DocumentType) -> date | None:
-    """The numeric as-of date of a Pictet IRPF tax report, or ``None``.
+    """The as-of date of a Pictet tax report / annual filing, or ``None``.
 
     Realised reports and the annual fiscal statement file by the ``al`` end of
     their ``Del … al …`` range (the statement's is the full year, ``Del 01.01
-    … al 31.12``); unrealised reports by their ``Al …`` snapshot date. An
+    … al 31.12``); unrealised reports by their ``Al …`` snapshot date. The
+    annual tax-authority filings scrape only the year from a prose period end
+    and pin the month-day per kind (ETE / Modelo 720 → 31 Dec; UK → 5 Apr). An
     out-of-range placeholder day yields ``None`` rather than raising."""
+
+    fixed = _TAX_FIXED_ASOF.get(doc_type)
+    if fixed is not None:
+        pattern, month, day = fixed
+        match = pattern.search(text)
+        if match is None:
+            return None
+        try:
+            return date(int(match.group(1)), month, day)
+        except ValueError:
+            return None
 
     range_doctypes = (
         DocumentType.TAX_REALISED_PL,
@@ -231,9 +256,9 @@ def _pictet_tax_as_of(text: str, doc_type: DocumentType) -> date | None:
     match = pattern.search(text)
     if match is None:
         return None
-    day, month, year = match.group(1, 2, 3)
+    day_s, month_s, year_s = match.group(1, 2, 3)
     try:
-        return date(int(year), int(month), int(day))
+        return date(int(year_s), int(month_s), int(day_s))
     except ValueError:
         return None
 
@@ -286,16 +311,19 @@ _STATEMENT_PERIODS: dict[DocumentType, str] = {
     DocumentType.ESTADO_ANUAL: "annual",
 }
 
-# Spanish IRPF tax reports file into ``<year>/tax/`` by their as-of date,
-# named ``<stem> <YYYYMMDD>.pdf`` — no account, no reference. Maps each
-# tax-report doctype to its filename stem-prefix (English; see the doctype
-# docstrings for why these break the issuer-vocabulary rule). The P&L reports
-# use ``Realised PL`` / ``Unrealised PL``; the comprehensive annual statement
-# uses ``Fiscal statement`` (no ``PL`` — it isn't a P&L report).
+# Spanish IRPF tax reports (and the annual tax-authority filings) file into
+# ``<year>/tax/`` by their as-of date, named ``<stem> <YYYYMMDD>.pdf`` — no
+# account, no reference. Maps each doctype to its filename stem-prefix. The
+# P&L reports use ``Realised PL`` / ``Unrealised PL``; the comprehensive
+# annual statement uses ``Fiscal statement`` (no ``PL`` — it isn't a P&L
+# report); the tax-authority filings keep their own form names.
 _TAX_REPORT_STEMS: dict[DocumentType, str] = {
     DocumentType.TAX_REALISED_PL: "Realised PL",
     DocumentType.TAX_UNREALISED_PL: "Unrealised PL",
     DocumentType.TAX_FISCAL_STATEMENT: "Fiscal statement",
+    DocumentType.DECLARACION_ETE: "ETE",
+    DocumentType.MODELO_720: "Modelo 720",
+    DocumentType.INCOME_CAPITAL_GAINS_UK: "Income and capital gains UK",
 }
 
 

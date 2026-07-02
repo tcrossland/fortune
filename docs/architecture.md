@@ -123,9 +123,9 @@ src/banking_pipeline/
 │                         date are scraped, by a bank parser keyed on
 │                         `BankId` in `FIELD_PARSERS` (Pictet EN+ES today).
 │                         Three filing shapes: advice, periodic statement,
-│                         and Spanish IRPF tax report (P&L reports + the
-│                         annual fiscal statement → `<year>/tax/`).
-│                         Uses the pypdfium2 extractor
+│                         and Spanish IRPF / annual tax report (P&L reports,
+│                         fiscal statement, ETE / Modelo 720 / UK income &
+│                         CG → `<year>/tax/`). Uses the pypdfium2 extractor
 ├── tax_report_prune.py Retention policy for the archived Pictet P&L tax
 │                         reports (pure `select_retained` + the
 │                         `prune-tax-reports` command's helpers)
@@ -493,10 +493,15 @@ usage examples; this is the behavioural reference.
   `Realised PL` / `Unrealised PL` / `Fiscal statement`. The statement is a
   superset of the P&L report distinguished by content (its `VALORACIÓN DE
   CARTERA` section + `Gastos de administración…` concept); its classifier
-  rule sits before `TAX_REALISED_PL` to win the tie. These are an archive-only
+  rule sits before `TAX_REALISED_PL` to win the tie. The three **annual
+  tax-authority filings** file the same way: `DECLARACION_ETE` → `ETE
+  <YYYYMMDD>.pdf`, `MODELO_720` → `Modelo 720 <YYYYMMDD>.pdf`, and
+  `INCOME_CAPITAL_GAINS_UK` → `Income and capital gains UK <YYYYMMDD>.pdf`
+  (their as-of is pinned per kind — 31 Dec for ETE/720, 5 Apr for the UK
+  report — from a prose period end). These are all an archive-only
   reference source (never ingested, never fed to the UK-tax pipeline); the
   `prune-tax-reports` command trims the daily P&L volume (the annual statement
-  is kept, never pruned). An existing destination is left untouched; an unplaceable /
+  and the tax-authority filings are kept, never pruned). An existing destination is left untouched; an unplaceable /
   unreadable PDF is reported and skipped. `--dry-run` prints planned moves.
   `source` / `dest` are positional, falling back to `import_source_glob` →
   `import_source_dir` and `import_archive_dir`; `[import] source_globs` adds
@@ -511,9 +516,10 @@ usage examples; this is the behavioural reference.
   duplicate an already-filed canonical report — found by **content** (the
   legacy filenames encode the download date, not the as-of, so re-downloads
   of one report collapse), reusing `archive.file_documents` in dry-run. Only
-  canonically-named P&L files are pruned; `ETE` / `Modelo 720`, the annual
-  `Fiscal statement` (a canonical name but kept, not pruned), and the
-  `_superseded/` folder are untouched, so a re-run is a no-op. **Dry-run by
+  canonically-named P&L files are pruned; the annual `Fiscal statement` /
+  `ETE` / `Modelo 720` / `Income and capital gains UK` filings (canonical
+  names but kept, not pruned) and the `_superseded/` folder are untouched, so
+  a re-run is a no-op. **Dry-run by
   default**; `--apply` performs the moves. Deliberately *not* wired into
   `rebuild` (import over-collects and prune trims — convergent but churny, so
   it stays manual). Selection policy: `tax_report_prune.select_retained`

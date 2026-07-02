@@ -1,0 +1,35 @@
+--- page 1/1 ---
+Declaración ETE
+Del 1 Enero 2024 al 31 Diciembre 2024
+FIRST MIDDLE LASTNAMES
+123456
+0A08 Pictet & Cie (Europe) S.A.
+grupo.pictet
+
+ETE - RESUMIDO PARA LA DECLARACIÓN ANUAL
+123456
+Del 1 Enero 2024 al 31 Diciembre 2024
+0A08 09.01.2025 1/5
+Tipo Saldo inicial Transacciones netas
+Inversiones
+Desinversiones
+Otras variaciones Saldo final Intereses
+Recapitulación
+Cuenta 123456
+Operaciones financieras activas (09 01 01)
+Inversiones
+Desinversiones
+Operaciones financieras pasivas (09 02 01)
+Inversiones
+Desinversiones
+Cobros de no residentes Pagos a no residentes
+Operaciones de mercancías y servicios de cobros de no residentes (10 01 01)
+Operaciones de mercancías y servicios de pagos a no residentes (10 01 02)
+
+ETE - Resumido para la declaración anual
+Del 1 Enero 2024 al 31 Diciembre 2024
+Concepto Descripción Fecha valor Importe neto
+Detalle de transacciones
+Suscripción y venta de instituciones de inversión colectiva
+Los importes se expresan en euros según los criterios de la balanza de pagos.
+Ninguna transacción

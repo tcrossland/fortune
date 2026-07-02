@@ -58,7 +58,8 @@ _NAME = re.compile(r"^(Realised|Unrealised) PL (\d{4})(\d{2})(\d{2})\.pdf$")
 # doesn't classify a filed statement, resolve it back to its own path, and
 # move it aside as a "duplicate".
 _CANONICAL_NAME = re.compile(
-    r"^(?:Realised PL|Unrealised PL|Fiscal statement) \d{8}\.pdf$"
+    r"^(?:Realised PL|Unrealised PL|Fiscal statement|ETE|Modelo 720"
+    r"|Income and capital gains UK) \d{8}\.pdf$"
 )
 
 

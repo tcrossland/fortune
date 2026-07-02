@@ -300,6 +300,31 @@ def test_filing_info_none_when_tax_report_has_no_date() -> None:
     )
 
 
+def test_filing_info_tax_authority_filings(fixtures_dir: Path) -> None:
+    """ETE / Modelo 720 / the UK report file by a per-kind fixed as-of date
+    scraped from a prose period end: ETE + 720 → 31 Dec of the year; the UK
+    report → 5 Apr (UK tax-year end)."""
+
+    cases = [
+        ("es/pictet/declaracion_ete.txt", DocumentType.DECLARACION_ETE,
+         date(2024, 12, 31), "ETE"),
+        ("es/pictet/modelo_720.txt", DocumentType.MODELO_720,
+         date(2024, 12, 31), "Modelo 720"),
+        ("en/pictet/income_capital_gains_uk.txt",
+         DocumentType.INCOME_CAPITAL_GAINS_UK, date(2025, 4, 5),
+         "Income and capital gains UK"),
+    ]
+    for rel, doc_type, as_of, stem in cases:
+        text = (fixtures_dir / rel).read_text()
+        info = archive.filing_info(_classification(doc_type, BankId.PICTET), text)
+        assert info is not None, rel
+        assert info.is_tax_report
+        assert (info.as_of, info.tax_label) == (as_of, stem), rel
+        assert archive.destination_for(Path("/arch"), info) == Path(
+            f"/arch/{as_of:%Y}/tax/{stem} {as_of:%Y%m%d}.pdf"
+        )
+
+
 def test_destination_for_tax_report_uses_tax_subfolder() -> None:
     """A tax report files into ``<as-of-year>/tax/`` named ``<stem>
     <YYYYMMDD>.pdf`` — no account segment, never disambiguated."""

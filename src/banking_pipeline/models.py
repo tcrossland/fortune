@@ -269,6 +269,23 @@ class DocumentType(StrEnum):
     # markers (``GANANCIAS Y PÉRDIDAS PATRIMONIALES`` + ``Del … al …``), its
     # classifier rule must sit *before* ``TAX_REALISED_PL`` to win the tie.
     TAX_FISCAL_STATEMENT = "tax_fiscal_statement"
+    # Annual tax-authority filings Pictet issues (archive-only; NO_OUTPUT).
+    # Kept in the issuers' own official form names.
+    #
+    # Bank-of-Spain foreign-transactions declaration ("Declaración ETE" /
+    # "ETE - Resumido para la declaración anual"). Spanish (newer years mix in
+    # English). As-of 31 Dec of the stated year.
+    DECLARACION_ETE = "declaracion_ete"
+    # Spanish foreign-assets informative return (form 720 — "Modelo 720:
+    # Datos para la declaración informativa sobre bienes y derechos situados
+    # en el extranjero"). As-of 31 Dec of the stated year.
+    MODELO_720 = "modelo_720"
+    # Pictet's English UK-tax-year "Income & capital gains report" — matches
+    # disposals with the ``Section 104`` holding rules, follows ``HMRC``
+    # guidance. As-of 5 Apr (the UK tax-year end) of the stated year. English
+    # (a deliberate exception to the issuer-vocabulary rule, like the P&L
+    # doctypes — it's the issuer's own English report name).
+    INCOME_CAPITAL_GAINS_UK = "income_capital_gains_uk"
 
     # --- Credit / limits ---
     # Extension of a lombard / current-account credit line.
@@ -451,6 +468,10 @@ class Language(StrEnum):
 #     realised / unrealised P&L reports and the comprehensive annual fiscal
 #     statement. Archive-only reference documents (filed into ``<year>/tax/``)
 #     that are never ingested; they carry no beancount-relevant cash event.
+#   - **Annual tax-authority filings**: ``DECLARACION_ETE`` / ``MODELO_720`` /
+#     ``INCOME_CAPITAL_GAINS_UK`` — the Bank-of-Spain ETE declaration, the
+#     Spanish form-720 foreign-assets return, and Pictet's UK income &
+#     capital-gains report. Archive-only, filed into ``<year>/tax/``.
 NO_OUTPUT_DOCTYPES: frozenset[DocumentType] = frozenset({
     DocumentType.FX_FORWARD,
     DocumentType.CAMBIO_DE_DIVISAS_APERTURA,
@@ -486,6 +507,10 @@ NO_OUTPUT_DOCTYPES: frozenset[DocumentType] = frozenset({
     DocumentType.TAX_REALISED_PL,
     DocumentType.TAX_UNREALISED_PL,
     DocumentType.TAX_FISCAL_STATEMENT,
+    # Annual tax-authority filings (ETE / Modelo 720 / UK income & CG).
+    DocumentType.DECLARACION_ETE,
+    DocumentType.MODELO_720,
+    DocumentType.INCOME_CAPITAL_GAINS_UK,
 })
 
 

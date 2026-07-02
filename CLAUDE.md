@@ -229,6 +229,14 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped: [docs/archive/pictet-tax-authority-filings.md](docs/archive/pictet-tax-authority-filings.md)
+  — classify Pictet's three annual tax-authority filings (`DECLARACION_ETE`,
+  `MODELO_720`, `INCOME_CAPITAL_GAINS_UK`) as their own `NO_OUTPUT` doctypes
+  and auto-file them into `<year>/tax/` under canonical names (`ETE <date>`,
+  `Modelo 720 <date>`, `Income and capital gains UK <date>`). Content markers
+  (`Declaración ETE`; `Modelo 720: Datos para`; the UK `Section 104` / `HMRC`
+  / capital-gains phrase); as-of pinned per kind (31 Dec / 5 Apr). Migrated
+  the 10 hand-filed copies. Archive-only; prune leaves them untouched.
 - Last shipped: [docs/archive/pictet-fiscal-statement.md](docs/archive/pictet-fiscal-statement.md)
   — classify Pictet's comprehensive **annual fiscal statement** ("Informe
   fiscal personas físicas" / "Statement Capital gains/losses + other income")

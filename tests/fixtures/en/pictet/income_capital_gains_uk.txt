@@ -1,0 +1,36 @@
+--- page 1/1 ---
+Bank Pictet & Cie (Europe) AG
+Société anonyme de droit allemand
+(Aktiengesellschaft)
+Siège Social:
+Neue Mainzer Straße 2-4
+60311 Frankfurt am Main
+Allemagne
+Succursale de Luxembourg:
+15a, avenue J. F. Kennedy
+L-1855 Luxembourg
+RCS Luxembourg n° B277879
+pictet.com
+
+Income & capital gains report UK
+Account no.: 999999
+Client: FIRST MIDDLE LASTNAMES
+Tax year: 2024/2025 | 6 April 2024 - 5 April 2025 | Currency: GBP
+
+This report covers the tax year from 06 April 2024 to 05 April 2025.
+If you are the beneficial owner of more than one account, separate reports will be provided for each account. As a
+result, capital gains and losses are calculated separately for each account. Positions in the same investment held in
+different accounts are not consolidated.
+The report reflects the tax treatment applicable to a UK resident individual and follows HMRC guidance. Chargeable
+capital gains arising during the relevant tax year on the disposal of securities are matched using the Section 104
+holding rules. Income and expenses associated with the fund are treated as reportable income where applicable.
+
+CAPITAL GAINS
+Disposals in the tax year 6 April 2024 - 5 April 2025
+Security ISIN Quantity Disposal proceeds Allowable cost Gain / (loss)
+No disposals in the period
+
+INCOME
+Income arising in the tax year 6 April 2024 - 5 April 2025
+Security ISIN Gross income Notional tax Net income
+No income in the period

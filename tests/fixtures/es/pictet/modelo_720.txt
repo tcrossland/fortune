@@ -1,0 +1,34 @@
+--- page 1/1 ---
+N° de cuenta: 123456
+IBAN: LU00000000000000000000
+FIRST MIDDLE LASTNAMES
+Modelo 720: Datos para la
+declaración informativa sobre bienes
+y derechos situados en el extranjero
+Del 1 Enero al 31 Diciembre 2024 (GBP)
+Bank Pictet & Cie (Europe) AG
+Succursale de Luxembourg
+15A, avenue J.F. Kennedy
+L-1855 Luxembourg
+B.P. 687
+L-2016 Luxembourg
+pictet.com
+Identificación: LU14573542
+N° Bicc: PICTLULX
+0A08
+
+Modelo 720
+al 31 Diciembre 2024 en EUR
+Cliente: FIRST MIDDLE LASTNAMES
+N° cuenta: 123456
+Condición
+del titular
+Subclave
+del bien
+o
+derecho
+Nombre del Activo Financiero
+Código Identificación Cuenta o Valor
+País Fecha
+incorporación/
+Ninguna transacción

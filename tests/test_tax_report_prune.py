@@ -81,11 +81,15 @@ def test_is_canonical_name_covers_statement_but_parse_excludes_it() -> None:
         "Realised PL 20241231.pdf",
         "Unrealised PL 20241231.pdf",
         "Fiscal statement 20241231.pdf",
+        "ETE 20241231.pdf",
+        "Modelo 720 20241231.pdf",
+        "Income and capital gains UK 20250405.pdf",
     ):
         assert tax_report_prune.is_canonical_name(name)
     # …while non-canonical / legacy names are not.
     for name in (
         "Tax - Statement Capital gains-20241231.pdf",
+        "Tax - Tax valuations - ETE-20241231.pdf",  # legacy hand-filed name
         "Fiscal statement 2024.pdf",  # short date
     ):
         assert not tax_report_prune.is_canonical_name(name)

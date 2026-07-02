@@ -582,6 +582,29 @@ PICTET_EN_RULES: tuple[Rule, ...] = (
             re.compile(r"\bPortfolio\s+valuation\b", re.I),
         ),
     ),
+    # Pictet's English UK-tax-year "Income & capital gains report"
+    # (archive-only; NO_OUTPUT). Strongly UK-tax-specific markers, so it
+    # outranks the generic English ``dividend_notice`` / ``trade_confirmation``
+    # rules it currently mis-scores against. It carries the Pictet Luxembourg
+    # letterhead, so it stays within Pictet's ruleset — no clash with the
+    # Vanguard ISA docs (a different bank verdict).
+    Rule(
+        doc_type=DocumentType.INCOME_CAPITAL_GAINS_UK,
+        template_id="pictet.income_capital_gains_uk.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            re.compile(
+                r"\bcapital\s+gains\s+and\s+losses\s+are\s+calculated\s+separately\b",
+                re.I,
+            ),
+            # UK CGT matching method — unmistakably this report.
+            re.compile(r"\bSection\s+104\b", re.I),
+            re.compile(r"\bHMRC\b"),
+            re.compile(r"\bUK\s+resident\b", re.I),
+            # UK tax-year end — the year drives the 5-Apr as-of date.
+            re.compile(r"\b5\s+April\s+\d{4}\b"),
+        ),
+    ),
 )
 
 
@@ -1240,6 +1263,47 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
             # Snapshot date — present on the unrealised report's cover and
             # section headers.
             re.compile(r"\bAl\s+\d\d\.\d\d\.\d{4}\b"),
+        ),
+    ),
+    # --- Annual tax-authority filings (archive-only; NO_OUTPUT) ----------
+    # The Bank-of-Spain ETE declaration and the Spanish form-720 return.
+    # Distinct titles, no overlap with the P&L reports / fiscal statement.
+    Rule(
+        doc_type=DocumentType.DECLARACION_ETE,
+        template_id="pictet.declaracion_ete.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Cover title.
+            re.compile(r"\bDeclaraci.n\s+ETE\b", re.I),
+            # Report banner (all-caps on 2022-era, mixed-case on 2024+).
+            re.compile(
+                r"\bETE\s*-\s*Resumido\s+para\s+la\s+declaraci.n\s+anual\b", re.I
+            ),
+            # ETE-specific balance-of-payments section (with its ``09 01 01``
+            # code); absent from every other Pictet doc.
+            re.compile(r"\bOperaciones\s+financieras\s+activas\b", re.I),
+            # Account recap heading.
+            re.compile(r"\bRecapitulaci.n\b", re.I),
+            # Full-year period end — the year drives the 31-Dec as-of date.
+            re.compile(r"\b31\s+(?:Diciembre|December)\s+\d{4}\b", re.I),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.MODELO_720,
+        template_id="pictet.modelo_720.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # The form's full informative-return title (may wrap across lines,
+            # so match the two halves independently).
+            re.compile(r"\bModelo\s+720\b"),
+            re.compile(r"\bDatos\s+para\s+la\s*\r?\n?\s*declaraci.n\s+informativa\b", re.I),
+            re.compile(
+                r"\bbienes\s*\r?\n?\s*y\s+derechos\s+situados\s+en\s+el\s+extranjero\b",
+                re.I,
+            ),
+            # Form-720 disclosure columns — 720-specific.
+            re.compile(r"\bSubclave\s*\r?\n?\s*del\s+bien\b", re.I),
+            re.compile(r"\b31\s+(?:Diciembre|December)\s+\d{4}\b", re.I),
         ),
     ),
 )
