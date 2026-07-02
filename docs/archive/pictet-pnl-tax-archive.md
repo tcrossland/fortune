@@ -1,9 +1,46 @@
 # Plan: import, name, and prune Pictet P&L tax reports
 
-*Not started.* Account numbers below are anonymised per the repo's PII
-rules (placeholder body `123456`; the real number lives only in the
-gitignored archive / `data/`). No real balances, holdings, or the NIF
-appear here.
+*Shipped 2026-07-02 — all three stages complete and verified on the real
+archive.* Account numbers below are anonymised per the repo's PII rules
+(placeholder body `123456`; the real number lives only in the gitignored
+archive / `data/`). No real balances, holdings, or the NIF appear here.
+
+## Status: shipped
+
+All stages done, verified, lints/types/tests green, PII guard clean. Key
+deviations from the original sketch, and why:
+
+- **Accent-tolerant classifier anchors.** The PDF extractor renders `É`
+  differently across report generations (`É` on 2023+, `…` on 2022-era), so
+  the rules key on `P.RDIDAS` (single-char wildcard), the same trick the
+  filing regexes already use for `transacci.n`. Realised vs unrealised split
+  on `INFORME FISCAL` vs `SIMULACI.N FISCAL` (+ `NO REALIZADAS` / `latentes`
+  / the date-shape).
+- **`source_globs` list, not a single extra glob.** `[import]` grew a
+  `source_globs` list (appended to the primary `source_glob`) so the loose
+  tax-report glob composes with — rather than replaces — the `files-*.zip`
+  glob. Reports may arrive loose *or* zipped; zipped copies were already
+  handled.
+- **The prune sweep is content-based, not filename-based.** The legacy
+  URL-encoded filenames encode the *download* date, not the report's as-of —
+  e.g. 31 files named `…-2023100N.pdf` are all re-downloads of the one
+  10.09.2023 report. So the duplicate sweep reuses `archive.file_documents`
+  in dry-run (its `"skip"` status = "canonical already exists" = a redundant
+  copy). A filename-based twin check would have missed all 62 of 2023's dups.
+- **Three legacy name variants, all handled by content.** Besides
+  `Tax - … PL report-` and the URL-encoded `0173837-Tax+-+…+P%2FL+report-`,
+  the year-end realised report also arrived as
+  `Tax - Statement Capital gains losses other income %26 tax info-`. Content
+  classification files all three canonically; no per-variant logic.
+- **Filing by content year created a `2021/tax/`.** The 2021 year-end
+  realised report physically sat in `2022/tax/` but has a 2021 as-of, so it
+  filed to a new `2021/tax/Realised PL 20211231.pdf` — correct (file by
+  as-of, not source folder).
+
+Real-archive result (verified, 948 files conserved — nothing lost): 2021
+keep 1; 2022 keep 25 (12 realised incl. year-final + 13 unrealised incl. the
+5-Apr anchor), 466 superseded; 2023 keep 21, 432 superseded; ETE/720 and the
+2024 zip untouched. Re-running prune is a no-op.
 
 ## Goal
 
@@ -78,14 +115,14 @@ sidecars. Left out of v1 to keep selection stateless.)*
 
 Mirrors the existing advice/statement filing in `archive.py`; data-driven.
 
-- [ ] **`models.py`** — add `TAX_REALISED_PL` / `TAX_UNREALISED_PL` to
+- [x] **`models.py`** — add `TAX_REALISED_PL` / `TAX_UNREALISED_PL` to
       `DocumentType`; add both to `NO_OUTPUT_DOCTYPES`. Docstrings record
       the distinguishing PDF markers.
-- [ ] **`classifiers/rules.py`** — es + Pictet rules: title
+- [x] **`classifiers/rules.py`** — es + Pictet rules: title
       `GANANCIAS Y PÉRDIDAS PATRIMONIALES` gates the pair;
       `NO REALIZADAS` present → unrealised, else realised. Must **not**
       fire on `ETE` / `Modelo 720` (they lack the title).
-- [ ] **`archive.py`** — a **third filing shape** alongside advice +
+- [x] **`archive.py`** — a **third filing shape** alongside advice +
       statement. `ParsedFields`/`FilingInfo` gain a tax-report variant
       (no account, no reference, carries `as_of` + a `Realised`/`Unrealised`
       label). A new scraper reads the **numeric** as-of date (`Al DD.MM.YYYY`
@@ -95,10 +132,15 @@ Mirrors the existing advice/statement filing in `archive.py`; data-driven.
       `destination_for` emits
       `<as-of-year>/tax/<Realised|Unrealised> PL <YYYYMMDD>.pdf`
       (no account segment).
-- [ ] **`banking-pipeline.toml`** `[import].source_glob` — the reports
-      arrive as **loose PDFs**, not inside `files-*.zip`, so add a glob for
-      `~/Downloads/0173837-Tax*P?L report*.pdf` (or a watched folder).
-- [ ] **Fixtures + goldens** — one scrubbed Realised + one Unrealised
+- [x] **`banking-pipeline.toml`** `[import]` — the reports arrive **either
+      loose or inside a `files-*.zip`**. Zipped copies are already picked up
+      by the existing `source_glob = "~/Downloads/files-*.zip"` + `*.pdf`
+      pattern (filing derives everything from content, so the URL-encoded
+      member names don't matter). To also catch the **loose** copies, add a
+      second source glob (e.g. `~/Downloads/0173837-Tax*P?L report*.pdf`);
+      the config grows a `source_globs` list so more than one pattern can be
+      configured without dropping the zip glob.
+- [x] **Fixtures + goldens** — one scrubbed Realised + one Unrealised
       fixture; a filing test asserts each maps to its canonical
       `<year>/tax/…` path (and same-day duplicates collapse via
       skip-if-exists).
@@ -109,17 +151,17 @@ are never overwritten, and `ETE`/`720`/advices/statements are unaffected.
 
 ## Stage 2 — `prune-tax-reports` command
 
-- [ ] New CLI `banking-pipeline prune-tax-reports [--apply]` (module under
+- [x] New CLI `banking-pipeline prune-tax-reports [--apply]` (module under
       `cli/`), **dry-run by default**: prints the keep / move plan per
       year + type. `--apply` moves pruned files to `<year>/tax/_superseded/`
       (created on demand; never deletes).
-- [ ] Pure selection function (unit-testable, no I/O): given
+- [x] Pure selection function (unit-testable, no I/O): given
       `[(type, as_of, path)]`, return the retained set per the policy above.
       Covers the month-end grouping, the realised year-final, and the
       unrealised 5-Apr / Dec anchors.
-- [ ] Only touches files matching the P&L naming convention; `_superseded/`
+- [x] Only touches files matching the P&L naming convention; `_superseded/`
       itself, `ETE`, `Modelo 720`, and any unrecognised file are skipped.
-- [ ] Tests: selection over a synthetic dated set (dailies across several
+- [x] Tests: selection over a synthetic dated set (dailies across several
       months + a year boundary) keeps exactly the expected subset; the
       command is idempotent (a second run moves nothing).
 
@@ -130,7 +172,7 @@ tree to the policy subset, and re-running is a no-op.
 
 Reuses Stage 1 + 2, no new logic.
 
-- [ ] **Rename:** run the filing pass over existing `<year>/tax/*.pdf`.
+- [x] **Rename:** run the filing pass over existing `<year>/tax/*.pdf`.
       Names derive from content, so the three legacy variants
       (`Tax - Realised PL report-…`, URL-encoded
       `0173837-Tax+-+…+P%2FL+report-…`, etc.) normalise to
@@ -139,8 +181,8 @@ Reuses Stage 1 + 2, no new logic.
       legacy sample first — 2022–23 layouts differ slightly from 2026
       (e.g. no "Informe fiscal personas físicas" line), but the title +
       `NO REALIZADAS` + numeric-date anchors hold (checked 2026-07-02).
-- [ ] **Prune:** `prune-tax-reports --apply` over the normalised tree.
-- [ ] Spot-check counts (2022/2023 ~490 → ~25 each) and that a retained
+- [x] **Prune:** `prune-tax-reports --apply` over the normalised tree.
+- [x] Spot-check counts (2022/2023 ~490 → ~25 each) and that a retained
       realised year-final + unrealised anchors are present.
 
 **Done when:** every year's `tax/` P&L set is canonically named and pruned

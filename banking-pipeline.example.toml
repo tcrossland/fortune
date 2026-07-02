@@ -32,6 +32,9 @@ clean_glob = "20*.beancount"
 # [import]
 # enabled = true
 # source_glob = "~/Downloads/files-*.zip"   # the bank's periodic zips
+# # Extra globs, appended to source_glob (compose, don't replace) — e.g. the
+# # loose Pictet IRPF P&L tax-report PDFs that land outside the zip:
+# source_globs = ["~/Downloads/0173837-Tax*P?L report*.pdf"]
 # archive_dir = "~/Dropbox/Finance/Accounts/Pictet"
 
 

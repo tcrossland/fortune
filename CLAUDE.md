@@ -227,14 +227,17 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-**Active:** [docs/plans/pictet-pnl-tax-archive.md](docs/plans/pictet-pnl-tax-archive.md)
-— import, name, and prune Pictet's Realised/Unrealised P&L tax reports:
-auto-file each into `<year>/tax/` under a canonical
-`<Type> PL <YYYYMMDD>.pdf` name, add a `prune-tax-reports` retention
-command (keep month-end + year-end anchors; move daily noise to
-`_superseded/`), then normalise + prune the ~950 legacy files. Archiving
-only — these reports are never ingested or fed to the tax pipeline.
+**Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped: [docs/archive/pictet-pnl-tax-archive.md](docs/archive/pictet-pnl-tax-archive.md)
+  — import, name, and prune Pictet's Realised/Unrealised P&L tax reports:
+  `TAX_REALISED_PL` / `TAX_UNREALISED_PL` doctypes + a third `archive.py`
+  filing shape self-file each into `<year>/tax/<Type> PL <YYYYMMDD>.pdf`
+  (by numeric as-of date), and a `prune-tax-reports` command keeps the
+  month-end + year-end / 5-Apr anchors (moving daily noise to
+  `_superseded/`; content-based dedup of the legacy re-downloads). The ~950
+  legacy files were normalised + pruned on the real archive (948 conserved).
+  Archiving only — never ingested or fed to the tax pipeline.
 - Last shipped: [docs/archive/revolut-contra-leg-equity.md](docs/archive/revolut-contra-leg-equity.md)
   — reclass the Revolut self-to-self contra-leg from `Assets:Revolut:<ccy>`
   to `Equity:Transfers:Revolut:<ccy>`, so day-to-day-untracked Revolut

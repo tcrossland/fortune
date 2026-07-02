@@ -101,6 +101,28 @@ def test_pictet_filing_fields_scrapes_statement_as_of(fixtures_dir: Path) -> Non
     assert fields.as_of == date(2025, 12, 31)
 
 
+def test_pictet_tax_as_of_reads_numeric_date(fixtures_dir: Path) -> None:
+    """Tax reports carry a numeric as-of date: the unrealised report an ``Al
+    DD.MM.YYYY`` snapshot, the realised report the ``al`` end of its ``Del …
+    al …`` range."""
+
+    realised = (fixtures_dir / "es" / "pictet" / "tax_realised_pl.txt").read_text()
+    assert archive._pictet_tax_as_of(
+        realised, DocumentType.TAX_REALISED_PL
+    ) == date(2023, 7, 20)
+    unrealised = (
+        fixtures_dir / "es" / "pictet" / "tax_unrealised_pl.txt"
+    ).read_text()
+    assert archive._pictet_tax_as_of(
+        unrealised, DocumentType.TAX_UNREALISED_PL
+    ) == date(2023, 7, 20)
+    # No date-like text → None, not a raise.
+    assert (
+        archive._pictet_tax_as_of("no date here", DocumentType.TAX_REALISED_PL)
+        is None
+    )
+
+
 def test_pictet_as_of_parses_both_locales() -> None:
     # English "As at <day> <Month> <year>".
     assert archive._pictet_as_of("As at 30 April 2026 (GBP)") == date(2026, 4, 30)
@@ -233,6 +255,70 @@ def test_filing_info_statement_carries_as_of_and_period(fixtures_dir: Path) -> N
         date(2025, 12, 31),
         "monthly",
         None,
+    )
+
+
+def test_filing_info_tax_report_carries_as_of_and_label(fixtures_dir: Path) -> None:
+    """A Spanish IRPF tax report files by its as-of date with a Realised /
+    Unrealised label — no account, no reference."""
+
+    text = (fixtures_dir / "es" / "pictet" / "tax_realised_pl.txt").read_text()
+    info = archive.filing_info(
+        _classification(DocumentType.TAX_REALISED_PL, BankId.PICTET), text
+    )
+    assert info is not None
+    assert info.is_tax_report
+    assert not info.is_statement
+    assert (info.account, info.reference, info.as_of, info.tax_label) == (
+        "",
+        None,
+        date(2023, 7, 20),
+        "Realised",
+    )
+
+
+def test_filing_info_none_when_tax_report_has_no_date() -> None:
+    """A tax-report classification with no scrapable as-of date is left
+    unfiled rather than filed under a wrong name."""
+
+    assert (
+        archive.filing_info(
+            _classification(DocumentType.TAX_UNREALISED_PL, BankId.PICTET),
+            "SIMULACIÓN FISCAL but no numeric date anywhere",
+        )
+        is None
+    )
+
+
+def test_destination_for_tax_report_uses_tax_subfolder() -> None:
+    """A tax report files into ``<as-of-year>/tax/`` named ``<label> PL
+    <YYYYMMDD>.pdf`` — no account segment, never disambiguated."""
+
+    info = archive.FilingInfo(
+        account="",
+        reference=None,
+        published=None,
+        document_type=DocumentType.TAX_UNREALISED_PL,
+        as_of=date(2026, 4, 5),
+        tax_label="Unrealised",
+    )
+    assert archive.destination_for(Path("/arch"), info) == Path(
+        "/arch/2026/tax/Unrealised PL 20260405.pdf"
+    )
+    # disambiguate is moot — the as-of name is already unique.
+    assert archive.destination_for(
+        Path("/arch"), info, disambiguate=True
+    ) == archive.destination_for(Path("/arch"), info)
+    realised = archive.FilingInfo(
+        account="",
+        reference=None,
+        published=None,
+        document_type=DocumentType.TAX_REALISED_PL,
+        as_of=date(2023, 12, 31),
+        tax_label="Realised",
+    )
+    assert archive.destination_for(Path("/arch"), realised).name == (
+        "Realised PL 20231231.pdf"
     )
 
 
@@ -429,6 +515,47 @@ def test_import_files_statement_into_reports_subfolder(
     assert (dest / "2025" / "P-999999.999" / "20251021-1129889269.pdf").is_file()
     assert not (src / "stmt.pdf").exists()
     assert "2 filed, 0 skipped, 0 unmatched, 0 error(s)." in result.output
+
+
+def test_import_files_tax_reports_into_tax_subfolder(
+    tmp_path: Path, fixtures_dir: Path
+) -> None:
+    """The Realised / Unrealised IRPF reports (no account, no reference) file
+    by their as-of date into ``<year>/tax/``, and a same-day duplicate is
+    skipped rather than overwriting the first filed copy."""
+
+    src = tmp_path / "downloads"
+    src.mkdir()
+    shutil.copy(
+        fixtures_dir / "es" / "pictet" / "tax_realised_pl.txt", src / "a.pdf"
+    )
+    shutil.copy(
+        fixtures_dir / "es" / "pictet" / "tax_unrealised_pl.txt", src / "b.pdf"
+    )
+    dest = tmp_path / "archive"
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["import", str(src), str(dest)])
+
+    assert result.exit_code == 0, result.output
+    realised = dest / "2023" / "tax" / "Realised PL 20230720.pdf"
+    unrealised = dest / "2023" / "tax" / "Unrealised PL 20230720.pdf"
+    assert realised.is_file()
+    assert unrealised.is_file()
+    assert "2 filed, 0 skipped, 0 unmatched, 0 error(s)." in result.output
+
+    # A second same-day download (the portal re-cuts a report later the same
+    # day) resolves to the same name → skip, keeping the first filed copy.
+    realised.write_text("first filed", encoding="utf-8")
+    src2 = tmp_path / "downloads2"
+    src2.mkdir()
+    shutil.copy(
+        fixtures_dir / "es" / "pictet" / "tax_realised_pl.txt", src2 / "again.pdf"
+    )
+    result2 = runner.invoke(cli.app, ["import", str(src2), str(dest)])
+    assert result2.exit_code == 0, result2.output
+    assert realised.read_text() == "first filed"  # untouched
+    assert (src2 / "again.pdf").exists()  # source left in place
+    assert "1 skipped" in result2.output
 
 
 def test_import_uses_config_defaults(

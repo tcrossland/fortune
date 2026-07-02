@@ -112,6 +112,11 @@ uv run banking-pipeline import ~/Downloads/files-20260528.zip path/to/archive/
 # Or configure import_source_glob = "~/Downloads/files-*.zip" (+ archive
 # dir) in banking-pipeline.toml and just run: banking-pipeline import
 
+# Trim the archived Pictet Realised/Unrealised P&L tax reports to policy
+# (month-end + year-end / 5-Apr anchors); dry-run by default
+uv run banking-pipeline prune-tax-reports path/to/archive/            # preview
+uv run banking-pipeline prune-tax-reports path/to/archive/ --apply    # move
+
 # End-to-end: classify, extract transactions, emit beancount
 uv run banking-pipeline ingest path/to/statement.pdf --output out.beancount
 

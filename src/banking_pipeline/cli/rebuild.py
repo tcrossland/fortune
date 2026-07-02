@@ -258,6 +258,11 @@ def _run_import(cfg_import: ImportStep, *, dry_run: bool) -> None:
     else:
         sources = []
 
+    # Additional globs (e.g. loose Pictet tax-report PDFs) compose with —
+    # rather than replace — the primary source above.
+    for pattern in cfg_import.source_globs:
+        sources.extend(archive.expand_source_glob(pattern))
+
     if not sources or archive_dir is None:
         err_console.print(
             "[yellow]import skipped:[/yellow] no source/archive resolved "

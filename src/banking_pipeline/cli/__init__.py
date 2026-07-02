@@ -15,6 +15,7 @@ from __future__ import annotations
 from banking_pipeline.cli import (  # noqa: F401
     ingest,
     inspect,
+    prune,
     rebuild,
     reports,
     statements,

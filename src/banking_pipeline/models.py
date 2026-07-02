@@ -229,6 +229,33 @@ class DocumentType(StrEnum):
     # what distinguishes the two rules; everything else matches both fixtures.
     ESTADO_ANUAL = "estado_anual"
 
+    # --- Spanish IRPF tax reports (archive-only, never ingested) ---------
+    # Pictet issues two Spanish-locale IRPF reports on most booking-event
+    # days. They are *filed* into ``<year>/tax/`` for reference but never
+    # fed to beancount or the UK-tax pipeline (their FIFO/EUR figures follow
+    # Spanish rules and must not reach the UK math) — both are NO_OUTPUT.
+    #
+    # The values break the issuer-vocabulary rule deliberately: the chosen
+    # archive filenames are English (``Realised PL <date>.pdf`` /
+    # ``Unrealised PL <date>.pdf``), so English enum values keep the
+    # enum/filename correspondence obvious and read clearer than
+    # ``INFORME_FISCAL`` / ``SIMULACION_FISCAL``.
+    #
+    # Realised P&L ("Informe fiscal" / "INFORME FISCAL"): the cumulative
+    # realised-gains report for ``Del 01.01 al <as-of>``. Distinguishing
+    # markers: the ``INFORME FISCAL`` cover, the ``GANANCIAS Y PÉRDIDAS
+    # PATRIMONIALES`` section (no ``NO REALIZADAS``), and a ``Del DD.MM.YYYY
+    # al DD.MM.YYYY`` date range. (The PDF extractor renders ``É`` as ``É``
+    # on newer reports and as ``…`` on 2022-era ones — rules key on the
+    # accent-tolerant ``P.RDIDAS``.)
+    TAX_REALISED_PL = "tax_realised_pl"
+    # Unrealised P&L ("Simulación fiscal" / "SIMULACIÓN FISCAL"): the
+    # point-in-time latent-gains snapshot ``Al <as-of>``. Distinguishing
+    # markers: the ``SIMULACIÓN FISCAL`` cover, the ``GANANCIAS Y PÉRDIDAS
+    # PATRIMONIALES NO REALIZADAS`` section, the ``Rendimientos … latentes``
+    # concept, and an ``Al DD.MM.YYYY`` snapshot date.
+    TAX_UNREALISED_PL = "tax_unrealised_pl"
+
     # --- Credit / limits ---
     # Extension of a lombard / current-account credit line.
     LIMIT_EXTENSION = "limit_extension"
@@ -384,7 +411,7 @@ class Language(StrEnum):
 #     ``Equity:Uncategorized`` placeholder, and the failure is logged
 #     loudly (or raised, in strict mode).
 #
-# Three families:
+# Four families:
 #
 #   - **Paired-advice openings**: ``FX_FORWARD`` /
 #     ``CAMBIO_DE_DIVISAS_APERTURA`` /
@@ -405,6 +432,10 @@ class Language(StrEnum):
 #     cost *simulation*, not a historical event). Each restates an event
 #     a sibling advice already carries — or no cash event at all — so the
 #     template returns ``[]`` by design and the cash leg lives elsewhere.
+#   - **Spanish IRPF tax reports**: ``TAX_REALISED_PL`` /
+#     ``TAX_UNREALISED_PL`` — Pictet's Spanish realised / unrealised P&L
+#     reports. Archive-only reference documents (filed into ``<year>/tax/``)
+#     that are never ingested; they carry no beancount-relevant cash event.
 NO_OUTPUT_DOCTYPES: frozenset[DocumentType] = frozenset({
     DocumentType.FX_FORWARD,
     DocumentType.CAMBIO_DE_DIVISAS_APERTURA,
@@ -434,6 +465,11 @@ NO_OUTPUT_DOCTYPES: frozenset[DocumentType] = frozenset({
     DocumentType.INTEREST_SCALE,
     DocumentType.FACTURA,
     DocumentType.ORDER_INFORMATION_REPORT,
+    # Spanish IRPF tax reports: filed into ``<year>/tax/`` as a reference
+    # source but never ingested into beancount and never fed to the UK-tax
+    # pipeline (see the doctype docstrings). Archive-only.
+    DocumentType.TAX_REALISED_PL,
+    DocumentType.TAX_UNREALISED_PL,
 })
 
 

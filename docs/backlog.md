@@ -152,17 +152,15 @@ not tax advice" framing.
   method, and never feed any of it to the UK tax pipeline. Wants plan-mode
   first (touches the balance-sheet plan and the reconcile grain).
   *Filing prerequisite (shared first stage, also needed by the parsing
-  item above):* the `[import]` archive step doesn't file these today — it
-  only recognises transaction advices and periodic valuation statements,
-  and a "Simulación fiscal" P&L report is neither (it also prints a bare
-  `999999`, not the `N° de cuenta:` header `archive.py`'s Pictet parser
-  keys on), so it returns `no-match` and leaves them unfiled; historically
-  they've been dropped into `<year>/tax/` by hand under inconsistent names.
-  So the first stage is a classifier doctype + an `archive.py` filing
-  branch that self-files them into `<year>/tax/` with a normalised name
-  keyed on the report's own as-of date + realised/unrealised flavour. Only
-  once they land in the tree consistently can either the parse or the
-  reconcile reader glob for them.
+  item above) — ✅ shipped* in
+  [docs/archive/pictet-pnl-tax-archive.md](archive/pictet-pnl-tax-archive.md):
+  `TAX_REALISED_PL` / `TAX_UNREALISED_PL` doctypes + an `archive.py` filing
+  branch now self-file these into `<year>/tax/<Realised|Unrealised> PL
+  <YYYYMMDD>.pdf` (keyed on the report's numeric as-of date), and
+  `prune-tax-reports` trims the daily volume to month-end + year-end / 5-Apr
+  anchors. So a parse or reconcile reader can now glob
+  `<year>/tax/{Realised,Unrealised}*.pdf` for a clean, canonically-named,
+  deduplicated set.
   *Caveat — no portfolio dimension, and both mandates hold securities:*
   the reports are consolidated at the **taxpayer (NIF) level**, not per
   mandate — every lot is labelled with the bare client number `999999`,

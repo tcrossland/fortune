@@ -379,6 +379,14 @@ class ImportStep(BaseModel):
     # :attr:`source_dir` when it resolves to anything.
     source_glob: str = ""
 
+    # Additional source globs, always expanded and *appended* to whatever
+    # the primary source (``source_glob`` / ``source_dir``) resolves to — so
+    # a second pattern composes with the zip glob rather than replacing it.
+    # Used for sources that arrive alongside the main download, e.g. the
+    # loose Pictet IRPF tax-report PDFs (``0173837-Tax*P?L report*.pdf``)
+    # that may land in ``~/Downloads`` outside the ``files-*.zip``.
+    source_globs: list[str] = Field(default_factory=list)
+
     # A single source folder or ``.zip``. ``~`` is expanded. Empty falls
     # back to the ``import_source_dir`` setting. Used only when no
     # source glob (here or in settings) is set.

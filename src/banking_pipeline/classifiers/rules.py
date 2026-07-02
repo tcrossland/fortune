@@ -1147,6 +1147,62 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
             re.compile(r"\bPerfil\s+cliente\b", re.I),
         ),
     ),
+    # --- Spanish IRPF tax reports (archive-only; NO_OUTPUT) --------------
+    # Realised and unrealised P&L reports Pictet issues on booking-event
+    # days. Both carry the ``GANANCIAS Y PÉRDIDAS PATRIMONIALES`` section,
+    # so each rule leans on markers unique to its variant to avoid a tie:
+    # the realised report opens ``INFORME FISCAL`` with a ``Del … al …``
+    # range; the unrealised opens ``SIMULACIÓN FISCAL`` with a ``NO
+    # REALIZADAS`` section and an ``Al …`` snapshot date. The accent on
+    # ``PÉRDIDAS`` is matched with a tolerant ``.`` because the extractor
+    # renders it as ``É`` on recent reports but ``…`` on 2022-era ones (same
+    # convention as ``transacci.n`` elsewhere). Neither fires on ``ETE`` /
+    # ``Modelo 720`` (which lack the title) nor on the periodic statements.
+    Rule(
+        doc_type=DocumentType.TAX_REALISED_PL,
+        template_id="pictet.tax_realised_pl.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Cover title — realised-only (the unrealised report opens
+            # ``SIMULACIÓN FISCAL`` instead).
+            re.compile(r"\bINFORME\s+FISCAL\b"),
+            # Shared section title — gates the pair; the discriminators
+            # above/below are what separate realised from unrealised.
+            re.compile(r"\bGANANCIAS\s+Y\s+P.RDIDAS\s+PATRIMONIALES\b", re.I),
+            # Cumulative date range — realised-only. The unrealised report
+            # carries a point-in-time ``Al …`` date, no ``Del … al …`` range.
+            re.compile(r"\bDel\s+\d\d\.\d\d\.\d{4}\s+al\s+\d\d\.\d\d\.\d{4}\b"),
+            # Realised-only cover concept ("Ventas incluyendo valores cuyo
+            # coste no fue comunicado"); the unrealised cover says only
+            # "Valores cuyo coste…".
+            re.compile(r"\bVentas\s+incluyendo\s+valores\b", re.I),
+            # Fiscal-year header (``AÑO 2023`` / extractor-mangled ``A—O``) —
+            # realised-only; the unrealised header is the ``Al …`` date.
+            re.compile(r"\bA.O\s+20\d\d\b"),
+        ),
+    ),
+    Rule(
+        doc_type=DocumentType.TAX_UNREALISED_PL,
+        template_id="pictet.tax_unrealised_pl.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Cover title — unrealised-only (a tax *simulation*).
+            re.compile(r"\bSIMULACI.N\s+FISCAL\b"),
+            # Full unrealised section title — the load-bearing discriminator
+            # from the realised report's plain ``… PATRIMONIALES``.
+            re.compile(
+                r"\bGANANCIAS\s+Y\s+P.RDIDAS\s+PATRIMONIALES\s+NO\s+REALIZADAS\b",
+                re.I,
+            ),
+            re.compile(r"\bNO\s+REALIZADAS\b"),
+            # "Rendimientos del capital mobiliario latentes" — unrealised-only
+            # cover concept.
+            re.compile(r"\blatentes\b", re.I),
+            # Snapshot date — present on the unrealised report's cover and
+            # section headers.
+            re.compile(r"\bAl\s+\d\d\.\d\d\.\d{4}\b"),
+        ),
+    ),
 )
 
 

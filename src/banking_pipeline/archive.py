@@ -3,7 +3,7 @@
 This is the first stage of the pipeline: it takes a folder (or a ``.zip``,
 the shape the bank's bulk download arrives in) of freshly downloaded PDFs
 and files each into the archive tree so the later ingest / report stages
-have a stable, organised source tree to read from. Two filing shapes:
+have a stable, organised source tree to read from. Three filing shapes:
 
 * **Transaction advices** (buys, sells, FX, interest, …) file by their
   per-document reference: ``<root>/<year>/<account>/<YYYYMMDD>-<reference>.pdf``.
@@ -12,6 +12,13 @@ have a stable, organised source tree to read from. Two filing shapes:
   (period-end) date into the account's ``reports/`` subfolder:
   ``<root>/<as-of-year>/<account>/reports/Valuation <period> <YYYYMMDD>.pdf``
   — the convention the ingest / valuation stages already glob for.
+* **Spanish IRPF tax reports** (Realised / Unrealised P&L) carry neither an
+  account header nor a reference, so they file by their numeric as-of date
+  into a per-year ``tax/`` folder:
+  ``<root>/<as-of-year>/tax/<Realised|Unrealised> PL <YYYYMMDD>.pdf``. These
+  are an archive-only reference source — never ingested into beancount, never
+  fed to the UK-tax pipeline (see ``prune_tax_reports`` for the retention
+  command that trims the daily volume).
 
 Bank and document type come from the shared :class:`LayeredClassifier` (the
 same language → bank → doctype classifier the rest of the pipeline uses), so
@@ -88,12 +95,15 @@ class ParsedFields:
 class FilingInfo:
     """Everything needed to file one document into the archive tree.
 
-    Two filing shapes share this struct. A **transaction advice** carries a
+    Three filing shapes share this struct. A **transaction advice** carries a
     ``reference`` + ``published`` date and files to
     ``<year>/<account>/<date>-<reference>.pdf``. A **periodic valuation
     statement** carries an ``as_of`` date + ``period`` instead and files to
-    ``<year>/<account>/reports/Valuation <period> <as-of>.pdf`` —
-    :attr:`is_statement` tells them apart.
+    ``<year>/<account>/reports/Valuation <period> <as-of>.pdf``. A **Spanish
+    IRPF tax report** carries an ``as_of`` date + a ``tax_label``
+    (``Realised`` / ``Unrealised``) and no account, filing to
+    ``<year>/tax/<tax_label> PL <as-of>.pdf``. :attr:`is_tax_report` and
+    :attr:`is_statement` tell the three apart.
     """
 
     account: str
@@ -103,11 +113,19 @@ class FilingInfo:
     currency: str | None = None
     as_of: date | None = None
     period: str | None = None
+    tax_label: str | None = None
+
+    @property
+    def is_tax_report(self) -> bool:
+        """True for a Spanish IRPF tax report (filed by as-of date into
+        ``<year>/tax/``, no account segment)."""
+
+        return self.tax_label is not None
 
     @property
     def is_statement(self) -> bool:
         """True for a periodic valuation statement (filed by as-of date into
-        ``reports/``), false for a transaction advice."""
+        ``reports/``), false for a transaction advice or a tax report."""
 
         return self.period is not None
 
@@ -179,6 +197,40 @@ def _pictet_as_of(text: str) -> date | None:
         return None
 
 
+# Spanish IRPF tax reports carry their as-of date *numerically* (distinct
+# from the prose ``AL 30 junio 2026`` a valuation statement uses): the
+# unrealised report prints a point-in-time ``Al DD.MM.YYYY`` snapshot date,
+# the realised report a cumulative ``Del DD.MM.YYYY al DD.MM.YYYY`` range
+# whose ``al`` end is the as-of date. Both anchor at the top of the document,
+# so the first match is the report's own date.
+_TAX_UNREALISED_AS_OF = re.compile(r"\bAl\s+(\d{2})\.(\d{2})\.(\d{4})")
+_TAX_REALISED_AS_OF = re.compile(
+    r"\bDel\s+\d{2}\.\d{2}\.\d{4}\s+al\s+(\d{2})\.(\d{2})\.(\d{4})"
+)
+
+
+def _pictet_tax_as_of(text: str, doc_type: DocumentType) -> date | None:
+    """The numeric as-of date of a Pictet IRPF tax report, or ``None``.
+
+    Realised reports file by the ``al`` end of their ``Del … al …`` range;
+    unrealised reports by their ``Al …`` snapshot date. An out-of-range
+    placeholder day yields ``None`` rather than raising."""
+
+    pattern = (
+        _TAX_REALISED_AS_OF
+        if doc_type is DocumentType.TAX_REALISED_PL
+        else _TAX_UNREALISED_AS_OF
+    )
+    match = pattern.search(text)
+    if match is None:
+        return None
+    day, month, year = match.group(1, 2, 3)
+    try:
+        return date(int(year), int(month), int(day))
+    except ValueError:
+        return None
+
+
 def pictet_filing_fields(text: str) -> ParsedFields | None:
     """Scrape Pictet's filing fields from ``text``, or ``None`` when the text
     carries no account header (not a Pictet document).
@@ -227,25 +279,51 @@ _STATEMENT_PERIODS: dict[DocumentType, str] = {
     DocumentType.ESTADO_ANUAL: "annual",
 }
 
+# Spanish IRPF tax reports file into ``<year>/tax/`` by their as-of date,
+# named ``<label> PL <YYYYMMDD>.pdf`` — no account, no reference. Maps each
+# tax-report doctype to its filename label (English; see the doctype
+# docstrings for why the label breaks the issuer-vocabulary rule).
+_TAX_REPORT_LABELS: dict[DocumentType, str] = {
+    DocumentType.TAX_REALISED_PL: "Realised",
+    DocumentType.TAX_UNREALISED_PL: "Unrealised",
+}
+
 
 def filing_info(classification: Classification, text: str) -> FilingInfo | None:
     """Combine the classifier verdict with the scraped fields, or ``None``.
 
     ``None`` when no bank was identified, the bank has no filing parser, or
     the required fields for the document's shape are missing — the document is
-    then left unfiled. A periodic valuation statement needs an account + an
-    as-of date; a transaction advice needs an account + a reference +
-    publication date.
+    then left unfiled. A Spanish IRPF tax report needs only an as-of date (no
+    account header — it carries none). A periodic valuation statement needs an
+    account + an as-of date; a transaction advice needs an account + a
+    reference + publication date.
     """
 
     bank = classification.bank.bank if classification.bank else BankId.UNKNOWN
     parser = FIELD_PARSERS.get(bank)
     if parser is None:
         return None
+    doc_type = classification.document_type
+    # Spanish IRPF tax reports carry no account header, so they're routed
+    # before the account-requiring parser path: keyed on the numeric as-of
+    # date alone, filed into ``<year>/tax/``.
+    tax_label = _TAX_REPORT_LABELS.get(doc_type)
+    if tax_label is not None:
+        as_of = _pictet_tax_as_of(text, doc_type)
+        if as_of is None:
+            return None
+        return FilingInfo(
+            account="",
+            reference=None,
+            published=None,
+            document_type=doc_type,
+            as_of=as_of,
+            tax_label=tax_label,
+        )
     fields = parser(text)
     if fields is None or fields.account is None:
         return None
-    doc_type = classification.document_type
     period = _STATEMENT_PERIODS.get(doc_type)
     if period is not None:
         # Periodic valuation statement — keyed on the as-of date, no reference.
@@ -309,14 +387,20 @@ def destination_for(
 ) -> Path:
     """The archive path a document with ``info`` files to under ``dest_root``.
 
-    A periodic valuation statement files into the account's ``reports/``
-    subfolder under its as-of year, named ``Valuation <period> <YYYYMMDD>.pdf``
-    (the as-of date makes it unique per account, so ``disambiguate`` is moot).
-    A transaction advice files to ``<pub-year>/<account>/<date>-<ref>.pdf``;
-    with ``disambiguate`` the doctype is appended to the stem so two documents
+    A Spanish IRPF tax report files into ``<as-of-year>/tax/`` named
+    ``<label> PL <YYYYMMDD>.pdf`` (no account segment; the as-of date makes it
+    unique, so ``disambiguate`` is moot). A periodic valuation statement files
+    into the account's ``reports/`` subfolder under its as-of year, named
+    ``Valuation <period> <YYYYMMDD>.pdf`` (likewise unique). A transaction
+    advice files to ``<pub-year>/<account>/<date>-<ref>.pdf``; with
+    ``disambiguate`` the doctype is appended to the stem so two documents
     sharing a reference don't claim the same name.
     """
 
+    if info.is_tax_report:
+        assert info.as_of is not None  # guaranteed by filing_info for tax reports
+        stem = f"{info.tax_label} PL {info.as_of:%Y%m%d}"
+        return dest_root / f"{info.as_of:%Y}" / "tax" / f"{stem}.pdf"
     if info.is_statement:
         assert info.as_of is not None  # guaranteed by filing_info for statements
         stem = f"Valuation {info.period} {info.as_of:%Y%m%d}"
@@ -386,12 +470,13 @@ def file_documents(
 
     # Pass 2: a (account, date, reference) claimed by more than one distinct
     # doctype is a within-batch collision — its members file with a suffix.
-    # Statements don't participate (no reference; their as-of name is unique).
+    # Statements and tax reports don't participate (no reference; their as-of
+    # name is unique).
     doctypes_by_key: dict[tuple[str, date, str], set[DocumentType]] = defaultdict(
         set
     )
     for info in infos.values():
-        if info.is_statement:
+        if info.is_statement or info.is_tax_report:
             continue
         assert info.published is not None and info.reference is not None
         key = (info.account, info.published, info.reference)
@@ -407,9 +492,9 @@ def file_documents(
         # Interest advices always carry a currency suffix (payment + scale
         # share a reference, and the currency belongs in the name); other
         # advices only when a reference is shared by more than one doctype.
-        # Statements are never disambiguated.
+        # Statements and tax reports are never disambiguated.
         disambiguate = False
-        if not info.is_statement:
+        if not info.is_statement and not info.is_tax_report:
             assert info.published is not None and info.reference is not None
             key = (info.account, info.published, info.reference)
             disambiguate = (
