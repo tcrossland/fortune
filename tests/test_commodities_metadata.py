@@ -371,3 +371,75 @@ def test_infer_issuer_precedence_case_and_no_false_match() -> None:
     # so an embedded fragment *does* match. This pins the behaviour so a
     # future refactor to word-boundary matching notices the change.
     assert infer_issuer("SOMETHING WITH JPM EMBEDDED") == "JPMorgan"
+
+
+# --- statement-name index (P mandate by-name resolution) ------------------
+
+
+def test_normalise_security_name_folds_case_and_punctuation() -> None:
+    from banking_pipeline.commodities_metadata import normalise_security_name
+
+    # The statement's abbreviated display form and the stored name normalise
+    # equal once case, punctuation, and spacing are folded.
+    assert normalise_security_name("Novo Nordisk 'B'") == normalise_security_name(
+        "NOVO NORDISK 'B'"
+    )
+    assert normalise_security_name(
+        "Btc (Coinshares) -Etc- 21/Perp"
+    ) == normalise_security_name("BTC (COINSHARES) -ETC- 21/PERP")
+    # Genuinely different names stay different (they need an explicit alias).
+    assert normalise_security_name(
+        "Hanetf-Sprott Glb Uran.Mini.Etf Usd"
+    ) != normalise_security_name("HANetf ICAV - Sprott Global Uranium Mining")
+
+
+def test_build_statement_name_index_auto_matches_name_and_aliases() -> None:
+    from banking_pipeline.commodities_metadata import build_statement_name_index
+
+    base = dict(
+        domicile="IE", asset_class="equity-etf",
+        reporting_status="reporting", first_acquired=date(2025, 2, 1),
+    )
+    commodities = {
+        # Auto-matches on ``name`` (statement prints the same short form).
+        "DK0062498333": CommodityMetadata(
+            isin="DK0062498333", name="NOVO NORDISK 'B'", **base
+        ),
+        # Long contract-note name; the statement short form needs an alias.
+        "IE0005YK6564": CommodityMetadata(
+            isin="IE0005YK6564",
+            name="HANetf ICAV - Sprott Global Uranium Mining UCITS ETF",
+            statement_names=("Hanetf-Sprott Glb Uran.Mini.Etf Usd",),
+            **base,
+        ),
+    }
+    index = build_statement_name_index(commodities)
+    from banking_pipeline.commodities_metadata import normalise_security_name
+
+    assert index[normalise_security_name("Novo Nordisk 'B'")] == "DK0062498333"
+    assert (
+        index[normalise_security_name("Hanetf-Sprott Glb Uran.Mini.Etf Usd")]
+        == "IE0005YK6564"
+    )
+
+
+def test_build_statement_name_index_raises_on_ambiguous_name() -> None:
+    from banking_pipeline.commodities_metadata import build_statement_name_index
+
+    base = dict(
+        domicile="IE", asset_class="equity-etf",
+        reporting_status="reporting", first_acquired=date(2025, 2, 1),
+    )
+    # Two commodities normalising to the same name would assert a quantity
+    # against the wrong ISIN — must fail loudly.
+    commodities = {
+        "IE0005YK6564": CommodityMetadata(
+            isin="IE0005YK6564", name="Acme Fund", **base
+        ),
+        "IE0008119MO8": CommodityMetadata(
+            isin="IE0008119MO8", name="ACME  FUND",
+            statement_names=("acme fund",), **base
+        ),
+    }
+    with pytest.raises(ValueError, match="ambiguous"):
+        build_statement_name_index(commodities)

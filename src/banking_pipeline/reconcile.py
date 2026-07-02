@@ -35,7 +35,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
@@ -226,6 +226,51 @@ def _portfolio_of(account: str) -> str:
     return parts[2] if len(parts) >= 3 else account
 
 
+# ``<date> open Assets:Pic:K123456001[:leaf…]`` — the portfolio ledger's
+# account opens. Matches the third ``:``-part (via :func:`_portfolio_of`) so
+# it lines up with the assertion accounts.
+_OPEN_RE = re.compile(r"^\s*\d{4}-\d{2}-\d{2}\s+open\s+(Assets:\S+)", re.M)
+
+
+def parse_ledger_portfolios(
+    text: str, prefixes: tuple[str, ...] = ("Assets:Pic:", "Assets:Vgd:")
+) -> set[str]:
+    """Portfolio segments with an ``open`` directive under a reconcilable
+    bank prefix.
+
+    The segment is :func:`_portfolio_of` of each opened account, so it
+    matches the assertion accounts exactly. Restricted to the
+    statement-issuing banks (Pictet, Vanguard) so non-reconciled asset
+    trees (property, Revolut, the equity contra) aren't mistaken for
+    missing-statement portfolios. Sourced from the ledger independently of
+    the assertions, so a portfolio present in the ledger yet **absent** from
+    the asserted set surfaces as a whole-portfolio hole.
+    """
+
+    out: set[str] = set()
+    for m in _OPEN_RE.finditer(text):
+        account = m.group(1)
+        if any(account.startswith(p) for p in prefixes):
+            out.add(_portfolio_of(account))
+    return out
+
+
+def find_missing_portfolios(
+    assertions: list[Assertion], ledger_portfolios: set[str]
+) -> list[str]:
+    """Ledger portfolios with **zero** balance assertions.
+
+    :func:`find_coverage_gaps` only spots months missing *between* a
+    portfolio's first and last assertion, so a portfolio asserted **not at
+    all** (its statements silently parsing to nothing — exactly how the P
+    mandate hid) never enters that map. This compares the reconcilable
+    ledger portfolios against the asserted set and returns the difference.
+    """
+
+    asserted = {_portfolio_of(a.account) for a in assertions}
+    return sorted(ledger_portfolios - asserted)
+
+
 def _statement_month(assertion_date: str) -> str:
     """The statement month an assertion covers.
 
@@ -305,6 +350,7 @@ class ReconReport:
     rows: list[ReconRow]
     coverage_gaps: dict[str, list[str]]
     earliest_drift: dict[str, str]
+    missing_portfolios: list[str] = field(default_factory=list)
 
     @property
     def drift_rows(self) -> list[ReconRow]:
@@ -318,17 +364,35 @@ class ReconReport:
     def has_drift(self) -> bool:
         return bool(self.drift_rows)
 
+    @property
+    def has_missing_portfolio(self) -> bool:
+        return bool(self.missing_portfolios)
+
 
 def build_report(
-    expected: list[Assertion], failures: dict[int, Failure]
+    expected: list[Assertion],
+    failures: dict[int, Failure],
+    ledger_portfolios: set[str] | None = None,
 ) -> ReconReport:
-    """Reconcile and bundle the derived summaries into a report."""
+    """Reconcile and bundle the derived summaries into a report.
+
+    ``ledger_portfolios`` (from :func:`parse_ledger_portfolios`) enables the
+    whole-portfolio-hole check: any reconcilable portfolio in the ledger
+    with zero assertions is reported. Omit it (or pass ``None``) to skip
+    that check.
+    """
 
     rows = reconcile(expected, failures)
+    missing = (
+        find_missing_portfolios(expected, ledger_portfolios)
+        if ledger_portfolios is not None
+        else []
+    )
     return ReconReport(
         rows=rows,
         coverage_gaps=find_coverage_gaps(expected),
         earliest_drift=earliest_drift(rows),
+        missing_portfolios=missing,
     )
 
 
@@ -369,6 +433,15 @@ def render_summary(report: ReconReport, *, ledger: str, balances: str) -> str:
             lines.append(
                 f"  {account} first diverged {when} "
                 f"→ check {month} documents"
+            )
+        lines.append("")
+
+    if report.missing_portfolios:
+        lines.append("MISSING PORTFOLIO (in ledger, no balance assertions)")
+        for portfolio in report.missing_portfolios:
+            lines.append(
+                f"  {portfolio}: ledger holds this portfolio but no statement "
+                "asserts it — check the balance parser recognises its layout"
             )
         lines.append("")
 

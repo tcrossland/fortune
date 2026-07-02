@@ -53,6 +53,7 @@ from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 
+from banking_pipeline.commodities_metadata import normalise_security_name
 from banking_pipeline.prices_extract import _parse_statement_date
 from banking_pipeline.vanguard_statement import parse_isa_valuation
 from banking_pipeline.writer.format import portfolio_segment
@@ -96,6 +97,52 @@ _ES_CASH_ROW_RE = re.compile(
     r"^([A-Z]{3})\s+(-?[\d'][\d'.]*)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s]+?)\s+"
     r"(-?[\d'][\d'.]*)\s+[-\d'.]+\s*$"
 )
+# --- Pictet P mandate "Financial Statement" by-name layout ---------------
+# The P (leveraged Lombard) mandate's valuation page prints holdings *by
+# name with NO ``ISIN:`` marker* and cash rows with the reference-currency
+# (GBP) conversion column + a weight the K layout collapses away. Both the
+# K patterns above and the two below run per line; they're mutually
+# exclusive by shape (K cash ends after one balance; the by-name cash has a
+# second ``<CCY> <balance>`` group + ``%``; K security data is multi-line
+# while the by-name security row is single-line with three ``<CCY>``
+# tokens), so no P-vs-K sniffing is needed.
+#
+# Trailing weight column. Normally ``<signed-number>%`` (``113.55%``,
+# ``-13.68%``), but in the early months a leveraged base pushed weights
+# off-scale and Pictet prints a clamped ``> 999.99%`` / ``< -999.99%`` with
+# a comparison operator and a space — so allow an optional leading ``<``/``>``
+# and sign. A missing operator here silently dropped every row on the
+# opening statement (the coverage guard caught it as an ``empty-statement``).
+_WEIGHT = r"[<>]?\s*[-+]?[\d'.]+%\s*$"
+
+# Cash row: ``<qty> <Currency Name> <CCY> <val> <REF-CCY> <val-ref> <%>``
+# — exactly TWO currency tokens. The name is letters + spaces only (no
+# punctuation/digits), which alone rejects punctuated security names; the
+# ``qty ≈ val`` guard in the loop confirms it's a genuine cash row (the
+# quantity repeats as the origin-currency valuation) and rejects the
+# ``C/A Limit`` credit-limit row (``qty 2'400'000 ≠ val 0.00``).
+_FS_CASH_ROW_RE = re.compile(
+    r"^(-?[\d'][\d'.]*)\s+"
+    r"([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s]+?)\s+"
+    r"([A-Z]{3})\s+(-?[\d'][\d'.]*)\s+"
+    r"([A-Z]{3})\s+(-?[\d'][\d'.]*)\s+"
+    + _WEIGHT
+)
+# Security row: ``<qty> <Name> <CCY> <price> <CCY> <val> <REF-CCY> <val-ref>
+# <%>`` — exactly THREE currency tokens (price + orig valuation + GBP
+# conversion). The name is broad (ETF names carry ``-.&/`` and digits),
+# anchored by the trailing three ``<CCY> <number>`` groups + ``%``. Only qty
+# and name are captured; the name resolves to a ledger ISIN via
+# :func:`commodities_metadata.build_statement_name_index` (holdings carry no
+# ISIN here). The 2-token ``C/A Limit`` row can't match (needs 3 tokens).
+_FS_SECURITY_ROW_RE = re.compile(
+    r"^(-?[\d'][\d'.]*)\s+"
+    r"(.+?)\s+"
+    r"[A-Z]{3}\s+-?[\d'][\d'.]*\s+"
+    r"[A-Z]{3}\s+-?[\d'][\d'.]*\s+"
+    r"[A-Z]{3}\s+-?[\d'][\d'.]*\s+"
+    + _WEIGHT
+)
 
 
 def _sanitise_portfolio(account_no: str) -> str:
@@ -112,6 +159,7 @@ def _normalise_amount(s: str) -> str:
 
 def extract_balances_from_statement(
     text: str,
+    name_to_isin: dict[str, str] | None = None,
 ) -> list[tuple[str, str, str, str]]:
     """Parse a statement text dump for per-holding / per-currency balances.
 
@@ -126,12 +174,18 @@ def extract_balances_from_statement(
     markers; Vanguard on its ``Your ISA investments at`` table), so the
     union is safe to return without sniffing the issuer first.
 
+    ``name_to_isin`` (from
+    :func:`commodities_metadata.build_statement_name_index`) resolves the
+    Pictet P mandate's by-name holding rows to a ledger ISIN; without it,
+    those rows are cash-only (securities carry no ISIN on that layout and
+    can't be asserted). It has no effect on the K / Vanguard paths.
+
     Returns ``[]`` when neither parser recognises the document (e.g. the
     fixture's anonymised ``99 Enero 9999`` form, or a drained Vanguard
     statement with no valuation table).
     """
 
-    return _pictet_balances(text) + _vanguard_balances(text)
+    return _pictet_balances(text, name_to_isin) + _vanguard_balances(text)
 
 
 def _vanguard_balances(text: str) -> list[tuple[str, str, str, str]]:
@@ -178,8 +232,16 @@ def _vanguard_balances(text: str) -> list[tuple[str, str, str, str]]:
     return rows
 
 
-def _pictet_balances(text: str) -> list[tuple[str, str, str, str]]:
+def _pictet_balances(
+    text: str, name_to_isin: dict[str, str] | None = None
+) -> list[tuple[str, str, str, str]]:
     """Per-holding / per-currency balances from a Pictet monthly statement.
+
+    Handles both the K layout (ISIN-led, multi-line security blocks) and
+    the P mandate's by-name "Financial Statement" layout (holdings named,
+    no ISIN). ``name_to_isin`` resolves the by-name holdings to a ledger
+    ISIN; when it's ``None`` or a name doesn't resolve, that holding emits
+    no assertion (the coverage guard reports it instead of guessing).
 
     Returns ``[]`` when the statement's date or account header can't be
     parsed (e.g. the fixture's anonymised ``99 Enero 9999`` /
@@ -206,6 +268,61 @@ def _pictet_balances(text: str) -> list[tuple[str, str, str, str]]:
 
     for i, line in enumerate(lines):
         stripped = line.strip()
+
+        # --- P mandate by-name layout ("Financial Statement") ---
+        # Runs before the K patterns; both no-op on the other's rows (see
+        # the pattern comments). A by-name *cash* row is a leading balance,
+        # a letters-only currency name, then two ``<CCY> <value>`` groups
+        # (origin valuation + GBP conversion) and a weight.
+        m_fs_cash = _FS_CASH_ROW_RE.match(stripped)
+        if m_fs_cash is not None:
+            qty, _name, ccy, _val, _ref_ccy, _val_ref = m_fs_cash.groups()
+            # Assert the leading *quantity* — the booked account balance,
+            # which is what the ledger holds. The ``Valuation (Orig.)``
+            # column adds accrued-but-unpaid interest (the two diverge
+            # mid-quarter, e.g. -269'090.40 booked vs -269'977.91 valued),
+            # and that accrual is never a ledger posting. The letters-only
+            # name + two-currency-token shape already rejects the
+            # ``C/A Limit`` credit-limit row (punctuated name), subtotals
+            # (word-led), and security rows (three currency tokens), so no
+            # symmetry guard is needed. (Substituting the more-precise
+            # valuation column, as the K cash path does for its doubled
+            # balance, is wrong here: the columns are *different* numbers, not
+            # two prints of one — and a whole-unit-rounded quantity already
+            # gets ``render``'s ``~ 0.5`` fiat tolerance.) Skip zero balances
+            # (the ledger never opens that sub-account) and seen currencies.
+            nq = _normalise_amount(qty)
+            if ccy not in seen_currencies and Decimal(nq) != 0:
+                seen_currencies.add(ccy)
+                rows.append(
+                    (assertion_date, f"Assets:Pic:{portfolio}:{ccy}", nq, ccy)
+                )
+            continue
+        # A by-name *security* row carries three currency tokens and no
+        # ISIN; resolve its name → a ledger ISIN. An unresolved name emits
+        # nothing (the coverage guard flags it) rather than guessing. Defer
+        # to the ISIN-anchored path below when an ISIN marker is on this line
+        # or the next few: the by-name layout has none, so a row that does
+        # have one is the K (ISIN-led) layout and must be keyed by ISIN, not
+        # by a name-resolved guess.
+        m_fs_sec = _FS_SECURITY_ROW_RE.match(stripped)
+        if m_fs_sec is not None and not any(
+            _ISIN_LINE_RE.search(lines[j])
+            for j in range(i, min(i + 4, len(lines)))
+        ):
+            qty, name = m_fs_sec.group(1), m_fs_sec.group(2)
+            isin = (name_to_isin or {}).get(normalise_security_name(name))
+            if isin is not None and isin not in seen_isins:
+                seen_isins.add(isin)
+                rows.append(
+                    (
+                        assertion_date,
+                        f"Assets:Pic:{portfolio}:{isin}",
+                        _normalise_amount(qty),
+                        isin,
+                    )
+                )
+            continue
 
         # --- Cash row ---
         # EN ``<bal> <Currency-Name> <CCY> <bal>`` or ES ``<CCY> <bal>
@@ -338,30 +455,139 @@ _LOOSE_EN_CASH_RE = re.compile(r"^([-\d'.]+)\s+\D+?\s+([A-Z]{3})\s+([-\d'.]+)\s*
 _LOOSE_ES_CASH_RE = re.compile(
     r"^([A-Z]{3})\s+(-?[\d'][\d'.]*)\s+\D+?\s+(-?[\d'][\d'.]*)\s+[-\d'.]+\s*$"
 )
+# Permissive P by-name cash re-detector: leading balance, any non-digit
+# name (accents pass), then two ``<CCY> <value>`` groups + a weight. Groups
+# the leading balance and the currency; the two value columns diverge by
+# accrued interest, so — unlike the K/ES detectors — there is no doubled-
+# balance symmetry to check. Presence-only, so a dropped P cash row (e.g.
+# the accrued-interest divergence that used to fail the parser's guard)
+# surfaces as a gap instead of a silent shortfall.
+_LOOSE_FS_CASH_RE = re.compile(
+    r"^(-?[\d'][\d'.]*)\s+\D+?\s+([A-Z]{3})\s+-?[\d'][\d'.]*\s+"
+    r"[A-Z]{3}\s+-?[\d'][\d'.]*\s+" + _WEIGHT
+)
 
 
 @dataclass(frozen=True)
 class CoverageGap:
     """A holding or cash row present in the statement text that the
-    production parser did not extract."""
+    production parser did not extract.
 
-    kind: str  # "cash" | "security"
-    detail: str  # currency code (cash) or ISIN (security)
+    Kinds:
 
-
-def statement_coverage_gaps(text: str) -> list[CoverageGap]:
-    """Re-scan a statement and report rows the production parser dropped.
-
-    Returns ``[]`` for a document the parser doesn't recognise at all
-    (nothing extracted → nothing to reconcile against), so it never
-    fires on the Vanguard path or an anonymised fixture. Otherwise it
-    compares the set of non-zero cash currencies and ISINs visible in
-    the text against what :func:`extract_balances_from_statement`
-    captured, and returns one gap per missed row.
+    * ``cash`` / ``security`` — a cash currency / ISIN-marked holding the
+      loose re-detector found but the strict parser dropped.
+    * ``unresolved-holding`` — a P by-name security row whose display name
+      didn't resolve to a ledger ISIN (needs a ``statement_names`` alias in
+      ``commodities.toml``). ``detail`` is the unresolved display name.
+    * ``empty-statement`` — a document recognised as a valuation statement
+      that nonetheless extracted zero rows (a whole-statement hole, which
+      the P by-name layout produced before it had a parser path).
+    * ``unreadable`` — the file couldn't be loaded (``detail`` is the error).
     """
 
-    extracted = extract_balances_from_statement(text)
+    kind: str
+    detail: str
+
+    @property
+    def message(self) -> str:
+        """Human-readable one-line description for the CLI."""
+
+        match self.kind:
+            case "cash":
+                return f"cash {self.detail} present in statement but not extracted"
+            case "security":
+                return (
+                    f"holding {self.detail} present in statement but not extracted"
+                )
+            case "unresolved-holding":
+                return (
+                    f"by-name holding {self.detail!r} did not resolve to a ledger "
+                    "ISIN — add a statement_names alias in commodities.toml"
+                )
+            case "empty-statement":
+                return "recognised valuation extracted zero rows (whole-statement drop)"
+            case "unreadable":
+                return f"could not read file: {self.detail}"
+            case _:
+                return f"{self.kind} {self.detail}"
+
+
+# The portfolio-total line, EN ``Total portfolio … <CCY> <amount> <%>`` /
+# ES ``Total de la cartera <CCY> <amount>``. Used to tell a genuine
+# whole-statement drop (non-zero total, zero rows extracted) from a
+# legitimately-empty statement (an opening or drained account whose total
+# is zero).
+_TOTAL_LINE_RE = re.compile(r"Total portfolio|Total de la cartera", re.I)
+# Strip the trailing weight (``100.00%`` / ``> 999.99%``) off a total line —
+# same shape as the row ``_WEIGHT``, plus the leading space.
+_TRAILING_PCT_RE = re.compile(r"\s*" + _WEIGHT)
+_NUMBER_RE = re.compile(r"-?[\d'][\d'.]*")
+
+
+def _pictet_header_ok(text: str) -> bool:
+    """True when ``text`` has a parseable Pictet valuation header (an
+    ``As at`` / ``al`` date **and** a ``K-NNNNNN.NNN`` account). Excludes
+    the anonymised ``99 Enero 9999`` fixture (date doesn't parse) and any
+    non-Pictet document."""
+
+    date_match = _AS_AT_RE.search(text)
+    return (
+        date_match is not None
+        and _parse_statement_date(date_match.group(1)) is not None
+        and (
+            _ACCOUNT_NO_RE.search(text) is not None
+            or _ACCOUNT_BARE_RE.search(text) is not None
+        )
+    )
+
+
+def _pictet_total_nonzero(text: str) -> bool:
+    """True when any ``Total portfolio`` / ``Total de la cartera`` line
+    carries a non-zero amount.
+
+    The discriminator for the ``empty-statement`` guard: a whole-statement
+    drop (the P by-name bug) shows a non-zero portfolio total but extracts
+    zero rows, whereas a legitimately-empty statement (a freshly-opened or
+    drained account) reports a zero total. The trailing weight column is
+    stripped so the value — not the ``100.00%`` weight — is read.
+    """
+
+    for line in text.splitlines():
+        if not _TOTAL_LINE_RE.search(line):
+            continue
+        body = _TRAILING_PCT_RE.sub("", line.strip())
+        nums = _NUMBER_RE.findall(body)
+        if not nums:
+            continue
+        try:
+            if Decimal(_normalise_amount(nums[-1])) != 0:
+                return True
+        except (ArithmeticError, ValueError):
+            continue
+    return False
+
+
+def statement_coverage_gaps(
+    text: str, name_to_isin: dict[str, str] | None = None
+) -> list[CoverageGap]:
+    """Re-scan a statement and report rows the production parser dropped.
+
+    For a document the parser doesn't recognise at all it returns ``[]``
+    (nothing to reconcile against) — *unless* it's a Pictet valuation with a
+    non-zero portfolio total that extracted nothing, which is a
+    whole-statement coverage hole (``empty-statement``). A zero-total
+    statement (a freshly-opened or drained account) is legitimately empty,
+    as is a Vanguard statement (its own parser handles emptiness). Otherwise
+    it compares the cash currencies, ISINs, and by-name holdings visible in
+    the text against what :func:`extract_balances_from_statement` captured,
+    and returns one gap per missed row.
+    """
+
+    extracted = extract_balances_from_statement(text, name_to_isin)
     if not extracted:
+        if _pictet_header_ok(text) and _pictet_total_nonzero(text):
+            return [CoverageGap("empty-statement", "no rows extracted")]
         return []
     def _is_ccy(code: str) -> bool:
         return len(code) == 3 and code.isalpha()
@@ -399,6 +625,20 @@ def statement_coverage_gaps(text: str) -> list[CoverageGap]:
         if a != 0 and ccy not in extracted_cash:
             gaps.append(CoverageGap("cash", ccy))
 
+    # P by-name cash rows (two value columns + weight) — a separate loose
+    # pass because they carry no doubled-balance symmetry the K/ES detectors
+    # above key on. Reports a non-zero currency the parser didn't capture.
+    for line in text.splitlines():
+        m_fs = _LOOSE_FS_CASH_RE.match(line.strip())
+        if m_fs is None:
+            continue
+        bal, ccy = m_fs.group(1), m_fs.group(2)
+        if ccy in seen_cash:
+            continue
+        seen_cash.add(ccy)
+        if Decimal(_normalise_amount(bal)) != 0 and ccy not in extracted_cash:
+            gaps.append(CoverageGap("cash", ccy))
+
     seen_isins: set[str] = set()
     for m in _ISIN_LINE_RE.finditer(text):
         isin = m.group(1).replace(" ", "")
@@ -408,11 +648,36 @@ def statement_coverage_gaps(text: str) -> list[CoverageGap]:
         if isin not in extracted_isins:
             gaps.append(CoverageGap("security", isin))
 
+    # By-name (P mandate) security rows carry no ISIN; a row whose display
+    # name doesn't resolve to a ledger commodity emits no assertion, so
+    # report it — the missing ``statement_names`` alias is then visible
+    # rather than silently understating the holdings. Skip rows with an ISIN
+    # marker nearby (the K layout, keyed by ISIN not name), mirroring the
+    # parser's deferral so an ISIN-anchored holding isn't mis-flagged.
+    index = name_to_isin or {}
+    guard_lines = text.splitlines()
+    seen_names: set[str] = set()
+    for i, line in enumerate(guard_lines):
+        m_sec = _FS_SECURITY_ROW_RE.match(line.strip())
+        if m_sec is None or any(
+            _ISIN_LINE_RE.search(guard_lines[j])
+            for j in range(i, min(i + 4, len(guard_lines)))
+        ):
+            continue
+        name = m_sec.group(2).strip()
+        key = normalise_security_name(name)
+        if key in seen_names:
+            continue
+        seen_names.add(key)
+        if key not in index:
+            gaps.append(CoverageGap("unresolved-holding", name))
+
     return gaps
 
 
 def coverage_report(
     statement_files: Iterable[Path],
+    name_to_isin: dict[str, str] | None = None,
 ) -> list[tuple[Path, list[CoverageGap]]]:
     """Run :func:`statement_coverage_gaps` over each statement file and
     return one ``(path, gaps)`` entry per file that has at least one gap.
@@ -436,7 +701,7 @@ def coverage_report(
         except Exception as exc:  # noqa: BLE001 — report, don't abort the batch
             out.append((path, [CoverageGap("unreadable", str(exc))]))
             continue
-        gaps = statement_coverage_gaps(text)
+        gaps = statement_coverage_gaps(text, name_to_isin)
         if gaps:
             out.append((path, gaps))
     return out
@@ -504,6 +769,7 @@ def generate(
     data_dir: Path,
     statement_files: Iterable[Path],
     output: Path | None = None,
+    name_to_isin: dict[str, str] | None = None,
 ) -> tuple[Path, int]:
     """Parse the supplied statement files and write a beancount
     balance-assertions file under ``data_dir``. Returns
@@ -512,7 +778,9 @@ def generate(
     The output file is overwritten on every run; aggregating across
     multiple invocations means caller passes the full statement set
     each time. Statements that don't parse (anonymised dates etc.)
-    contribute zero rows silently.
+    contribute zero rows silently. ``name_to_isin`` resolves the P
+    mandate's by-name holdings (see
+    :func:`extract_balances_from_statement`).
     """
 
     if output is None:
@@ -525,7 +793,7 @@ def generate(
         else:
             from banking_pipeline.extractors import load_pdf
             text = load_pdf(path).text
-        rows.extend(extract_balances_from_statement(text))
+        rows.extend(extract_balances_from_statement(text, name_to_isin))
 
     rows = merge_balances(rows)
     output.write_text(render(rows), encoding="utf-8")

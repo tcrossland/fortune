@@ -24,6 +24,7 @@ from banking_pipeline.cli._main import (
     _configure_logging,
     _discover_priced_statements,
     _resolve_commodities,
+    _resolve_name_to_isin,
     app,
     console,
     err_console,
@@ -285,10 +286,12 @@ def balances(
     """
 
     _configure_logging(verbose)
+    name_to_isin = _resolve_name_to_isin()
     output_path, total = balances_extract.generate(
         data_dir=data_dir,
         statement_files=statements,
         output=output,
+        name_to_isin=name_to_isin,
     )
     err_console.print(
         f"Wrote {output_path} ({total} balance assertion(s) "
@@ -296,14 +299,12 @@ def balances(
     )
 
     if strict:
-        gaps = balances_extract.coverage_report(statements)
+        gaps = balances_extract.coverage_report(statements, name_to_isin)
         if gaps:
             for path, file_gaps in gaps:
                 for gap in file_gaps:
                     err_console.print(
-                        f"[red]coverage gap[/red] {path.name}: "
-                        f"{gap.kind} {gap.detail} present in statement but "
-                        f"not extracted"
+                        f"[red]coverage gap[/red] {path.name}: {gap.message}"
                     )
             raise typer.Exit(code=1)
         err_console.print("Coverage check passed: every statement reconciles.")

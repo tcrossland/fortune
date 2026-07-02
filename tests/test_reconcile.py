@@ -157,6 +157,62 @@ def test_find_coverage_gaps_spans_year_boundary() -> None:
     assert reconcile.find_coverage_gaps(assertions) == {"K1": ["2025-01"]}
 
 
+# --- missing-portfolio guard ----------------------------------------------
+
+
+def test_parse_ledger_portfolios_reads_reconcilable_opens() -> None:
+    text = (
+        "2021-01-01 open Assets:Pic:K123456001:GBP\n"
+        "2025-02-01 open Assets:Pic:P123456002:GBP\n"
+        "2025-02-13 open Assets:Vgd:ISA:VG0000000:GBP\n"
+        # Non-reconcilable trees must not count as portfolios.
+        "2024-06-01 open Assets:Property:Bristol\n"
+        "2024-06-01 open Assets:Revolut:GBP\n"
+        "2024-06-01 open Equity:Transfers:Revolut:GBP\n"
+    )
+    assert reconcile.parse_ledger_portfolios(text) == {
+        "K123456001",
+        "P123456002",
+        "ISA",
+    }
+
+
+def test_find_missing_portfolios_flags_zero_assertion_portfolio() -> None:
+    # K is asserted; P is in the ledger but has no assertion at all — the
+    # whole-portfolio hole find_coverage_gaps can't see.
+    assertions = [_assertion("2025-07-01", "Assets:Pic:K123456001:GBP", "1", 1)]
+    ledger = {"K123456001", "P123456002"}
+    assert reconcile.find_missing_portfolios(assertions, ledger) == ["P123456002"]
+
+
+def test_find_missing_portfolios_empty_when_all_asserted() -> None:
+    assertions = [
+        _assertion("2025-07-01", "Assets:Pic:K123456001:GBP", "1", 1),
+        _assertion("2025-07-01", "Assets:Pic:P123456002:GBP", "1", 2),
+    ]
+    ledger = {"K123456001", "P123456002"}
+    assert reconcile.find_missing_portfolios(assertions, ledger) == []
+
+
+def test_build_report_carries_missing_portfolios_and_summary() -> None:
+    assertions = [_assertion("2025-07-01", "Assets:Pic:K123456001:GBP", "1", 1)]
+    report = reconcile.build_report(
+        assertions, {}, ledger_portfolios={"K123456001", "P123456002"}
+    )
+    assert report.has_missing_portfolio
+    assert report.missing_portfolios == ["P123456002"]
+    summary = reconcile.render_summary(report, ledger="l", balances="b")
+    assert "MISSING PORTFOLIO" in summary
+    assert "P123456002" in summary
+
+
+def test_build_report_skips_missing_check_without_ledger_portfolios() -> None:
+    assertions = [_assertion("2025-07-01", "Assets:Pic:K123456001:GBP", "1", 1)]
+    report = reconcile.build_report(assertions, {})
+    assert report.missing_portfolios == []
+    assert not report.has_missing_portfolio
+
+
 # --- earliest drift -------------------------------------------------------
 
 

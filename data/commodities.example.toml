@@ -34,3 +34,16 @@ first_acquired = 2018-03-15
                                  # (single-provider) exposure. Omitted →
                                  # inferred from `name`; set it only when
                                  # the name can't be placed automatically
+# statement_names = ["Hanetf-Sprott Glb Uran.Mini.Etf Usd"]
+                                 # optional: extra display name(s) this
+                                 # security is printed under on the Pictet P
+                                 # mandate's by-name "Financial Statement"
+                                 # valuation (holdings there carry no ISIN).
+                                 # The balance parser matches those rows →
+                                 # this ISIN. Only needed when the short
+                                 # display form doesn't already match `name`
+                                 # after case/punctuation folding — e.g. a
+                                 # long contract-note `name` vs the
+                                 # statement's abbreviation. A `rebuild
+                                 # --strict` coverage gap ("by-name holding
+                                 # … did not resolve") tells you which to add.

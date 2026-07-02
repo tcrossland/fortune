@@ -11,6 +11,7 @@ from banking_pipeline.balances_extract import (
     extract_balances_from_statement,
     statement_coverage_gaps,
 )
+from banking_pipeline.commodities_metadata import normalise_security_name
 
 # A minimal Pictet valuation page reproducing the problem layout: a
 # quantity-led ``C/A Limit`` credit-limit line immediately above a
@@ -150,3 +151,199 @@ def test_coverage_guard_flags_an_uncaptured_holding() -> None:
     )
     gaps = statement_coverage_gaps(text)
     assert [(g.kind, g.detail) for g in gaps] == [("security", "LU9999999999")]
+
+
+# --- Pictet P mandate "Financial Statement" by-name layout ---------------
+# Holdings are printed by an abbreviated name with NO ``ISIN:`` marker, and
+# cash rows carry the GBP-reference conversion column + a weight. All
+# figures / names below are synthetic. The credit-limit row and a
+# zero-balance currency exercise the same rejections as the K layout.
+_P_BYNAME_STATEMENT = """\
+As at 30 June 2025
+Account no.: P-123456.002
+
+Cash GBP -100'000.00 271.42%
+Current accounts GBP -100'000.00 271.42%
+-30'000.00 Pound United Kingdom GBP -30'000.00 GBP -30'000.00 113.55%
+-54'000.00 Dollar USA USD -54'000.00 GBP -40'000.00 79.43%
+0.00 Euro EUR 0.00 GBP 0.00 0.00%
+Equities GBP 50'000.00 -132.94%
+1'365 Acme Defense Etf A Usd USD 39.37 USD 53'740.05 GBP 42'679.63 -13.68%
+420 Widget Holdings 'B' DKK 644.50 DKK 270'690.00 GBP 29'979.27 -4.38%
+2'400'000.00 C/A Limit Gbp, 26.02.2025-26.02.2026 - Bp Level GBP 0.00 GBP 0.00 0.00%
+"""
+
+# Resolves only the first holding — "Widget Holdings 'B'" is left
+# deliberately unmapped to exercise the unresolved-holding guard.
+_P_NAME_TO_ISIN = {normalise_security_name("Acme Defense Etf A Usd"): "XX0000000001"}
+
+
+def test_p_byname_cash_rows_assert_with_gbp_conversion_column() -> None:
+    """The P by-name cash row carries a second ``<CCY> <val> <%>`` group the
+    K layout collapses away; the origin-currency balance (not the GBP
+    conversion) is asserted, and a zero-balance currency is skipped."""
+
+    rows = extract_balances_from_statement(_P_BYNAME_STATEMENT, _P_NAME_TO_ISIN)
+    accounts = {r[1]: r for r in rows}
+    assert accounts["Assets:Pic:P123456002:GBP"] == (
+        "2025-07-01", "Assets:Pic:P123456002:GBP", "-30000.00", "GBP",
+    )
+    assert accounts["Assets:Pic:P123456002:USD"] == (
+        "2025-07-01", "Assets:Pic:P123456002:USD", "-54000.00", "USD",
+    )
+    assert "Assets:Pic:P123456002:EUR" not in accounts  # zero → skipped
+
+
+def test_p_byname_cash_asserts_booked_quantity_not_accrued_valuation() -> None:
+    """Mid-quarter, the ``Valuation (Orig.)`` column adds accrued-but-unpaid
+    interest, so it diverges from the leading booked balance. The assertion
+    must use the booked quantity (what the ledger holds), and the row must
+    NOT be dropped as a symmetry mismatch — that silently lost a whole
+    month's P cash, invisibly to the coverage guard too."""
+
+    text = (
+        "As at 30 April 2025\n"
+        "Account no.: P-123456.002\n\n"
+        # qty -269'090.40 (booked) != orig valuation -269'977.91 (accrued).
+        "-269'090.40 Pound United Kingdom GBP -269'977.91 GBP -269'977.91 134.95%\n"
+    )
+    rows = extract_balances_from_statement(text, _P_NAME_TO_ISIN)
+    assert (
+        "2025-05-01",
+        "Assets:Pic:P123456002:GBP",
+        "-269090.40",
+        "GBP",
+    ) in rows
+    # And the coverage guard must not flag it as a dropped cash row.
+    assert statement_coverage_gaps(text, _P_NAME_TO_ISIN) == []
+
+
+def test_loose_p_cash_detector_matches_expanded_format() -> None:
+    """The coverage guard's loose P-cash re-detector recognises the expanded
+    two-value-column format (balance + currency), so a future tightening of
+    the strict parser that dropped a P cash row would surface as a gap
+    rather than a silent shortfall — the K/ES detectors can't see this shape
+    (it has no doubled-balance symmetry)."""
+
+    from banking_pipeline.balances_extract import _LOOSE_FS_CASH_RE
+
+    m = _LOOSE_FS_CASH_RE.match(
+        "-90'814.18 Krone Denmark DKK -91'239.59 GBP -10'404.23 5.20%"
+    )
+    assert m is not None
+    assert m.group(1) == "-90'814.18"
+    assert m.group(2) == "DKK"
+    # It must not match a three-currency-token security row.
+    assert (
+        _LOOSE_FS_CASH_RE.match(
+            "700 Fujifilm Holdings JPY 3'142.00 JPY 2'199'400 GBP 11'111.44 -4.38%"
+        )
+        is None
+    )
+
+
+def test_p_byname_credit_limit_row_is_not_asserted() -> None:
+    """The ``C/A Limit`` credit-limit row is cash-shaped but its quantity
+    (2'400'000) doesn't repeat as the valuation (0.00); it must not assert a
+    bogus GBP balance (the GBP assertion stays the -30'000 cash line)."""
+
+    rows = extract_balances_from_statement(_P_BYNAME_STATEMENT, _P_NAME_TO_ISIN)
+    gbp = [r for r in rows if r[1] == "Assets:Pic:P123456002:GBP"]
+    assert gbp == [
+        ("2025-07-01", "Assets:Pic:P123456002:GBP", "-30000.00", "GBP")
+    ]
+
+
+def test_p_byname_security_resolves_name_to_isin() -> None:
+    """A by-name holding whose display name resolves to a ledger ISIN is
+    asserted by quantity against that ISIN's sub-account."""
+
+    rows = extract_balances_from_statement(_P_BYNAME_STATEMENT, _P_NAME_TO_ISIN)
+    assert (
+        "2025-07-01",
+        "Assets:Pic:P123456002:XX0000000001",
+        "1365",
+        "XX0000000001",
+    ) in rows
+
+
+def test_p_byname_unresolved_holding_is_flagged_not_dropped() -> None:
+    """A by-name holding with no name→ISIN mapping emits no assertion (it
+    can't be keyed to a ledger account) but is reported by the coverage
+    guard, so the missing ``statement_names`` alias is visible."""
+
+    rows = extract_balances_from_statement(_P_BYNAME_STATEMENT, _P_NAME_TO_ISIN)
+    # No assertion for the unmapped holding.
+    assert all("Widget" not in r[1] for r in rows)
+    gaps = statement_coverage_gaps(_P_BYNAME_STATEMENT, _P_NAME_TO_ISIN)
+    assert ("unresolved-holding", "Widget Holdings 'B'") in [
+        (g.kind, g.detail) for g in gaps
+    ]
+
+
+def test_p_byname_fully_mapped_statement_has_no_gaps() -> None:
+    """With every by-name holding mapped, the coverage guard is clean."""
+
+    full = dict(_P_NAME_TO_ISIN)
+    full[normalise_security_name("Widget Holdings 'B'")] = "XX0000000002"
+    assert statement_coverage_gaps(_P_BYNAME_STATEMENT, full) == []
+
+
+# In the opening months a leveraged base pushes weights off-scale and
+# Pictet clamps them to ``> 999.99%`` / ``< -999.99%`` (a comparison
+# operator + space). A weight matcher that only accepted a bare number
+# dropped every row on the opening statement.
+_P_CLAMPED_WEIGHT_STATEMENT = """\
+As at 28 February 2025
+Account no.: P-123456.002
+
+-30'000.00 Pound United Kingdom GBP -30'000.00 GBP -30'000.00 > 999.99%
+1'365 Acme Defense Etf A Usd USD 39.37 USD 53'740.05 GBP 42'679.63 < -999.99%
+"""
+
+
+def test_p_byname_clamped_weight_rows_are_parsed() -> None:
+    """Rows whose weight is clamped to ``> 999.99%`` / ``< -999.99%`` still
+    parse — the opening-statement drop the empty-statement guard caught."""
+
+    rows = extract_balances_from_statement(
+        _P_CLAMPED_WEIGHT_STATEMENT, _P_NAME_TO_ISIN
+    )
+    accounts = {r[1] for r in rows}
+    assert "Assets:Pic:P123456002:GBP" in accounts
+    assert "Assets:Pic:P123456002:XX0000000001" in accounts
+
+
+def test_nonzero_total_statement_with_zero_rows_is_flagged_empty() -> None:
+    """A Pictet valuation with a non-zero portfolio total that extracts
+    nothing is a whole-statement drop — reported as ``empty-statement``
+    (the P by-name layout did exactly this before it had a parser path)."""
+
+    text = (
+        "As at 30 June 2025\n"
+        "Account no.: P-123456.002\n\n"
+        "Total portfolio (including accrued interest GBP 0.00) GBP -253'442.53 100.00%\n"
+        "(rows in a layout the parser can't read)\n"
+    )
+    gaps = statement_coverage_gaps(text)
+    assert [g.kind for g in gaps] == ["empty-statement"]
+
+
+def test_zero_total_opening_statement_is_not_flagged() -> None:
+    """A freshly-opened / drained account reports a zero portfolio total and
+    genuinely has no rows — it must NOT be flagged as a whole-statement
+    drop, or every opening statement fails ``--strict``."""
+
+    text = (
+        "al 30 Junio 2021\n"
+        "K-123456.001\n\n"
+        "Total de la cartera EUR 0\n"
+    )
+    assert statement_coverage_gaps(text) == []
+
+
+def test_unrecognised_document_reports_no_gaps() -> None:
+    """A document the parser doesn't recognise as a valuation (no parseable
+    header) has nothing to reconcile against — no empty-statement noise."""
+
+    assert statement_coverage_gaps("just some unrelated text\n") == []

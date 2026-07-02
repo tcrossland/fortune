@@ -30,7 +30,11 @@ from banking_pipeline.batch_config import (
     Source,
 )
 from banking_pipeline.classifiers import LayeredClassifier
-from banking_pipeline.commodities_metadata import CommodityMetadata, load_commodities
+from banking_pipeline.commodities_metadata import (
+    CommodityMetadata,
+    build_statement_name_index,
+    load_commodities,
+)
 from banking_pipeline.config import settings
 from banking_pipeline.extractors import load_pdf
 from banking_pipeline.fx.gbp_rates import GbpRateSource, build_rate_source
@@ -219,6 +223,18 @@ def _resolve_commodities() -> dict[str, CommodityMetadata] | None:
     if path is None or not path.is_file():
         return None
     return load_commodities(path)
+
+
+def _resolve_name_to_isin() -> dict[str, str]:
+    """Statement-name → ISIN index for the Pictet P mandate's by-name
+    holdings, built from the configured commodity metadata. Empty when no
+    metadata is configured (the by-name holdings then stay unresolved and
+    the coverage guard flags them)."""
+
+    commodities = _resolve_commodities()
+    if not commodities:
+        return {}
+    return build_statement_name_index(commodities)
 
 
 def _run_check_or_exit(ledger: Path, *, strict: bool) -> None:

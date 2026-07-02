@@ -70,6 +70,7 @@ from banking_pipeline.cli._main import (
     _load_properties,
     _load_sidecar_transactions,
     _resolve_commodities,
+    _resolve_name_to_isin,
     _run_check_or_exit,
     _run_completeness,
     _statement_text,
@@ -328,7 +329,23 @@ def _run_reconcile(
     failures = reconcile_mod.parse_bean_check_failures(
         result.stderr, balances_name=balances.name
     )
-    report = reconcile_mod.build_report(assertions, failures)
+    # The generated aggregate carries every portfolio's account opens, so
+    # a reconcilable portfolio present there but absent from the assertions
+    # is a whole-portfolio hole (how the P mandate hid). Assumes the
+    # aggregate sits beside the balances file (the default layout — both in
+    # ``data_dir``); if a custom ``--balances`` path moves it elsewhere the
+    # check degrades to a silent skip rather than erroring.
+    portfolio_ledger = balances.parent / "portfolio.beancount"
+    ledger_portfolios = (
+        reconcile_mod.parse_ledger_portfolios(
+            portfolio_ledger.read_text(encoding="utf-8")
+        )
+        if portfolio_ledger.is_file()
+        else None
+    )
+    report = reconcile_mod.build_report(
+        assertions, failures, ledger_portfolios=ledger_portfolios
+    )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     summary = reconcile_mod.render_summary(
@@ -611,23 +628,24 @@ def _do_rebuild(
             f"({len(statements)} statement{'s' if len(statements) != 1 else ''})"
         )
         if not dry_run:
+            name_to_isin = _resolve_name_to_isin()
             output_path, total = balances_extract.generate(
                 data_dir=data_dir,
                 statement_files=statements,
                 output=None,
+                name_to_isin=name_to_isin,
             )
             err_console.print(
                 f"  wrote {output_path} ({total} balance assertion(s))"
             )
             if strict:
-                gaps = balances_extract.coverage_report(statements)
+                gaps = balances_extract.coverage_report(statements, name_to_isin)
                 if gaps:
                     for path, file_gaps in gaps:
                         for gap in file_gaps:
                             err_console.print(
                                 f"  [red]coverage gap[/red] {path.name}: "
-                                f"{gap.kind} {gap.detail} present in statement "
-                                f"but not extracted"
+                                f"{gap.message}"
                             )
                     raise typer.Exit(code=1)
                 err_console.print("  coverage check passed")
@@ -690,7 +708,11 @@ def _do_rebuild(
             )
             report = _run_reconcile(rec_ledger, rec_balances, out_dir)
             if report is not None and (
-                report.has_drift or (rec_strict and report.coverage_gaps)
+                report.has_drift
+                or (
+                    rec_strict
+                    and (report.coverage_gaps or report.has_missing_portfolio)
+                )
             ):
                 raise typer.Exit(code=1)
 

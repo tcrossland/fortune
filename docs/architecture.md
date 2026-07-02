@@ -184,7 +184,13 @@ src/banking_pipeline/
 ├── beancount_writer.py Back-compat re-export of `writer.*`
 ├── balances_extract.py Statement → balance assertions. Dispatches by bank:
 │                         Pictet monthly statement + Vanguard ISA regular
-│                         statement (each no-ops on the other's text)
+│                         statement (each no-ops on the other's text).
+│                         Two Pictet layouts: K's ISIN-led rows and the P
+│                         mandate's by-name "Financial Statement" (no ISIN;
+│                         holdings resolved name→ISIN via commodities.toml
+│                         `statement_names`). Coverage guard flags dropped
+│                         rows, unresolved by-name holdings, and a
+│                         recognised statement that parses to nothing
 ├── prices_extract.py   Per-trade + statement → price directives. Trade
 │                         prices read the ledger's cost-basis / `@` marks;
 │                         statement marks come from Pictet valuation pages +
@@ -572,10 +578,32 @@ usage examples; this is the behavioural reference.
 - `check` — standalone `bean-check` wrapper.
 - `reconcile` — statement-balance reconciliation. Runs `bean-check`, parses
   balance-assertion failures, and writes `drift.csv` + `summary.txt` (drift
-  rows, earliest-divergence date, coverage gaps). Additive to `check`;
-  reports the whole grid instead of aborting on the first failure. Exits
-  nonzero on any drift; `--strict` also fails on coverage gaps. Defaults:
-  `ledger=main.beancount`, `--balances=data/balances.beancount`.
+  rows, earliest-divergence date, coverage gaps, **MISSING PORTFOLIO**).
+  Additive to `check`; reports the whole grid instead of aborting on the
+  first failure. Exits nonzero on any drift; `--strict` also fails on
+  coverage gaps and on a missing portfolio. The missing-portfolio check
+  reads the account opens in `data/portfolio.beancount`
+  (`parse_ledger_portfolios`, restricted to the reconcilable `Assets:Pic:` /
+  `Assets:Vgd:` banks) and flags any portfolio the ledger holds but no
+  statement asserts — the hole through which the P mandate hid before it had
+  a parser path. Defaults: `ledger=main.beancount`,
+  `--balances=data/balances.beancount`.
+
+  **Pictet's two valuation layouts.** The K-*.001 statement lists each
+  holding as a quantity-led row followed by an `ISIN:` marker; the P-*.002
+  (leveraged Lombard) mandate uses the by-name "Financial Statement" layout
+  — holdings printed by an abbreviated name with **no ISIN**, and cash rows
+  carrying the GBP-reference conversion column + a weight. `balances_extract`
+  runs both pattern sets per line (mutually exclusive by shape: K cash ends
+  after one balance, by-name cash has two currency tokens + `%`; K security
+  data is multi-line, the by-name security row has three currency tokens).
+  By-name cash asserts directly; by-name holdings resolve name→ISIN through
+  `commodities.toml` `statement_names` aliases
+  (`build_statement_name_index`). The `--strict` coverage guard reports
+  three kinds beyond a dropped cash/ISIN row: `unresolved-holding` (a by-name
+  name with no alias — the fix is a `statement_names` entry),
+  `empty-statement` (a recognised valuation that extracted zero rows — a
+  whole-statement drop), and `unreadable`.
 - `completeness` — statement-*completeness* cross-check, the
   transaction-level counterpart to `reconcile`'s balance-level one. Parses
   each Pictet current-account statement (the authoritative list of every

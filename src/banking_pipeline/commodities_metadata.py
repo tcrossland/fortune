@@ -154,6 +154,16 @@ class CommodityMetadata(BaseModel):
     # default) infers it from ``name`` (see :func:`infer_issuer`); set it
     # explicitly to fix a name the inference can't place.
     issuer: str | None = None
+    # Extra names this commodity is printed under on the Pictet P mandate's
+    # by-name "Financial Statement" valuation, which lists holdings by an
+    # abbreviated display name and NO ISIN (unlike the K statement's
+    # ISIN-led rows). The balance parser resolves those names → this ISIN
+    # via :func:`build_statement_name_index`. Only needed when the short
+    # display form doesn't normalise-match ``name`` (e.g. a long
+    # contract-note ``name`` like "HANetf ICAV - Sprott Global Uranium…"
+    # vs the statement's "Hanetf-Sprott Glb Uran.Mini.Etf Usd"). A tuple so
+    # the frozen model stays hashable; TOML lists coerce cleanly.
+    statement_names: tuple[str, ...] = ()
 
     @property
     def resolved_issuer(self) -> str | None:
@@ -180,6 +190,60 @@ class CommodityMetadata(BaseModel):
                 f"not a valid ISIN or 11-char commodity ref: {value!r}"
             )
         return code
+
+
+# Runs of anything that isn't a letter or digit — collapsed to a single
+# space so punctuation / spacing differences between the statement's
+# display name ("Novo Nordisk 'B'", "Btc (Coinshares) -Etc- 21/Perp") and
+# the stored ``name`` ("NOVO NORDISK 'B'", "BTC (COINSHARES) -ETC- 21/PERP")
+# don't defeat the match. Accented Latin letters are kept as letters.
+_NAME_SEP_RE = re.compile(r"[^0-9A-Za-zÀ-ÿ]+")
+
+
+def normalise_security_name(name: str) -> str:
+    """Canonical form of a security display name for cross-source matching.
+
+    Upper-cases and collapses every run of non-alphanumerics to a single
+    space, then strips. Two names that differ only in case, punctuation, or
+    spacing normalise equal — enough to match the P statement's abbreviated
+    display name to the ledger commodity ``name`` for the ~half that agree,
+    while genuinely different names (a long contract-note ``name``) still
+    diverge and need an explicit ``statement_names`` alias.
+    """
+
+    return _NAME_SEP_RE.sub(" ", name).upper().strip()
+
+
+def build_statement_name_index(
+    commodities: dict[str, CommodityMetadata],
+) -> dict[str, str]:
+    """Map ``normalise_security_name`` → ISIN for by-name balance matching.
+
+    Indexes each commodity's ``name`` and every ``statement_names`` alias.
+    The result feeds :mod:`banking_pipeline.balances_extract`, which resolves
+    the Pictet P mandate's by-name holding rows (no ISIN on the statement) to
+    a ledger commodity.
+
+    Raises ``ValueError`` when two commodities normalise to the same name —
+    an ambiguous mapping would silently assert a quantity against the wrong
+    ISIN, so a curation clash must fail loudly (mirrors ``load_commodities``'
+    duplicate-ISIN guard).
+    """
+
+    index: dict[str, str] = {}
+    for meta in commodities.values():
+        for raw in (meta.name, *meta.statement_names):
+            key = normalise_security_name(raw)
+            if not key:
+                continue
+            existing = index.get(key)
+            if existing is not None and existing != meta.isin:
+                raise ValueError(
+                    f"ambiguous statement-name {raw!r} maps to both "
+                    f"{existing} and {meta.isin}"
+                )
+            index[key] = meta.isin
+    return index
 
 
 def load_commodities(path: Path) -> dict[str, CommodityMetadata]:
