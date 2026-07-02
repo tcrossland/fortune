@@ -234,6 +234,13 @@ transfers stop inflating the balance sheet (the counter-leg is a perimeter
 crossing, not a holding). Sidecars / tax math unchanged — only the rendered
 account path moves.
 
+- Last shipped: [docs/archive/pictet-p-mandate-reconciliation.md](docs/archive/pictet-p-mandate-reconciliation.md)
+  — close the P-mandate reconciliation hole: parse Pictet's by-name
+  "Financial Statement" layout (holdings resolved name→ISIN via
+  `commodities.toml` `statement_names`), and make a whole-portfolio hole
+  loud (coverage guard flags a zero-parse statement / unresolved holding;
+  reconcile flags a ledger portfolio with no assertions). P now asserts
+  cash + all holdings and reconciles cleanly.
 - Last shipped: [docs/archive/interactive-balance-sheet.md](docs/archive/interactive-balance-sheet.md)
   — the `balance-sheet` command: a self-contained, offline HTML balance
   sheet you scrub to any as-of date (client-side valuation over
