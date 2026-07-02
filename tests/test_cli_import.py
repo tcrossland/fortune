@@ -258,9 +258,10 @@ def test_filing_info_statement_carries_as_of_and_period(fixtures_dir: Path) -> N
     )
 
 
-def test_filing_info_tax_report_carries_as_of_and_label(fixtures_dir: Path) -> None:
-    """A Spanish IRPF tax report files by its as-of date with a Realised /
-    Unrealised label — no account, no reference."""
+def test_filing_info_tax_report_carries_as_of_and_stem(fixtures_dir: Path) -> None:
+    """A Spanish IRPF tax report files by its as-of date with a filename
+    stem-prefix (``Realised PL`` / ``Unrealised PL`` / ``Fiscal statement``)
+    — no account, no reference."""
 
     text = (fixtures_dir / "es" / "pictet" / "tax_realised_pl.txt").read_text()
     info = archive.filing_info(
@@ -273,8 +274,17 @@ def test_filing_info_tax_report_carries_as_of_and_label(fixtures_dir: Path) -> N
         "",
         None,
         date(2023, 7, 20),
-        "Realised",
+        "Realised PL",
     )
+    # The comprehensive annual statement files by its full-year ``al``-end
+    # date under the ``Fiscal statement`` stem.
+    stmt = (fixtures_dir / "es" / "pictet" / "tax_fiscal_statement.txt").read_text()
+    info = archive.filing_info(
+        _classification(DocumentType.TAX_FISCAL_STATEMENT, BankId.PICTET), stmt
+    )
+    assert info is not None
+    assert info.is_tax_report
+    assert (info.as_of, info.tax_label) == (date(2024, 12, 31), "Fiscal statement")
 
 
 def test_filing_info_none_when_tax_report_has_no_date() -> None:
@@ -291,7 +301,7 @@ def test_filing_info_none_when_tax_report_has_no_date() -> None:
 
 
 def test_destination_for_tax_report_uses_tax_subfolder() -> None:
-    """A tax report files into ``<as-of-year>/tax/`` named ``<label> PL
+    """A tax report files into ``<as-of-year>/tax/`` named ``<stem>
     <YYYYMMDD>.pdf`` — no account segment, never disambiguated."""
 
     info = archive.FilingInfo(
@@ -300,7 +310,7 @@ def test_destination_for_tax_report_uses_tax_subfolder() -> None:
         published=None,
         document_type=DocumentType.TAX_UNREALISED_PL,
         as_of=date(2026, 4, 5),
-        tax_label="Unrealised",
+        tax_label="Unrealised PL",
     )
     assert archive.destination_for(Path("/arch"), info) == Path(
         "/arch/2026/tax/Unrealised PL 20260405.pdf"
@@ -315,10 +325,22 @@ def test_destination_for_tax_report_uses_tax_subfolder() -> None:
         published=None,
         document_type=DocumentType.TAX_REALISED_PL,
         as_of=date(2023, 12, 31),
-        tax_label="Realised",
+        tax_label="Realised PL",
     )
     assert archive.destination_for(Path("/arch"), realised).name == (
         "Realised PL 20231231.pdf"
+    )
+    # The annual statement uses the ``Fiscal statement`` stem (no ``PL``).
+    stmt = archive.FilingInfo(
+        account="",
+        reference=None,
+        published=None,
+        document_type=DocumentType.TAX_FISCAL_STATEMENT,
+        as_of=date(2024, 12, 31),
+        tax_label="Fiscal statement",
+    )
+    assert archive.destination_for(Path("/arch"), stmt).name == (
+        "Fiscal statement 20241231.pdf"
     )
 
 

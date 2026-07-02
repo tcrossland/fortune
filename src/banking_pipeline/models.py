@@ -255,6 +255,20 @@ class DocumentType(StrEnum):
     # PATRIMONIALES NO REALIZADAS`` section, the ``Rendimientos … latentes``
     # concept, and an ``Al DD.MM.YYYY`` snapshot date.
     TAX_UNREALISED_PL = "tax_unrealised_pl"
+    # Comprehensive annual fiscal statement ("Informe fiscal personas físicas"
+    # / older "INFORME FISCAL") — Pictet's year-end Spanish tax pack,
+    # downloaded as "Statement Capital gains/losses + other income & tax
+    # info". A superset of the realised P&L report: it additionally covers
+    # investment income (``RENDIMIENTOS DEL CAPITAL MOBILIARIO``),
+    # admin/custody fees and a wealth-tax portfolio valuation. Distinguishing
+    # markers (both statement-exclusive across generations, unlike the
+    # bank-interest concept which leaks into daily reports): the
+    # ``VALORACIÓN DE CARTERA`` (portfolio-valuation) section and the
+    # ``Gastos de administración y depósito de valores negociables``
+    # (admin/custody-fees) concept. Because it also carries the realised
+    # markers (``GANANCIAS Y PÉRDIDAS PATRIMONIALES`` + ``Del … al …``), its
+    # classifier rule must sit *before* ``TAX_REALISED_PL`` to win the tie.
+    TAX_FISCAL_STATEMENT = "tax_fiscal_statement"
 
     # --- Credit / limits ---
     # Extension of a lombard / current-account credit line.
@@ -433,8 +447,9 @@ class Language(StrEnum):
 #     a sibling advice already carries — or no cash event at all — so the
 #     template returns ``[]`` by design and the cash leg lives elsewhere.
 #   - **Spanish IRPF tax reports**: ``TAX_REALISED_PL`` /
-#     ``TAX_UNREALISED_PL`` — Pictet's Spanish realised / unrealised P&L
-#     reports. Archive-only reference documents (filed into ``<year>/tax/``)
+#     ``TAX_UNREALISED_PL`` / ``TAX_FISCAL_STATEMENT`` — Pictet's Spanish
+#     realised / unrealised P&L reports and the comprehensive annual fiscal
+#     statement. Archive-only reference documents (filed into ``<year>/tax/``)
 #     that are never ingested; they carry no beancount-relevant cash event.
 NO_OUTPUT_DOCTYPES: frozenset[DocumentType] = frozenset({
     DocumentType.FX_FORWARD,
@@ -470,6 +485,7 @@ NO_OUTPUT_DOCTYPES: frozenset[DocumentType] = frozenset({
     # pipeline (see the doctype docstrings). Archive-only.
     DocumentType.TAX_REALISED_PL,
     DocumentType.TAX_UNREALISED_PL,
+    DocumentType.TAX_FISCAL_STATEMENT,
 })
 
 

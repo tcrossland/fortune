@@ -1148,16 +1148,55 @@ PICTET_ES_RULES: tuple[Rule, ...] = (
         ),
     ),
     # --- Spanish IRPF tax reports (archive-only; NO_OUTPUT) --------------
-    # Realised and unrealised P&L reports Pictet issues on booking-event
-    # days. Both carry the ``GANANCIAS Y PÉRDIDAS PATRIMONIALES`` section,
-    # so each rule leans on markers unique to its variant to avoid a tie:
-    # the realised report opens ``INFORME FISCAL`` with a ``Del … al …``
-    # range; the unrealised opens ``SIMULACIÓN FISCAL`` with a ``NO
-    # REALIZADAS`` section and an ``Al …`` snapshot date. The accent on
-    # ``PÉRDIDAS`` is matched with a tolerant ``.`` because the extractor
-    # renders it as ``É`` on recent reports but ``…`` on 2022-era ones (same
-    # convention as ``transacci.n`` elsewhere). Neither fires on ``ETE`` /
-    # ``Modelo 720`` (which lack the title) nor on the periodic statements.
+    # Three doctypes: the daily realised / unrealised P&L reports and the
+    # comprehensive annual fiscal statement. All carry the ``GANANCIAS Y
+    # PÉRDIDAS PATRIMONIALES`` section, so each rule leans on markers unique
+    # to its variant to avoid a tie: the realised report opens ``INFORME
+    # FISCAL`` with a ``Del … al …`` range; the unrealised opens ``SIMULACIÓN
+    # FISCAL`` with a ``NO REALIZADAS`` section and an ``Al …`` snapshot date;
+    # the fiscal statement adds a ``VALORACIÓN DE CARTERA`` section and a
+    # ``Gastos de administración…`` concept. The accent on ``PÉRDIDAS`` is
+    # matched with a tolerant ``.`` because the extractor renders it as ``É``
+    # on recent reports but ``…`` on 2022-era ones (same convention as
+    # ``transacci.n`` elsewhere). None fire on ``ETE`` / ``Modelo 720`` (which
+    # lack the title) nor on the periodic statements.
+    #
+    # NOTE: the fiscal-statement rule MUST come before ``TAX_REALISED_PL``.
+    # A statement carries the realised markers too, so the realised rule also
+    # scores highly on it (5/5 on the older all-caps ``INFORME FISCAL``
+    # generation); listing the statement rule first lets it claim the tie
+    # (``RuleClassifier`` keeps the first rule to reach ``best_score`` under a
+    # strict ``>``). The two statement-exclusive markers keep the realised
+    # rule from mis-winning on a statement, and the daily report — lacking
+    # both — never reaches the statement rule's score.
+    Rule(
+        doc_type=DocumentType.TAX_FISCAL_STATEMENT,
+        template_id="pictet.tax_fiscal_statement.v1",
+        bank=BankId.PICTET,
+        patterns=(
+            # Portfolio-valuation *section header* — statement-exclusive
+            # across both generations (present on 2021 + 2024; absent from
+            # every P/L report). Case-SENSITIVE (all-caps) on purpose: the
+            # lowercase ``valoración de cartera`` appears in a legal-note
+            # sentence in the daily reports too, so ``re.I`` would false-match
+            # it. Keyed on the unqualified phrase — the IP/ISGF suffix (``…
+            # A EFECTOS DEL IP Y DEL ISGF``) is a 2022+ addition missing from
+            # older statements, so it must not be required. (``.`` absorbs the
+            # extractor's accent rendering of ``Ó``.)
+            re.compile(r"\bVALORACI.N\s+DE\s+CARTERA\b"),
+            # Admin/custody-fees concept — the second statement-exclusive
+            # marker (bank-interest is not reliable — it leaks into dailies).
+            re.compile(r"\bGastos\s+de\s+administraci.n\s+y\s+dep.sito\b", re.I),
+            # Shared realised-section title — gates against non-tax documents.
+            re.compile(r"\bGANANCIAS\s+Y\s+P.RDIDAS\s+PATRIMONIALES\b", re.I),
+            # Investment-income section — the statement is a superset that
+            # carries it populated; helps the denominator reach 5.
+            re.compile(r"\bRENDIMIENTOS\s+DEL\s+CAPITAL\s+MOBILIARIO\b", re.I),
+            # Cover — matches both ``Informe fiscal personas físicas`` (newer)
+            # and the older all-caps ``INFORME FISCAL`` banner.
+            re.compile(r"\bInforme\s+fiscal\b", re.I),
+        ),
+    ),
     Rule(
         doc_type=DocumentType.TAX_REALISED_PL,
         template_id="pictet.tax_realised_pl.v1",

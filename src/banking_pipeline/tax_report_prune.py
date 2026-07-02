@@ -45,20 +45,32 @@ TaxReportKind = Literal["Realised", "Unrealised"]
 # folder's contents). Never descended into, so re-runs are no-ops.
 SUPERSEDED_DIRNAME = "_superseded"
 
-# The canonical archived filename: ``Realised PL 20230720.pdf`` /
-# ``Unrealised PL 20230720.pdf`` (the stem :func:`archive.destination_for`
-# writes for a tax report). Anchored so nothing else in ``tax/`` matches.
+# The canonical filename of a *prunable* P&L report: ``Realised PL
+# 20230720.pdf`` / ``Unrealised PL 20230720.pdf`` (the stem
+# :func:`archive.destination_for` writes). Anchored so nothing else matches.
+# Only these participate in the retention policy — the annual fiscal
+# statement (below) is kept, not pruned.
 _NAME = re.compile(r"^(Realised|Unrealised) PL (\d{4})(\d{2})(\d{2})\.pdf$")
+
+# Every canonical tax-report filename, including the annual ``Fiscal
+# statement <YYYYMMDD>.pdf`` (which is filed but never pruned). Used to tell
+# an already-normalised report from a legacy-named stray — so the sweep
+# doesn't classify a filed statement, resolve it back to its own path, and
+# move it aside as a "duplicate".
+_CANONICAL_NAME = re.compile(
+    r"^(?:Realised PL|Unrealised PL|Fiscal statement) \d{8}\.pdf$"
+)
 
 
 def is_canonical_name(name: str) -> bool:
-    """True if ``name`` is a canonical ``<kind> PL <YYYYMMDD>.pdf`` filename.
+    """True if ``name`` is a canonical tax-report filename (a P&L report or
+    the annual ``Fiscal statement``).
 
     Used to tell an already-normalised report from a legacy-named one (which
     must be deduped by *content*, not its filename — the legacy names encode
     the download date, not the report's as-of)."""
 
-    return _NAME.match(name) is not None
+    return _CANONICAL_NAME.match(name) is not None
 
 
 @dataclass(frozen=True)

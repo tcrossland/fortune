@@ -229,6 +229,17 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped: [docs/archive/pictet-fiscal-statement.md](docs/archive/pictet-fiscal-statement.md)
+  — classify Pictet's comprehensive **annual fiscal statement** ("Informe
+  fiscal personas físicas" / "Statement Capital gains/losses + other income")
+  as its own `TAX_FISCAL_STATEMENT` doctype and file it as
+  `<year>/tax/Fiscal statement <YYYYMMDD>.pdf` — distinct from the daily
+  `Realised PL` report it was misclassified as. Discriminators (both
+  statement-exclusive across generations): the all-caps `VALORACIÓN DE
+  CARTERA` section header (case-sensitive — the lowercase phrase leaks into
+  daily boilerplate) + the `Gastos de administración…` fees concept; the rule
+  sits before `TAX_REALISED_PL` to win the tie. Archive-only. Migrated the
+  real archive (2 misfiled statements reclassified: 2021 + 2023).
 - Last shipped: [docs/archive/pictet-pnl-tax-archive.md](docs/archive/pictet-pnl-tax-archive.md)
   — import, name, and prune Pictet's Realised/Unrealised P&L tax reports:
   `TAX_REALISED_PL` / `TAX_UNREALISED_PL` doctypes + a third `archive.py`

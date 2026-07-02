@@ -12,13 +12,14 @@ have a stable, organised source tree to read from. Three filing shapes:
   (period-end) date into the account's ``reports/`` subfolder:
   ``<root>/<as-of-year>/<account>/reports/Valuation <period> <YYYYMMDD>.pdf``
   — the convention the ingest / valuation stages already glob for.
-* **Spanish IRPF tax reports** (Realised / Unrealised P&L) carry neither an
-  account header nor a reference, so they file by their numeric as-of date
-  into a per-year ``tax/`` folder:
-  ``<root>/<as-of-year>/tax/<Realised|Unrealised> PL <YYYYMMDD>.pdf``. These
-  are an archive-only reference source — never ingested into beancount, never
-  fed to the UK-tax pipeline (see ``prune_tax_reports`` for the retention
-  command that trims the daily volume).
+* **Spanish IRPF tax reports** (Realised / Unrealised P&L, and the
+  comprehensive annual fiscal statement) carry neither an account header nor
+  a reference, so they file by their numeric as-of date into a per-year
+  ``tax/`` folder: ``<root>/<as-of-year>/tax/<stem> <YYYYMMDD>.pdf`` where
+  ``<stem>`` is ``Realised PL`` / ``Unrealised PL`` / ``Fiscal statement``.
+  These are an archive-only reference source — never ingested into beancount,
+  never fed to the UK-tax pipeline (see ``prune_tax_reports`` for the
+  retention command that trims the daily volume).
 
 Bank and document type come from the shared :class:`LayeredClassifier` (the
 same language → bank → doctype classifier the rest of the pipeline uses), so
@@ -100,9 +101,10 @@ class FilingInfo:
     ``<year>/<account>/<date>-<reference>.pdf``. A **periodic valuation
     statement** carries an ``as_of`` date + ``period`` instead and files to
     ``<year>/<account>/reports/Valuation <period> <as-of>.pdf``. A **Spanish
-    IRPF tax report** carries an ``as_of`` date + a ``tax_label``
-    (``Realised`` / ``Unrealised``) and no account, filing to
-    ``<year>/tax/<tax_label> PL <as-of>.pdf``. :attr:`is_tax_report` and
+    IRPF tax report** carries an ``as_of`` date + a ``tax_label`` (the
+    filename stem-prefix: ``Realised PL`` / ``Unrealised PL`` / ``Fiscal
+    statement``) and no account, filing to
+    ``<year>/tax/<tax_label> <as-of>.pdf``. :attr:`is_tax_report` and
     :attr:`is_statement` tell the three apart.
     """
 
@@ -212,13 +214,18 @@ _TAX_REALISED_AS_OF = re.compile(
 def _pictet_tax_as_of(text: str, doc_type: DocumentType) -> date | None:
     """The numeric as-of date of a Pictet IRPF tax report, or ``None``.
 
-    Realised reports file by the ``al`` end of their ``Del … al …`` range;
-    unrealised reports by their ``Al …`` snapshot date. An out-of-range
-    placeholder day yields ``None`` rather than raising."""
+    Realised reports and the annual fiscal statement file by the ``al`` end of
+    their ``Del … al …`` range (the statement's is the full year, ``Del 01.01
+    … al 31.12``); unrealised reports by their ``Al …`` snapshot date. An
+    out-of-range placeholder day yields ``None`` rather than raising."""
 
+    range_doctypes = (
+        DocumentType.TAX_REALISED_PL,
+        DocumentType.TAX_FISCAL_STATEMENT,
+    )
     pattern = (
         _TAX_REALISED_AS_OF
-        if doc_type is DocumentType.TAX_REALISED_PL
+        if doc_type in range_doctypes
         else _TAX_UNREALISED_AS_OF
     )
     match = pattern.search(text)
@@ -280,12 +287,15 @@ _STATEMENT_PERIODS: dict[DocumentType, str] = {
 }
 
 # Spanish IRPF tax reports file into ``<year>/tax/`` by their as-of date,
-# named ``<label> PL <YYYYMMDD>.pdf`` — no account, no reference. Maps each
-# tax-report doctype to its filename label (English; see the doctype
-# docstrings for why the label breaks the issuer-vocabulary rule).
-_TAX_REPORT_LABELS: dict[DocumentType, str] = {
-    DocumentType.TAX_REALISED_PL: "Realised",
-    DocumentType.TAX_UNREALISED_PL: "Unrealised",
+# named ``<stem> <YYYYMMDD>.pdf`` — no account, no reference. Maps each
+# tax-report doctype to its filename stem-prefix (English; see the doctype
+# docstrings for why these break the issuer-vocabulary rule). The P&L reports
+# use ``Realised PL`` / ``Unrealised PL``; the comprehensive annual statement
+# uses ``Fiscal statement`` (no ``PL`` — it isn't a P&L report).
+_TAX_REPORT_STEMS: dict[DocumentType, str] = {
+    DocumentType.TAX_REALISED_PL: "Realised PL",
+    DocumentType.TAX_UNREALISED_PL: "Unrealised PL",
+    DocumentType.TAX_FISCAL_STATEMENT: "Fiscal statement",
 }
 
 
@@ -308,8 +318,8 @@ def filing_info(classification: Classification, text: str) -> FilingInfo | None:
     # Spanish IRPF tax reports carry no account header, so they're routed
     # before the account-requiring parser path: keyed on the numeric as-of
     # date alone, filed into ``<year>/tax/``.
-    tax_label = _TAX_REPORT_LABELS.get(doc_type)
-    if tax_label is not None:
+    tax_stem = _TAX_REPORT_STEMS.get(doc_type)
+    if tax_stem is not None:
         as_of = _pictet_tax_as_of(text, doc_type)
         if as_of is None:
             return None
@@ -319,7 +329,7 @@ def filing_info(classification: Classification, text: str) -> FilingInfo | None:
             published=None,
             document_type=doc_type,
             as_of=as_of,
-            tax_label=tax_label,
+            tax_label=tax_stem,
         )
     fields = parser(text)
     if fields is None or fields.account is None:
@@ -388,8 +398,9 @@ def destination_for(
     """The archive path a document with ``info`` files to under ``dest_root``.
 
     A Spanish IRPF tax report files into ``<as-of-year>/tax/`` named
-    ``<label> PL <YYYYMMDD>.pdf`` (no account segment; the as-of date makes it
-    unique, so ``disambiguate`` is moot). A periodic valuation statement files
+    ``<stem> <YYYYMMDD>.pdf`` (``Realised PL`` / ``Unrealised PL`` / ``Fiscal
+    statement``; no account segment; the as-of date makes it unique, so
+    ``disambiguate`` is moot). A periodic valuation statement files
     into the account's ``reports/`` subfolder under its as-of year, named
     ``Valuation <period> <YYYYMMDD>.pdf`` (likewise unique). A transaction
     advice files to ``<pub-year>/<account>/<date>-<ref>.pdf``; with
@@ -399,7 +410,7 @@ def destination_for(
 
     if info.is_tax_report:
         assert info.as_of is not None  # guaranteed by filing_info for tax reports
-        stem = f"{info.tax_label} PL {info.as_of:%Y%m%d}"
+        stem = f"{info.tax_label} {info.as_of:%Y%m%d}"
         return dest_root / f"{info.as_of:%Y}" / "tax" / f"{stem}.pdf"
     if info.is_statement:
         assert info.as_of is not None  # guaranteed by filing_info for statements

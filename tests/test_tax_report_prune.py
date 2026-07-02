@@ -66,8 +66,29 @@ def test_parse_tax_report_ignores_non_pl_names() -> None:
         "Tax - Realised PL report-20220103.pdf",  # legacy, not yet normalised
         "Realised PL 2023072.pdf",  # short date
         "Valuation monthly 20260430.pdf",
+        # The annual statement is a canonical name but NOT a prunable P&L
+        # report — retention (parse_tax_report) skips it; the sweep guard
+        # (is_canonical_name) still recognises it.
+        "Fiscal statement 20241231.pdf",
     ):
         assert tax_report_prune.parse_tax_report(Path(name)) is None
+
+
+def test_is_canonical_name_covers_statement_but_parse_excludes_it() -> None:
+    # is_canonical_name recognises every canonical tax-report name (so the
+    # sweep never treats a filed one as a legacy stray)…
+    for name in (
+        "Realised PL 20241231.pdf",
+        "Unrealised PL 20241231.pdf",
+        "Fiscal statement 20241231.pdf",
+    ):
+        assert tax_report_prune.is_canonical_name(name)
+    # …while non-canonical / legacy names are not.
+    for name in (
+        "Tax - Statement Capital gains-20241231.pdf",
+        "Fiscal statement 2024.pdf",  # short date
+    ):
+        assert not tax_report_prune.is_canonical_name(name)
 
 
 # --- select_retained --------------------------------------------------------
@@ -248,6 +269,27 @@ def test_prune_sweeps_content_duplicates(
     assert not dup.exists()
     assert ete.exists()  # non-P&L file untouched
     assert (tax / "Realised PL 20230720.pdf").exists()  # canonical retained
+
+
+def test_prune_leaves_fiscal_statement_untouched(tmp_path: Path) -> None:
+    """A filed annual ``Fiscal statement`` is a canonical name but not a
+    prunable P&L report — the retention pass ignores it and the legacy-dup
+    sweep must not mistake it for a stray and move it aside."""
+
+    tax = tmp_path / "2024" / "tax"
+    tax.mkdir(parents=True)
+    stmt = tax / "Fiscal statement 20241231.pdf"
+    stmt.write_text("x")
+    # A couple of P&L dailies that will be pruned, to exercise a real run.
+    for d in _2024_DAYS:
+        (tax / _name("Realised", d)).write_text("x")
+
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["prune-tax-reports", str(tmp_path), "--apply"])
+    assert result.exit_code == 0, result.output
+
+    assert stmt.exists()  # retained in place
+    assert not (tax / "_superseded" / stmt.name).exists()  # never swept
 
 
 def test_prune_errors_without_archive_root(tmp_path: Path) -> None:
