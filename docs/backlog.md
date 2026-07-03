@@ -131,6 +131,21 @@ not tax advice" framing.
   longer tax-exempt and Spanish FIFO/EUR rules apply. **Before building that
   lens, settle the cost-basis source** (see the next item) — a bare stub was
   deliberately not built.
+  - *FIG-awareness (enhancement).* The report computes one undifferentiated
+    UK section-104 unrealised P&L; it ignores situs. Under a **FIG claim**
+    (`fig_claim_years`), foreign (non-UK-situs) gains are relieved to nil, the
+    CGT AEA is forfeited, and foreign losses are disallowed — so the
+    CGT-harvesting rationale for the exact basis is void for foreign holdings
+    in a claim year, and the unrealised P&L needs reading in that light.
+    Annotate / split each row **foreign (FIG-relievable) vs UK-situs
+    (taxable)** using `CommodityMetadata.resolved_uk_situs` — already in the
+    lens's `commodities` and used by the tax pipeline (`gain_is_foreign`), so
+    the data is in hand. The pool itself is FIG-untouched (only the taxable
+    *output* is residence-filtered), so nothing in the basis changes — this is
+    a presentation/labelling layer. Related open question the ERI cumulative
+    fix already flagged: whether **relieved-year ERI** should uplift a UK base
+    cost at all (a rebasing question); the lens applies ERI uplift
+    unconditionally, so it inherits whatever the pipeline settles.
 - **Unrealised-P&L source options (decide before the EUR lens / `pnl` report).**
   Three ways to get a non-UK / management-view cost basis + unrealised P&L,
   weighed:
