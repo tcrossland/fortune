@@ -8,7 +8,10 @@ from decimal import Decimal
 from banking_pipeline.tax.uk.section_104 import (
     Acquisition,
     Disposal,
+    PoolCostAdjustment,
     match_disposals,
+    match_disposals_with_residual,
+    residual_pool,
 )
 
 
@@ -124,3 +127,89 @@ def test_records_are_chronological() -> None:
     ]
     records = match_disposals(acqs, disps)
     assert [m.disposal_date for m in records] == [date(2025, 5, 1), date(2025, 9, 1)]
+
+
+# --- residual section 104 pool (current-holdings substrate) ---------------
+
+
+def test_residual_pool_no_disposals_is_full_pool() -> None:
+    acqs = [
+        Acquisition(date(2025, 1, 1), D("100"), D("1000")),
+        Acquisition(date(2025, 2, 1), D("100"), D("1400")),
+    ]
+    pool = residual_pool(acqs, [])
+    assert pool.qty == D("200")
+    assert pool.cost_gbp == D("2400")
+
+
+def test_residual_pool_partial_disposal_leaves_weighted_average() -> None:
+    acqs = [
+        Acquisition(date(2025, 1, 1), D("100"), D("1000")),  # unit 10
+        Acquisition(date(2025, 2, 1), D("100"), D("1400")),  # unit 14
+    ]
+    disps = [Disposal(date(2025, 6, 1), D("100"), D("1500"))]  # avg 12 → cost 1200
+    pool = residual_pool(acqs, disps)
+    assert pool.qty == D("100")
+    assert pool.cost_gbp == D("1200")  # 2400 − 1200 drawn at avg
+
+
+def test_residual_pool_full_disposal_is_zero() -> None:
+    acqs = [Acquisition(date(2025, 1, 1), D("100"), D("1000"))]
+    disps = [Disposal(date(2025, 6, 1), D("100"), D("1500"))]
+    pool = residual_pool(acqs, disps)
+    assert pool.qty == D("0")
+    assert pool.cost_gbp == D("0")
+
+
+def test_residual_pool_over_disposal_floors_at_zero() -> None:
+    # Incomplete history: more disposed than acquired. The shortfall matches
+    # at zero cost and the pool floors at zero — never goes short.
+    acqs = [Acquisition(date(2025, 1, 1), D("100"), D("1000"))]
+    disps = [Disposal(date(2025, 6, 1), D("150"), D("2250"))]
+    pool = residual_pool(acqs, disps)
+    assert pool.qty == D("0")
+    assert pool.cost_gbp == D("0")
+
+
+def test_residual_pool_ignores_same_day_and_bnb_matched_lots() -> None:
+    # A same-day (or B&B) acquisition consumed by its matched disposal never
+    # enters the pool, so the residual is only the untouched pool lot.
+    acqs = [
+        Acquisition(date(2025, 1, 1), D("100"), D("1000")),  # pool, untouched
+        Acquisition(date(2025, 5, 5), D("50"), D("600")),  # same-day match
+    ]
+    disps = [Disposal(date(2025, 5, 5), D("50"), D("700"))]
+    pool = residual_pool(acqs, disps)
+    assert pool.qty == D("100")
+    assert pool.cost_gbp == D("1000")
+
+
+def test_residual_pool_reflects_cost_adjustment() -> None:
+    acqs = [Acquisition(date(2025, 1, 1), D("100"), D("1000"))]
+    adj = [PoolCostAdjustment(date(2025, 3, 1), D("50"))]  # ERI base-cost uplift
+    pool = residual_pool(acqs, [], adj)
+    assert pool.qty == D("100")
+    assert pool.cost_gbp == D("1050")
+
+
+def test_residual_pool_cost_is_not_penny_rounded() -> None:
+    # 3 units cost 10 → unit 10/3. The residual cost carries full Decimal
+    # precision, not quantized to pence (round only for display).
+    acqs = [Acquisition(date(2025, 1, 1), D("3"), D("10"))]
+    disps = [Disposal(date(2025, 6, 1), D("1"), D("5"))]
+    pool = residual_pool(acqs, disps)
+    assert pool.qty == D("2")
+    assert pool.cost_gbp != pool.cost_gbp.quantize(D("0.01"))  # sub-penny precision
+
+
+def test_with_residual_records_match_plain_match_disposals() -> None:
+    acqs = [
+        Acquisition(date(2025, 1, 1), D("100"), D("1000")),
+        Acquisition(date(2025, 6, 20), D("50"), D("600")),
+        Acquisition(date(2025, 6, 30), D("100"), D("1100")),
+    ]
+    disps = [Disposal(date(2025, 6, 20), D("250"), D("5000"))]
+    records, pool = match_disposals_with_residual(acqs, disps)
+    assert records == match_disposals(acqs, disps)
+    # 250 acquired across the three lots, 250 disposed → nothing left.
+    assert pool.qty == D("0")

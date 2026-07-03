@@ -29,7 +29,8 @@ from banking_pipeline.tax.uk.section_104 import (
     Acquisition,
     Disposal,
     PoolCostAdjustment,
-    match_disposals,
+    PoolState,
+    match_disposals_with_residual,
 )
 from banking_pipeline.tax.uk.tax_year import tax_year_bounds
 from banking_pipeline.writer.builders.security_trade import (
@@ -100,6 +101,12 @@ class MatchedHistory:
     missing_rate_isins: list[str] = field(default_factory=list)
     missing_rates: list[RateGap] = field(default_factory=list)
     unmatched_isins: list[str] = field(default_factory=list)
+    # The section 104 pool still held per ISIN at the end of the history —
+    # quantity + pooled GBP cost. Includes every ISIN whose trades converted
+    # to GBP (deeply discounted holdings too — still held, whatever their tax
+    # treatment); a fully-disposed holding carries a zero-quantity state.
+    # The substrate for a current-holdings / cost-basis view.
+    residual_pools: dict[str, PoolState] = field(default_factory=dict)
 
 
 def _consideration_native(tx: Transaction) -> Decimal:
@@ -147,6 +154,7 @@ def match_history(
     missing: list[str] = []
     gaps: list[RateGap] = []
     unmatched: list[str] = []
+    pools: dict[str, PoolState] = {}
 
     # Include ISINs that only appear in opening positions (e.g. a holding
     # bought pre-ledger and sold within it would still be in ``by_isin``
@@ -199,11 +207,14 @@ def match_history(
         # their disposals leave the CGT rows entirely.
         target = dds if (meta is not None and meta.deeply_discounted) else rows
         adjustments = (cost_adjustments or {}).get(isin)
+        # One matching pass yields both the disposal rows and the pool still
+        # held (quantity + pooled GBP cost) for a current-holdings view.
+        matched, pools[isin] = match_disposals_with_residual(acqs, disps, adjustments)
         # Pool "acquired since" date — the earliest acquisition of this
         # holding, used to date section 104 rows (which the matcher leaves
         # without an acquisition date because the pool is an aggregate).
         first_acq = min((a.date for a in acqs), default=None)
-        for m in match_disposals(acqs, disps, adjustments):
+        for m in matched:
             acq_dates = m.acquisition_dates
             if not acq_dates and first_acq is not None:
                 acq_dates = [first_acq]
@@ -233,6 +244,7 @@ def match_history(
         missing_rate_isins=missing,
         missing_rates=sorted(set(gaps), key=lambda g: (g.isin, g.month)),
         unmatched_isins=unmatched,
+        residual_pools=pools,
     )
 
 

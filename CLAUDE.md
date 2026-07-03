@@ -228,7 +228,23 @@ advice — verify against HMRC guidance.
 ## Active plan
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
+(A separate session is working the [ERI cumulative-basis tax fix](docs/plans/eri-cumulative-basis-fix.md).)
 
+- Last shipped: [docs/plans/holdings-cost-basis-report.md](docs/plans/holdings-cost-basis-report.md)
+  — the `holdings` cost-basis + unrealised-P&L report. Pluggable
+  per-jurisdiction cost basis (`basis_lens.py` neutral `BasisLens` /
+  `HoldingBasis`; `tax/uk/basis.py` `UkSection104Lens`) over the residual
+  section-104 pool (`PoolState` + `MatchedHistory.residual_pools`, exposed by a
+  behaviour-preserving `match_disposals` refactor). `holdings.py` joins the
+  latest statement market value with the lens cost basis (consolidating a fund
+  held across mandates by ISIN — the pool is NIF-level), computes unrealised
+  P&L, and cross-checks statement qty vs pool qty. CLI `holdings`
+  (`--basis uk|es`, `es` reserved/errors) + default-off `[post.reports]`
+  toggle. ERI base-cost uplift folded in across all years
+  (`cumulative_base_cost_adjustments`). Reviewed (H1 mandate-double-count fixed;
+  verified latent). ES/EUR-Spanish lens deferred to the backlog. Finding along
+  the way: the year-scoped ERI wiring in the *tax* pipeline under-applies
+  prior-year uplift → the separate ERI fix task above.
 - Last shipped (feature, no plan): `net-worth --monthly` — resample the
   timeline onto a first-of-month grid (`_month_start_grid` +
   `monthly` param through `build_timeline`/`_timeline_from_raw`), dropping

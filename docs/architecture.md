@@ -586,6 +586,22 @@ usage examples; this is the behavioural reference.
   negative cash balance (margin / Lombard loan) is netted by currency and
   reported separately. Non-GBP holdings with no rate are excluded + flagged;
   `--strict` exits non-zero on any gap.
+- `holdings` — cost basis + unrealised P&L. Joins the latest statement
+  valuation per portfolio (market value, GBP) with a per-jurisdiction cost
+  basis from a `BasisLens` (`--basis uk`, the UK section 104 pool from the
+  sidecars; `es`/EUR-Spanish reserved, not yet built), writes `holdings.md` +
+  `holdings.csv`. Reports per-holding unrealised gain/loss and cross-checks
+  the statement quantity against the pool quantity (a missing-trade / ingest
+  drift signal). Cost basis reads the JSONL sidecars via `match_history` —
+  never the ledger — and is a UK-tax lens: **not** Pictet's EUR/Spanish
+  figures and never fed to the tax pipeline. ISA trades are excluded from the
+  lens (tax-exempt, no section 104 basis); ISA holdings still show from the
+  statement side with a blank cost. ERI base-cost uplift is folded in across
+  the whole history (`cumulative_base_cost_adjustments`), so a reporting fund's
+  cost matches the section 104 pool. `--source` (default
+  `data`) points at the sidecars; `--strict` exits non-zero on any valuation
+  gap. Securities-only (no cash / property). Seam: `basis_lens.py` (neutral
+  `BasisLens` / `HoldingBasis`) + `tax/uk/basis.py` (`UkSection104Lens`).
 - `net-worth` — net-worth-over-time. Values *every* statement at its own
   date and builds a combined timeline (as-of forward-fill, same-date
   duplicates deduped). Writes `net-worth.md` + `net-worth.csv`. `--monthly`
@@ -689,8 +705,8 @@ usage examples; this is the behavioural reference.
   `clean → ingest per source → prices/portfolio/balances → reports →
   reconcile → completeness → check` sequence. `[post.reports]` (off by
   default) regenerates the analytical reports (income / concentration /
-  net-worth / allocation / portfolio-allocation, plus an opt-in
-  `trial_balance` toggle, with per-report toggles) *before* reconcile/check
+  net-worth / allocation / portfolio-allocation, plus opt-in `trial_balance`
+  and `holdings` toggles, with per-report toggles) *before* reconcile/check
   so they land even when `bean-check` later exits nonzero; its `statements`
   glob falls back to `balance_statements` when unset. `[post.reconcile]`
   (off by default) runs *before* `check` for the same reason.
@@ -772,6 +788,7 @@ schemas don't collide.
 - `reconciliation_dir` (`reports/reconciliation`),
   `completeness_dir` (`reports/completeness`),
   `concentration_reports_dir` (`reports/concentration`),
+  `holdings_reports_dir` (`reports/holdings`),
   `net_worth_reports_dir` (`reports/net-worth`),
   `income_reports_dir` (`reports/income`),
   `allocation_reports_dir` (`reports/allocation`),

@@ -311,6 +311,40 @@ archive pass otherwise ignores by design, deriving everything from content —
 because the filename's date is the more reliable signal. Full rationale +
 audit in [archive/pictet-effective-date-filing.md](archive/pictet-effective-date-filing.md).
 
+## Cost basis is a pluggable per-jurisdiction lens
+
+The `holdings` report shows unrealised P&L, which needs a cost basis — and the
+right cost basis depends on *which* tax jurisdiction you're viewing through.
+UK residence gives **section 104** (averaged pooling, GBP); a possible future
+move to Spain would give **FIFO in EUR** (and Spain does not recognise the ISA
+wrapper). The two are computed by opposite means: UK section 104 is *computed*
+from the sidecars by machinery we already have; the Spanish figures are best
+*parsed* from Pictet's own EUR IRPF reports rather than re-implemented.
+
+So cost basis is a `BasisLens` seam (`basis_lens.py`) — a neutral protocol
+returning per-ISIN `HoldingBasis` — with the UK implementation in
+`tax/uk/basis.py` (`UkSection104Lens`, wrapping `match_history` and reading its
+residual pool). The seam imports no tax code, so each jurisdiction depends on
+the seam without the seam depending on any jurisdiction; the report renders
+whichever lens it's handed. `--basis uk` ships; `--basis es` is a reserved,
+not-yet-implemented slot (it blocks on the Pictet-P&L parser). This keeps the
+report shippable now while admitting the second jurisdiction as pure addition.
+
+The UK lens deliberately **excludes ISA** trades (tax-exempt → no section 104
+basis, mirroring the tax choke point): ISA holdings still appear from the
+statement side with a blank cost, which is also what the ticker-vs-ISIN key
+mismatch would produce. Cost basis reads the JSONL sidecars, never the ledger,
+and is never fed back to the tax pipeline — it is a management view, not a
+return figure.
+
+ERI base-cost uplift is folded into the pool via
+`cumulative_base_cost_adjustments` (eri.py), which runs `compute_eri` for every
+tax year the `eri` table spans and merges the adjustments. This matters because
+`compute_eri` scopes to a single year but the pool is cumulative: a *current*
+cost basis needs every year's uplift, so the holdings lens can't reuse one
+year's adjustments the way the year-scoped tax reports do. Plan + staged
+history: [plans/holdings-cost-basis-report.md](plans/holdings-cost-basis-report.md).
+
 ## Licence hygiene
 
 This project is MIT, and every runtime dependency is MIT / BSD / Apache-2.0

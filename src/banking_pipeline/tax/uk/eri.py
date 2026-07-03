@@ -56,7 +56,11 @@ from banking_pipeline.models import Transaction
 from banking_pipeline.opening_positions import OpeningLot
 from banking_pipeline.tax.uk.currency import RateGap, to_gbp_all
 from banking_pipeline.tax.uk.section_104 import PoolCostAdjustment
-from banking_pipeline.tax.uk.tax_year import reporting_period_end, tax_year_bounds
+from banking_pipeline.tax.uk.tax_year import (
+    date_to_tax_year,
+    reporting_period_end,
+    tax_year_bounds,
+)
 from banking_pipeline.writer.builders.security_trade import (
     SECURITY_BUY_TYPES,
     SECURITY_SELL_TYPES,
@@ -153,6 +157,49 @@ class EriResult:
     # because the commodity is a bond fund (``distributions_as_interest``);
     # surfaced so the inconsistent eri.toml entry gets corrected.
     reclassified_to_interest: list[str] = field(default_factory=list)
+
+
+def cumulative_base_cost_adjustments(
+    transactions: list[Transaction],
+    *,
+    eri_entries: dict[str, list[EriEntry]],
+    commodities: dict[str, CommodityMetadata],
+    opening_positions: dict[str, list[OpeningLot]] | None = None,
+    source: GbpRateSource | None = None,
+) -> tuple[dict[str, list[PoolCostAdjustment]], list[RateGap]]:
+    """Section 104 base-cost adjustments from ERI across the **full** history.
+
+    :func:`compute_eri` scopes to one tax year, but the section 104 pool is
+    cumulative: a *current* cost basis needs the ERI uplifts from every year,
+    not one. This runs ``compute_eri`` for each distinct tax year the ``eri``
+    table spans (keyed by each entry's ``fund_distribution_date``) and merges
+    the per-ISIN adjustment lists, so the holdings lens can uplift the pool by
+    the whole accumulated ERI. Returns the merged adjustments and any GBP-rate
+    gaps encountered (so the caller can surface an incomplete uplift).
+    """
+
+    years = sorted(
+        {
+            date_to_tax_year(entry.fund_distribution_date)
+            for entries in eri_entries.values()
+            for entry in entries
+        }
+    )
+    merged: dict[str, list[PoolCostAdjustment]] = defaultdict(list)
+    gaps: list[RateGap] = []
+    for year in years:
+        result = compute_eri(
+            transactions,
+            tax_year_label=year,
+            eri_entries=eri_entries,
+            commodities=commodities,
+            opening_positions=opening_positions,
+            source=source,
+        )
+        for isin, adjustments in result.base_cost_adjustments.items():
+            merged[isin].extend(adjustments)
+        gaps.extend(result.missing_rates)
+    return dict(merged), gaps
 
 
 def _position_as_of(

@@ -11,7 +11,12 @@ from pydantic import ValidationError
 
 from banking_pipeline.fx.gbp_rates import HmrcMonthlyAverageSource
 from banking_pipeline.models import DocumentType, Transaction
-from banking_pipeline.tax.uk.eri import EriEntry, compute_eri, load_eri
+from banking_pipeline.tax.uk.eri import (
+    EriEntry,
+    compute_eri,
+    cumulative_base_cost_adjustments,
+    load_eri,
+)
 
 
 def _buy(isin: str, qty: str, on: date) -> Transaction:
@@ -39,6 +44,35 @@ def _entry(isin: str, **kw: object) -> EriEntry:
     )
     base.update(kw)
     return EriEntry(**base)  # type: ignore[arg-type]
+
+
+def test_cumulative_adjustments_merge_across_tax_years() -> None:
+    # The pool is cumulative, so a current cost basis needs every year's ERI
+    # uplift — not one year's, which is all a single compute_eri returns.
+    isin = "IE00B3VWN518"
+    txs = [_buy(isin, "1000", date(2023, 1, 10))]
+    entries = {
+        isin: [
+            _entry(isin, period_end=date(2023, 6, 30),
+                   fund_distribution_date=date(2023, 12, 30)),  # 2023-24
+            _entry(isin, period_end=date(2024, 6, 30),
+                   fund_distribution_date=date(2024, 12, 30)),  # 2024-25
+        ]
+    }
+    adjustments, gaps = cumulative_base_cost_adjustments(
+        txs, eri_entries=entries, commodities={}, source=None,
+    )
+    assert gaps == []
+    # One adjustment per tax year, merged into a single per-ISIN list.
+    assert len(adjustments[isin]) == 2
+    # Each: units × (eri − equalisation) = 1000 × (0.50 − 0.10) = 400.
+    assert sum((a.cost_gbp for a in adjustments[isin]), Decimal(0)) == Decimal("800")
+
+    # A single-year call sees only that year's entry — the gap this closes.
+    single = compute_eri(
+        txs, tax_year_label="2023-24", eri_entries=entries, commodities={},
+    )
+    assert len(single.base_cost_adjustments[isin]) == 1
 
 
 def test_measurement_date_derived_from_distribution() -> None:

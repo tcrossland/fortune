@@ -34,6 +34,9 @@ from banking_pipeline import (
     concentration as concentration_mod,
 )
 from banking_pipeline import (
+    holdings as holdings_mod,
+)
+from banking_pipeline import (
     income as income_mod,
 )
 from banking_pipeline import (
@@ -84,7 +87,10 @@ from banking_pipeline.config import settings
 from banking_pipeline.fields import HybridExtractor, TemplateExtractionError
 from banking_pipeline.fx.gbp_rates import build_rate_source
 from banking_pipeline.models import DocumentType, Transaction
+from banking_pipeline.opening_positions import load_opening_positions
 from banking_pipeline.pipeline import Pipeline
+from banking_pipeline.tax.uk.basis import UkSection104Lens
+from banking_pipeline.tax.uk.eri import cumulative_base_cost_adjustments, load_eri
 from banking_pipeline.transaction_sidecar import (
     dump_transactions,
     sidecar_path,
@@ -826,6 +832,47 @@ def _run_rebuild_reports(
             _resolve_report_dir(settings.concentration_reports_dir, project_root),
             "concentration.md", concentration_mod.render_markdown(creport),
             "holdings.csv", concentration_mod.render_csv_rows(creport),
+        )
+    if rep.holdings:
+        # ISA trades are UK-tax-exempt → no section 104 basis, so excluded
+        # from the lens (mirrors the tax choke point); ISA holdings still show
+        # from the statement side with a blank cost. ``rates`` is exact-month
+        # (the tax convention); ``value_holdings`` forward-fills it for marks.
+        hld_txns = [
+            tx for tx in _load_sidecar_transactions(data_dir) if not tx.is_tax_exempt
+        ]
+        opening = (
+            load_opening_positions(settings.opening_positions_path)
+            if settings.opening_positions_path is not None
+            and settings.opening_positions_path.is_file()
+            else {}
+        )
+        eri_entries = (
+            load_eri(settings.eri_path)
+            if settings.eri_path is not None and settings.eri_path.is_file()
+            else {}
+        )
+        adjustments, eri_gaps = cumulative_base_cost_adjustments(
+            hld_txns, eri_entries=eri_entries, commodities=commodities_map,
+            source=rates, opening_positions=opening,
+        )
+        if eri_gaps:
+            err_console.print(
+                f"[yellow]holdings: {len(eri_gaps)} ERI entry/entries had no "
+                "GBP rate — the cost basis for those holdings omits that "
+                "uplift.[/yellow]"
+            )
+        lens = UkSection104Lens(
+            transactions=hld_txns, commodities=commodities_map, source=rates,
+            opening_positions=opening, cost_adjustments=adjustments,
+        )
+        hreport = holdings_mod.build_report(
+            texts, commodities=commodities_map, rate_source=rates, basis=lens
+        )
+        _write_report(
+            _resolve_report_dir(settings.holdings_reports_dir, project_root),
+            "holdings.md", holdings_mod.render_markdown(hreport),
+            "holdings.csv", holdings_mod.render_csv_rows(hreport),
         )
     if rep.net_worth:
         timeline = net_worth_mod.build_timeline(

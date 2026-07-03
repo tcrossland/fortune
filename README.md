@@ -191,7 +191,15 @@ uv run banking-pipeline concentration --statements-dir <archive>        # exposu
 uv run banking-pipeline net-worth --statements-dir <archive>            # net worth over time
 uv run banking-pipeline allocation --statements-dir <archive>           # asset-class mix over time
 uv run banking-pipeline portfolio-allocation --statements-dir <archive> # per-portfolio breakdown of the latest valuation
+uv run banking-pipeline holdings --statements-dir <archive>             # cost basis + unrealised P&L (UK section 104)
 ```
+
+`holdings` also reads the sidecars (`--source`, default `data`) for the cost
+basis: it joins each holding's statement market value with its UK section 104
+pooled cost and reports the unrealised gain/loss, cross-checking the statement
+quantity against the pool. The cost basis is a UK-tax lens (`--basis uk`; an
+`es` EUR/Spanish lens is reserved but not yet built) — not equal to Pictet's
+own figures and never fed to the tax pipeline.
 
 **Ledger** — queried via `bean-query` (default `main.beancount`); a missing
 `bean-query` binary is a warning, not an error (`uv tool install beancount`):

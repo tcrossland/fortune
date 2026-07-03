@@ -53,7 +53,11 @@ not tax advice" framing.
   against the remaining AEA and the year's realised gains — advise how
   much more could be realised tax-free and which loss-making lots to
   crystallise to offset gains. Flag any repurchase that would trip the
-  30-day bed-and-breakfast rule and undo a harvested loss.
+  30-day bed-and-breakfast rule and undo a harvested loss. *Foundation:* the
+  per-holding unrealised table this needs is the
+  [holdings cost-basis report](plans/holdings-cost-basis-report.md) (active
+  plan) — build and verify that first, then this is the headroom query +
+  advice + prospective bed-and-breakfast check layered on top.
 - **Allowance-utilisation dashboard.** From year-to-date actuals, show
   used-vs-remaining for each statutory headroom: dividend allowance,
   personal savings allowance + starting-rate band, the CGT AEA, and the
@@ -114,7 +118,50 @@ not tax advice" framing.
   Still open (phase 4, deferred as non-goals): a **cost-basis / unrealised
   P&L column** (needs per-date FIFO booking) and the **statement-assertion
   drift overlay** (the dataset already carries the assertions; rendering
-  overlaps `reconcile`).
+  overlaps `reconcile`). *The cost-basis half is available from the shipped*
+  [holdings cost-basis report](plans/holdings-cost-basis-report.md) *— its
+  residual section-104 pool per holding is the same substrate this column
+  needs.*
+- **Holdings cost basis + unrealised P&L (`holdings`) — shipped (UK).** Joins
+  the latest statement market value with a UK section-104 GBP cost basis (from
+  the sidecars, ERI-adjusted) and reports per-holding unrealised P&L, with a
+  statement-qty ↔ pool-qty cross-check. Pluggable per-jurisdiction basis lens
+  (`basis_lens.py`); the reserved **EUR/Spanish lens** (`--basis es`) is the
+  open slot — for a possible UK→Spain residence change, where the ISA is no
+  longer tax-exempt and Spanish FIFO/EUR rules apply. **Before building that
+  lens, settle the cost-basis source** (see the next item) — a bare stub was
+  deliberately not built.
+- **Unrealised-P&L source options (decide before the EUR lens / `pnl` report).**
+  Three ways to get a non-UK / management-view cost basis + unrealised P&L,
+  weighed:
+  1. *Read the columns already in the Pictet monthly statement.* The
+     "Portfolio valuation" table we **already parse** (for balances + prices)
+     carries per-holding **Net cost (GBP)**, **Net unrealised (Orig.)** and
+     **Net unrealised (GBP)**. Pros: the data is in a file we already ingest;
+     **per-portfolio** (K/P statements are separate — the dimension the
+     NIF-level tax reports lack); monthly cadence; English/GBP-reference, so no
+     Spanish tokenisation; a multi-column numeric-table parser like
+     `balances_extract`. Cons: it's Pictet's **book cost** (a third basis
+     definition — not UK section-104, not Spanish-FIFO), so a management view
+     only; column wrapping/alignment is the parsing risk; the P statement is
+     by-name (reuse `build_statement_name_index`).
+  2. *Parse Pictet's separate Spanish IRPF unrealised report* (the original
+     plan). Pros: explicit price/FX split; genuine Spanish-FIFO/EUR figures.
+     Cons: Spanish-locale tokenisation is the bulk of the work; NIF-level (no
+     portfolio dim); event-triggered cadence; a whole new doctype to maintain.
+  3. *Compute native/EUR FIFO ourselves from the sidecars.* Pros: full control.
+     Cons: a **second** cost-basis engine (section-104 is GBP-pooled only) — the
+     re-implementation risk the repo avoids.
+  Recommendation: for a management-view / rough Spanish picture, **option 1**
+  (statement columns) dominates on cost and gives the portfolio dimension;
+  reserve option 2 only if a Spanish-CGT-grade figure is actually needed. UK
+  tax planning already has its exact basis (the shipped section-104 lens).
+  *Open question (spot-check before committing to option 1):* does Pictet's
+  **Net cost (GBP)** reconcile closely enough to our section-104 basis to be
+  trusted / usable as a cross-check? They will **not** match exactly —
+  different averaging (Pictet book cost vs UK pooling) and FX conventions — so
+  quantify the typical gap on a few holdings and decide whether it's a
+  tolerance mismatch or a genuine divergence before relying on the column.
 - **Period reports beyond beancount/Fava.** Net-worth-over-time
   (`net-worth`), income-by-source (`income`, by tax or calendar year),
   asset-allocation-over-time (`allocation`), and per-portfolio allocation

@@ -258,6 +258,11 @@ class ReportsStep(BaseModel):
     # is the price move on units held through each pair of statements.
     mandate_returns: bool = False
 
+    # ``holdings`` is opt-in (default off): cost basis + unrealised P&L. It
+    # reads both the statement archive (market value) and the sidecars under
+    # ``data_dir`` (the section 104 cost basis) — no ledger / bean-query.
+    holdings: bool = False
+
     # ``benchmark`` is opt-in (default off): the value-add report, comparing
     # the mandate's gross return against the ``benchmark_path`` index-levels
     # CSV. Skips (a warning, not a failure) when no benchmark CSV is set.

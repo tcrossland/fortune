@@ -130,6 +130,10 @@ class Settings(BaseSettings):
     # breakdown): writes ``concentration.md`` and ``holdings.csv`` here.
     concentration_reports_dir: Path = Path("reports/concentration")
 
+    # Output directory for ``holdings`` (cost basis + unrealised P&L):
+    # writes ``holdings.md`` and ``holdings.csv`` here.
+    holdings_reports_dir: Path = Path("reports/holdings")
+
     # Output directory for ``net-worth`` (net-worth-over-time): writes
     # ``net-worth.md`` and ``net-worth.csv`` here.
     net_worth_reports_dir: Path = Path("reports/net-worth")

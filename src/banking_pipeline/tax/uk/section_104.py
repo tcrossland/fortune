@@ -83,6 +83,21 @@ class MatchedDisposal:
     acquisition_dates: list[date]
 
 
+@dataclass(frozen=True)
+class PoolState:
+    """The section 104 pool of one security after all matching: the
+    quantity still held and its pooled allowable GBP cost.
+
+    ``cost_gbp`` is an exact running total, **not** penny-rounded — round it
+    for display; ``cost_gbp / qty`` is the average unit cost. ``qty`` is
+    never negative: an over-disposed (incomplete) history floors the pool at
+    zero rather than going short.
+    """
+
+    qty: Decimal
+    cost_gbp: Decimal
+
+
 @dataclass
 class _Lot:
     date: date
@@ -123,16 +138,18 @@ def _match(
     acq.remaining -= qty
 
 
-def match_disposals(
+def _match_all(
     acquisitions: list[Acquisition],
     disposals: list[Disposal],
-    cost_adjustments: list[PoolCostAdjustment] | None = None,
-) -> list[MatchedDisposal]:
-    """Match every disposal of one ISIN and return the per-bucket records.
+    cost_adjustments: list[PoolCostAdjustment] | None,
+) -> tuple[list[MatchedDisposal], PoolState]:
+    """Apply the three HMRC rules to one ISIN's disposals and return both
+    the per-bucket disposal records and the terminal section 104 pool (the
+    quantity still held and its pooled GBP cost).
 
-    Disposals are reported in chronological order; a disposal split
-    across buckets yields several records in same-day → 30-day → s104
-    order.
+    The matching lives here in exactly one place; :func:`match_disposals`,
+    :func:`match_disposals_with_residual` and :func:`residual_pool` are thin
+    wrappers exposing one or both halves of the result.
 
     ``cost_adjustments`` are dated pool-cost changes (ERI net of
     equalisation) applied to the section 104 pool on their date, before
@@ -231,4 +248,51 @@ def match_disposals(
     # rule-priority order (same-day, then 30-day, then pool).
     _bucket_order = {"same-day": 0, "bed-and-breakfast": 1, "s104": 2}
     out.sort(key=lambda m: (m.disposal_date, _bucket_order[m.matched_against]))
-    return out
+    return out, PoolState(qty=pool_qty, cost_gbp=pool_cost)
+
+
+def match_disposals(
+    acquisitions: list[Acquisition],
+    disposals: list[Disposal],
+    cost_adjustments: list[PoolCostAdjustment] | None = None,
+) -> list[MatchedDisposal]:
+    """Match every disposal of one ISIN and return the per-bucket records.
+
+    Disposals are reported in chronological order; a disposal split
+    across buckets yields several records in same-day → 30-day → s104
+    order.
+
+    ``cost_adjustments`` are dated pool-cost changes (ERI net of
+    equalisation) applied to the section 104 pool on their date, before
+    any same-date disposal draws from it. They never affect same-day or
+    30-day matching and are ignored when the pool is empty.
+    """
+
+    records, _residual = _match_all(acquisitions, disposals, cost_adjustments)
+    return records
+
+
+def match_disposals_with_residual(
+    acquisitions: list[Acquisition],
+    disposals: list[Disposal],
+    cost_adjustments: list[PoolCostAdjustment] | None = None,
+) -> tuple[list[MatchedDisposal], PoolState]:
+    """Like :func:`match_disposals`, but also return the terminal section
+    104 pool — the quantity still held and its pooled GBP cost — for callers
+    that need the current holding alongside its disposals, in a single
+    matching pass."""
+
+    return _match_all(acquisitions, disposals, cost_adjustments)
+
+
+def residual_pool(
+    acquisitions: list[Acquisition],
+    disposals: list[Disposal],
+    cost_adjustments: list[PoolCostAdjustment] | None = None,
+) -> PoolState:
+    """The section 104 pool still held after matching every disposal of one
+    ISIN: quantity and pooled GBP cost. Zero quantity means the holding has
+    been fully disposed."""
+
+    _records, residual = _match_all(acquisitions, disposals, cost_adjustments)
+    return residual

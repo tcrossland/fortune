@@ -19,6 +19,7 @@ import typer
 from banking_pipeline import allocation as allocation_mod
 from banking_pipeline import balance_sheet as balance_sheet_mod
 from banking_pipeline import concentration as concentration_mod
+from banking_pipeline import holdings as holdings_mod
 from banking_pipeline import income as income_mod
 from banking_pipeline import mandate_benchmark as mandate_benchmark_mod
 from banking_pipeline import mandate_returns as mandate_returns_mod
@@ -47,6 +48,9 @@ from banking_pipeline.cli_options import (
 from banking_pipeline.commodities_metadata import load_commodities
 from banking_pipeline.config import settings
 from banking_pipeline.fx.gbp_rates import build_rate_source
+from banking_pipeline.opening_positions import load_opening_positions
+from banking_pipeline.tax.uk.basis import UkSection104Lens
+from banking_pipeline.tax.uk.eri import cumulative_base_cost_adjustments, load_eri
 
 
 @app.command()
@@ -107,6 +111,149 @@ def concentration(
         f"£{report.gross_long_gbp:,.2f}, net worth "
         f"£{report.net_worth_gbp:,.2f})"
     )
+    gap_n = len(report.missing_prices) + len(report.rate_gaps)
+    if gap_n:
+        err_console.print(
+            f"[yellow]{gap_n} holding(s) excluded (no mark / no GBP "
+            "rate) — see the report.[/yellow]"
+        )
+        if strict:
+            raise typer.Exit(code=1)
+
+
+@app.command()
+def holdings(
+    statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
+    statements_dir: StatementsDirOpt = None,
+    statements_recursive: StatementsRecursiveOpt = False,
+    source: Annotated[
+        Path,
+        typer.Option(
+            "--source",
+            help="Directory walked recursively for *.transactions.jsonl "
+            "sidecars — the cost-basis substrate (the same the tax reports "
+            "read). Defaults to ``data``.",
+        ),
+    ] = Path("data"),
+    basis: Annotated[
+        str,
+        typer.Option(
+            "--basis",
+            help="Cost-basis jurisdiction lens: ``uk`` (section 104, GBP). "
+            "``es`` (EUR/Spanish FIFO) is reserved but not yet implemented.",
+        ),
+    ] = "uk",
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``holdings_reports_dir`` (``reports/holdings``).",
+        ),
+    ] = None,
+    commodities: CommoditiesOpt = None,
+    rate_source: ValuationRateSourceOpt = None,
+    opening_positions: Annotated[
+        Path | None,
+        typer.Option(
+            "--opening-positions",
+            help="Opening-positions TOML (pre-ledger lots seeding the section "
+            "104 pool). Defaults to the configured ``opening_positions_path``.",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="Exit non-zero if any holding can't be valued (no statement "
+            "mark or no GBP rate).",
+        ),
+    ] = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """Holdings cost basis + unrealised P&L.
+
+    Joins the latest statement valuation per portfolio (market value, GBP)
+    with a UK section 104 cost basis derived from the sidecars, and writes
+    ``holdings.md`` + ``holdings.csv``. Cross-checks the statement quantity
+    against the pool quantity. Cost basis is a UK-tax lens — not Pictet's
+    EUR/Spanish figures, and not fed to the tax pipeline. A reporting aid,
+    not advice.
+    """
+
+    _configure_logging(verbose)
+    if basis == "es":
+        err_console.print(
+            "[red]error:[/red] --basis es is not yet implemented (blocks on "
+            "the Pictet P&L parser — see the holdings-cost-basis-report plan)."
+        )
+        raise typer.Exit(code=2)
+    if basis != "uk":
+        err_console.print("[red]error:[/red] --basis must be 'uk' or 'es'")
+        raise typer.Exit(code=2)
+
+    texts, commodities_map, rates = _load_statement_context(
+        statements, statements_dir, statements_recursive, commodities, rate_source
+    )
+    # ISA-wrapped trades are UK-tax-exempt: they have no section 104 basis, so
+    # they're excluded from the lens (mirrors the tax choke point). ISA
+    # holdings still appear in the report from the statement side, with a
+    # blank cost. ``rates`` is the exact-month source the tax pipeline uses
+    # for cost conversion; ``value_holdings`` forward-fills it for the mark.
+    txns = [tx for tx in _load_sidecar_transactions(source) if not tx.is_tax_exempt]
+    opening_path = opening_positions or settings.opening_positions_path
+    opening = (
+        load_opening_positions(opening_path)
+        if opening_path is not None and opening_path.is_file()
+        else {}
+    )
+    # ERI base-cost uplift (excess reportable income already taxed) raises the
+    # section 104 pool cost — accumulated across the whole history, since the
+    # pool is cumulative and this is a current cost basis.
+    eri_path = settings.eri_path
+    eri_entries = (
+        load_eri(eri_path) if eri_path is not None and eri_path.is_file() else {}
+    )
+    adjustments, eri_gaps = cumulative_base_cost_adjustments(
+        txns, eri_entries=eri_entries, commodities=commodities_map,
+        source=rates, opening_positions=opening,
+    )
+    lens = UkSection104Lens(
+        transactions=txns, commodities=commodities_map, source=rates,
+        opening_positions=opening, cost_adjustments=adjustments,
+    )
+    report = holdings_mod.build_report(
+        texts, commodities=commodities_map, rate_source=rates, basis=lens
+    )
+    if eri_gaps:
+        err_console.print(
+            f"[yellow]{len(eri_gaps)} ERI entry/entries had no GBP rate — the "
+            "cost basis for those holdings omits that uplift.[/yellow]"
+        )
+
+    out_dir = out or settings.holdings_reports_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "holdings.md").write_text(
+        holdings_mod.render_markdown(report), encoding="utf-8"
+    )
+    with (out_dir / "holdings.csv").open("w", newline="", encoding="utf-8") as fh:
+        csv.writer(fh).writerows(holdings_mod.render_csv_rows(report))
+
+    err_console.print(
+        f"Wrote holdings report to {out_dir} ({len(report.rows)} holding(s), "
+        f"market £{report.total_market_gbp:,.2f}, unrealised "
+        f"£{report.total_unrealised_gbp:,.2f})"
+    )
+    if report.qty_drifts:
+        err_console.print(
+            f"[yellow]{len(report.qty_drifts)} holding(s) with statement/pool "
+            "quantity drift — see the report.[/yellow]"
+        )
+    if report.unmatched_basis:
+        err_console.print(
+            f"[yellow]{len(report.unmatched_basis)} holding(s) held per ledger "
+            "but not on the latest statement — see the report.[/yellow]"
+        )
     gap_n = len(report.missing_prices) + len(report.rate_gaps)
     if gap_n:
         err_console.print(

@@ -305,3 +305,43 @@ def test_missing_rate_excludes_isin() -> None:
     assert len(report.missing_rates) == 1
     gap = report.missing_rates[0]
     assert (gap.isin, gap.currency, gap.month) == (isin, "USD", "2024-05")
+
+
+def test_match_history_residual_pools_tracks_current_holdings() -> None:
+    from banking_pipeline.tax.uk.sa108 import match_history
+
+    held = "IE00B3VWN518"  # partially disposed → still held
+    exited = "IE00B4L5Y983"  # fully disposed → zero pool
+    txs = [
+        _tx(doc_type=DocumentType.BUY_ETF, isin=held, qty=Decimal("100"),
+            amount=Decimal("-1000"), on=date(2024, 5, 1)),  # unit 10
+        _tx(doc_type=DocumentType.SELL_ETF, isin=held, qty=Decimal("-40"),
+            amount=Decimal("600"), on=date(2025, 6, 1)),
+        _tx(doc_type=DocumentType.BUY_ETF, isin=exited, qty=Decimal("50"),
+            amount=Decimal("-500"), on=date(2024, 5, 1)),
+        _tx(doc_type=DocumentType.SELL_ETF, isin=exited, qty=Decimal("-50"),
+            amount=Decimal("800"), on=date(2025, 6, 1)),
+    ]
+    history = match_history(
+        txs,
+        commodities={held: _reporting(held), exited: _reporting(exited)},
+    )
+    assert history.residual_pools[held].qty == Decimal("60")
+    assert history.residual_pools[held].cost_gbp == Decimal("600")  # 60 @ avg 10
+    assert history.residual_pools[exited].qty == Decimal("0")
+
+
+def test_match_history_residual_pool_includes_deeply_discounted() -> None:
+    # A held DDS security is routed out of the CGT rows but is still held —
+    # the residual pool must cover it (a holdings view is tax-treatment blind).
+    from banking_pipeline.tax.uk.sa108 import match_history
+
+    isin = "US0378331005"
+    txs = [
+        _tx(doc_type=DocumentType.BUY_SHARES, isin=isin, qty=Decimal("100"),
+            amount=Decimal("-1000"), on=date(2024, 5, 1)),
+    ]
+    history = match_history(txs, commodities={isin: _dds(isin)})
+    assert history.rows == []
+    assert history.residual_pools[isin].qty == Decimal("100")
+    assert history.residual_pools[isin].cost_gbp == Decimal("1000")
