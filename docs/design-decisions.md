@@ -368,6 +368,18 @@ pool's uplift incomplete) fold into the report's `rate_gaps` /
 `--strict` understatement channel — superseding the single-year set, which they
 contain. Plan: [archive/eri-cumulative-basis-fix.md](archive/eri-cumulative-basis-fix.md).
 
+**Corollary — non-resident-year ERI does not uplift the UK base cost.** The
+uplift exists because the ERI was *already taxed* as income, so taxing it again
+on disposal would be double taxation. ERI deemed to arise while the holder is
+non-UK-resident (deemed date before `uk_residence_start_date`) is **not**
+UK-taxable, so that predicate fails — it must not enter `eri.toml`. This is a
+`eri.toml` data discipline, not code: when transcribing a Pictet "UK Tax Report"
+that straddles the arrival year, include only the entries whose deemed-income
+date is on/after arrival. (Applied when back-filling FY23-24 ERI: the 30 Jun 2023
+entries were excluded, the 30 Sep 2023 / 31 Mar 2024 entries kept — arrival
+2023-07-14.) Equalisation, a return of capital, is netted off the uplift
+regardless of residence.
+
 ## Licence hygiene
 
 This project is MIT, and every runtime dependency is MIT / BSD / Apache-2.0
