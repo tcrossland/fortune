@@ -125,6 +125,14 @@ def prune_tax_reports(
     duplicate only when a canonical of that same effective date already
     exists. This tidies the archive after the one-off normalise pass; a legacy
     file whose canonical doesn't yet exist is never moved.
+
+    Finally it converges strays: a re-import re-files an already-pruned daily
+    into ``tax/``, but prune can't move it aside because a same-named twin is
+    already in ``_superseded/``. When that ``tax/`` copy is **byte-identical**
+    (md5) to its superseded twin, the superseded copy is the record and the
+    ``tax/`` copy is deleted (never moved). A twin that *differs* — an
+    unrealised report re-valued under the same effective date — is left
+    untouched.
     """
 
     _configure_logging(verbose)
@@ -164,8 +172,19 @@ def prune_tax_reports(
                 return
             shutil.move(str(path), str(dest))
 
+    def remove_stray(path: Path) -> None:
+        """Delete ``path`` — a ``tax/`` copy byte-identical to its
+        ``_superseded/`` twin, so the twin is already the record. No-op under
+        dry-run. The md5-identity guarantee is checked upstream in
+        ``find_superseded_strays``; this only deletes what it returns."""
+
+        if verbose:
+            err_console.print(f"    ✗ {path.name} (byte-identical to superseded)")
+        if apply:
+            path.unlink()
+
     classifier = LayeredClassifier()
-    total_keep = total_move = total_dup = 0
+    total_keep = total_move = total_dup = total_stray = 0
     for tax_dir in _tax_dirs(archive_root):
         superseded_dir = tax_dir / SUPERSEDED_DIRNAME
 
@@ -175,8 +194,21 @@ def prune_tax_reports(
         # canonical doesn't yet exist, and non-tax files, are left.
         legacy_dups = _superseded_duplicates(tax_dir, archive_root, classifier)
 
-        reports = tax_report_prune.discover_reports(tax_dir)
-        if not reports and not legacy_dups:
+        # Strays: a re-import re-filed an already-pruned daily back into
+        # ``tax/`` that prune can't move aside (a same-named twin is already in
+        # ``_superseded/``). Delete the ``tax/`` copy only when byte-identical
+        # to that twin — so ``tax/`` converges instead of accumulating
+        # warned-about strays on every re-run. Excluded from the plan below so
+        # they're counted once, as strays, not doubly as supersede moves.
+        strays = tax_report_prune.find_superseded_strays(tax_dir)
+        stray_set = set(strays)
+
+        reports = [
+            r
+            for r in tax_report_prune.discover_reports(tax_dir)
+            if r.path not in stray_set
+        ]
+        if not reports and not legacy_dups and not strays:
             continue
 
         year_label = tax_dir.parent.name
@@ -188,6 +220,16 @@ def prune_tax_reports(
             )
             for path in legacy_dups:
                 move_aside(path, superseded_dir)
+
+        if strays:
+            total_stray += len(strays)
+            verb_stray = "removed" if apply else "to remove"
+            err_console.print(
+                f"  {year_label}: {verb_stray} {len(strays)} stray(s) "
+                "(byte-identical to superseded)"
+            )
+            for path in strays:
+                remove_stray(path)
 
         # ``plan.year`` is the content-derived as-of year (how reports are
         # grouped / retained); ``superseded_dir`` is this folder's. They
@@ -204,9 +246,13 @@ def prune_tax_reports(
                 move_aside(report.path, superseded_dir)
 
     verb = "moved" if apply else "to move"
+    verb_stray = "removed" if apply else "to remove"
     err_console.print(
         f"[bold]total:[/bold] keep {total_keep}, {verb} {total_move} "
-        f"(+ {total_dup} legacy duplicate(s))"
+        f"(+ {total_dup} legacy duplicate(s), {verb_stray} {total_stray} stray(s))"
     )
-    if not apply and (total_move or total_dup):
-        err_console.print("[dim]re-run with --apply to move the superseded files.[/dim]")
+    if not apply and (total_move or total_dup or total_stray):
+        err_console.print(
+            "[dim]re-run with --apply to move the superseded files "
+            "and delete strays.[/dim]"
+        )

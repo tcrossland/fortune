@@ -31,6 +31,7 @@ participate; ``ETE`` / ``Modelo 720`` and any unrecognised name are ignored.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import defaultdict
 from collections.abc import Iterable
@@ -195,3 +196,49 @@ def discover_reports(tax_dir: Path) -> list[TaxReport]:
         if report is not None:
             reports.append(report)
     return reports
+
+
+def _md5(path: Path) -> str:
+    """The md5 of ``path``'s bytes (streamed, so a large PDF isn't slurped)."""
+
+    digest = hashlib.md5()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 16), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def find_superseded_strays(tax_dir: Path) -> list[Path]:
+    """Canonical P&L files in ``tax_dir`` that are byte-identical to a twin
+    already in ``tax_dir/_superseded/`` — safe to drop from ``tax/``.
+
+    After a ``rebuild`` / ``import`` re-files an already-pruned daily back into
+    ``<year>/tax/``, prune's move-aside can't supersede it: a same-named twin
+    is already in ``_superseded/`` (``move_aside`` warns and leaves it live).
+    So ``tax/`` accumulates stray non-retained dailies a re-run keeps warning
+    about. When the ``tax/`` copy is **byte-identical** (md5) to its superseded
+    twin, the superseded copy is the record and the ``tax/`` copy is redundant
+    — this returns those, sorted, for the command to delete.
+
+    **Only byte-identical twins are returned.** Two reports can share a
+    canonical name yet differ in content — an unrealised snapshot re-valued
+    under the same effective date (see the effective-date filing work) — and
+    those are genuinely distinct records that must *not* collapse. Restricted
+    to non-retained reports, so a retained anchor is never removed from
+    ``tax/`` (a retained file has no superseded twin under normal operation,
+    but the guard makes that explicit).
+    """
+
+    superseded_dir = tax_dir / SUPERSEDED_DIRNAME
+    if not superseded_dir.is_dir():
+        return []
+    reports = discover_reports(tax_dir)
+    retained = select_retained(reports)
+    strays: list[Path] = []
+    for report in reports:
+        if report.path in retained:
+            continue
+        twin = superseded_dir / report.path.name
+        if twin.is_file() and _md5(report.path) == _md5(twin):
+            strays.append(report.path)
+    return sorted(strays)

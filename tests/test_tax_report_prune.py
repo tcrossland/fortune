@@ -220,7 +220,10 @@ def test_prune_apply_converges_and_is_idempotent(tmp_path: Path) -> None:
         cli.app, ["prune-tax-reports", str(tmp_path), "--apply"]
     )
     assert result2.exit_code == 0, result2.output
-    assert "total: keep 12, moved 0 (+ 0 legacy duplicate(s))" in result2.output
+    assert (
+        "total: keep 12, moved 0 (+ 0 legacy duplicate(s), removed 0 stray(s))"
+        in result2.output
+    )
 
 
 def test_prune_sweeps_content_duplicates(
@@ -298,6 +301,103 @@ def test_prune_leaves_fiscal_statement_untouched(tmp_path: Path) -> None:
 
     assert stmt.exists()  # retained in place
     assert not (tax / "_superseded" / stmt.name).exists()  # never swept
+
+
+def test_find_superseded_strays_only_byte_identical_non_retained(
+    tmp_path: Path,
+) -> None:
+    """The pure helper returns only non-retained ``tax/`` P&L files whose
+    ``_superseded/`` twin is byte-identical — never a differing twin, and
+    never a retained anchor."""
+
+    tax = tmp_path / "2023" / "tax"
+    superseded = tax / "_superseded"
+    superseded.mkdir(parents=True)
+
+    # Retained month-latest — even with a byte-identical twin it is NOT a
+    # stray (the tax/ copy is the live retained record, not redundant).
+    retained = tax / _name("Realised", date(2023, 1, 31))
+    retained.write_text("jan-final")
+    (superseded / retained.name).write_text("jan-final")
+
+    # Non-retained, byte-identical twin → a stray.
+    stray = tax / _name("Realised", date(2023, 1, 5))
+    stray.write_text("dup")
+    (superseded / stray.name).write_text("dup")
+
+    # Non-retained, but the twin's content DIFFERS → not a stray (safety).
+    differing = tax / _name("Realised", date(2023, 1, 19))
+    differing.write_text("live-revaluation")
+    (superseded / differing.name).write_text("frozen-older-cut")
+
+    # Non-retained, no twin at all → not a stray (nothing to converge on).
+    lone = tax / _name("Realised", date(2023, 2, 7))
+    lone.write_text("feb")
+    (tax / _name("Realised", date(2023, 2, 28))).write_text("feb-final")
+
+    assert tax_report_prune.find_superseded_strays(tax) == [stray]
+
+
+def test_prune_apply_removes_byte_identical_strays_only(tmp_path: Path) -> None:
+    """``--apply`` deletes a stray (byte-identical superseded twin) but leaves
+    a same-named twin whose content differs — the critical safety guard."""
+
+    tax = tmp_path / "2023" / "tax"
+    superseded = tax / "_superseded"
+    superseded.mkdir(parents=True)
+
+    # Retained anchor (Jan month-latest) — stays put.
+    (tax / _name("Realised", date(2023, 1, 31))).write_text("jan-final")
+
+    # A stray: byte-identical twin already superseded → deleted.
+    stray = tax / _name("Realised", date(2023, 1, 5))
+    stray.write_text("same-bytes")
+    (superseded / stray.name).write_text("same-bytes")
+
+    # A non-retained daily whose same-named superseded twin DIFFERS in content
+    # (the kind of same-name/different-value case an unrealised re-valuation
+    # produces) → never deleted; move-aside can't supersede it (dest exists),
+    # so it warns and leaves it live.
+    differing = tax / _name("Realised", date(2023, 1, 19))
+    differing.write_text("live-revaluation")
+    (superseded / differing.name).write_text("frozen-older-cut")
+
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["prune-tax-reports", str(tmp_path), "--apply"])
+    assert result.exit_code == 0, result.output
+    assert "removed 1 stray(s)" in result.output
+
+    # The byte-identical stray is gone; its superseded record remains.
+    assert not stray.exists()
+    assert (superseded / stray.name).exists()
+    # The differing twin is untouched, and the collision was warned about.
+    assert differing.exists()
+    assert "already exists" in result.output
+    # The retained anchor stays in place.
+    assert (tax / _name("Realised", date(2023, 1, 31))).exists()
+
+    # Idempotent: a second apply converges — no strays left, nothing warned.
+    result2 = runner.invoke(cli.app, ["prune-tax-reports", str(tmp_path), "--apply"])
+    assert result2.exit_code == 0, result2.output
+    assert "removed 0 stray(s)" in result2.output
+
+
+def test_prune_dry_run_leaves_strays(tmp_path: Path) -> None:
+    """A dry-run reports strays but deletes nothing."""
+
+    tax = tmp_path / "2023" / "tax"
+    superseded = tax / "_superseded"
+    superseded.mkdir(parents=True)
+    (tax / _name("Realised", date(2023, 1, 31))).write_text("jan-final")
+    stray = tax / _name("Realised", date(2023, 1, 5))
+    stray.write_text("dup")
+    (superseded / stray.name).write_text("dup")
+
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["prune-tax-reports", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "to remove 1 stray(s)" in result.output
+    assert stray.exists()  # dry-run removed nothing
 
 
 def test_prune_errors_without_archive_root(tmp_path: Path) -> None:

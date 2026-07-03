@@ -525,11 +525,20 @@ usage examples; this is the behavioural reference.
   canonically-named P&L files are pruned; the annual `Fiscal statement` /
   `ETE` / `Modelo 720` / `Income and capital gains UK` filings (canonical
   names but kept, not pruned) and the `_superseded/` folder are untouched, so
-  a re-run is a no-op. **Dry-run by
-  default**; `--apply` performs the moves. Deliberately *not* wired into
-  `rebuild` (import over-collects and prune trims — convergent but churny, so
-  it stays manual). Selection policy: `tax_report_prune.select_retained`
-  (pure, unit-tested).
+  a re-run is a no-op. It also **converges strays**
+  (`tax_report_prune.find_superseded_strays`): when a `rebuild` / `import`
+  re-files an already-pruned daily into `tax/`, prune can't move it aside (a
+  same-named twin is already in `_superseded/`, so the move-aside warns and
+  leaves it), and `tax/` accumulates strays a re-run keeps warning about. If
+  the `tax/` copy is **byte-identical** (md5) to its superseded twin, the
+  superseded copy is the record and the `tax/` copy is **deleted** (never
+  moved) so the tree converges; a twin that *differs* — an unrealised snapshot
+  re-valued under the same effective date — is left untouched (the critical
+  safety guard). **Dry-run by
+  default**; `--apply` performs the moves and stray deletions. Deliberately
+  *not* wired into `rebuild` (import over-collects and prune trims — convergent
+  but churny, so it stays manual). Selection policy:
+  `tax_report_prune.select_retained` (pure, unit-tested).
 - `ingest` — classify + extract + render one or more PDFs; supports
   `--check <ledger>` and `--strict`. Always writes a
   `<stem>.transactions.jsonl` sidecar next to the output `.beancount`.
