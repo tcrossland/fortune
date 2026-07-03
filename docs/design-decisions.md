@@ -341,9 +341,32 @@ ERI base-cost uplift is folded into the pool via
 `cumulative_base_cost_adjustments` (eri.py), which runs `compute_eri` for every
 tax year the `eri` table spans and merges the adjustments. This matters because
 `compute_eri` scopes to a single year but the pool is cumulative: a *current*
-cost basis needs every year's uplift, so the holdings lens can't reuse one
-year's adjustments the way the year-scoped tax reports do. Plan + staged
-history: [plans/holdings-cost-basis-report.md](plans/holdings-cost-basis-report.md).
+cost basis needs every year's uplift. Plan + staged history:
+[plans/holdings-cost-basis-report.md](plans/holdings-cost-basis-report.md).
+
+## The tax pipeline feeds cumulative ERI base-cost uplift to the pool
+
+`compute_eri(…, year)` scopes to a single tax year by design (income is
+declared for one year), but the section 104 pool is **cumulative**: a disposal
+in year Y whose units accrued ERI in an *earlier* year needs that earlier
+base-cost uplift in its allowable cost. `_compute_tax_year` (`cli/tax.py`)
+originally passed only the current year's `eri_result.base_cost_adjustments` to
+`compute_sa108` and `match_history`, so a disposal that post-dated its ERI year
+under-counted its cost and **overstated the CGT gain** (too much tax; the
+loss-carry-forward chain consumed the same mis-costed rows). This was live for
+2025-26 — the real `eri.toml` carried ERI for 2024-25 but most of those funds
+were disposed in 2025-26 / 2026-27.
+
+The fix: keep the year-scoped `compute_eri` for the **income** rows (SA106 only
+declares the current year's ERI), but feed the **cumulative** adjustments
+(`cumulative_base_cost_adjustments`, the same helper the holdings lens uses) to
+the pool. It's safe to pass the whole-history set to a year-Y SA108 because
+`match_disposals` interleaves adjustments chronologically, so a future-dated
+uplift lands *after* this year's disposals and can't affect them. The cumulative
+ERI rate-gaps (a prior-year ERI entry with no GBP rate now leaves the current
+pool's uplift incomplete) fold into the report's `rate_gaps` /
+`--strict` understatement channel — superseding the single-year set, which they
+contain. Plan: [plans/eri-cumulative-basis-fix.md](plans/eri-cumulative-basis-fix.md).
 
 ## Licence hygiene
 

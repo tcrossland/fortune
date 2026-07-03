@@ -188,6 +188,70 @@ def test_tax_report_end_to_end(tmp_path: Path) -> None:
     assert cf[0]["losses_carried_forward"] == "0.00"
 
 
+_ERI_TOML = """
+[[eri]]
+isin = "IE00B3VWN518"
+period_end = 2023-06-30
+fund_distribution_date = 2023-12-30
+income_type = "dividend"
+eri_per_unit = 0.10
+currency = "GBP"
+"""
+
+
+def test_prior_year_eri_uplifts_current_year_disposal_cost(tmp_path: Path) -> None:
+    """A disposal in a later year must carry the ERI base-cost uplift that
+    accrued in an *earlier* year.
+
+    ``compute_eri`` is year-scoped, so the pipeline must feed the
+    **cumulative** base-cost adjustments to the section 104 pool. Otherwise
+    the earlier year's uplift is dropped from the disposal's allowable cost
+    and the CGT gain is overstated (too much tax)."""
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    rep = "IE00B3VWN518"  # reporting (in _COMMODITIES)
+    txns = [
+        # buy 1000 @ 1000 in 2023-24
+        _tx(document_type=DocumentType.BUY_ETF, isin=rep, quantity=Decimal("1000"),
+            amount=Decimal("-1000"), trade_date=date(2023, 5, 1)),
+        # sell 1000 @ 1500 in 2025-26 → naive gain 500; with the 100 ERI
+        # uplift from 2023-24 the cost is 1100 → gain 400.
+        _tx(document_type=DocumentType.SELL_ETF, isin=rep, quantity=Decimal("-1000"),
+            amount=Decimal("1500"), trade_date=date(2025, 6, 1)),
+    ]
+    dump_transactions(txns, data_dir / "ledger.transactions.jsonl")
+
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text(_COMMODITIES, encoding="utf-8")
+    eri = tmp_path / "eri.toml"
+    eri.write_text(_ERI_TOML, encoding="utf-8")
+    out_dir = tmp_path / "report"
+
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "tax-report", "--year", "2025-26", "--source", str(data_dir),
+            "--out", str(out_dir), "--commodities", str(commodities),
+            "--eri", str(eri),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    sa108 = _read_csv(out_dir / "sa108-disposals.csv")
+    assert len(sa108) == 1
+    row = sa108[0]
+    assert row["isin"] == rep
+    # cost = 1000 + 100 (2023-24 ERI uplift, gross 1000 * 0.10, no
+    # equalisation); proceeds 1500 → gain 400.
+    assert row["cost_gbp"] == "1100.00"
+    assert row["gain_gbp"] == "400.00"
+
+    # The 2023-24 uplift is carried into the pool, but no ERI *income* is
+    # declared in 2025-26 — the income rows stay year-scoped.
+    assert _read_csv(out_dir / "sa106-eri.csv") == []
+
+
 def test_tax_report_fig_claim_relieves_foreign_to_designation(
     tmp_path: Path, monkeypatch: object
 ) -> None:

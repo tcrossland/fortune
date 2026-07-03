@@ -38,7 +38,12 @@ from banking_pipeline.tax.uk.cgt_allowance import (
     loss_carryforward_chain,
 )
 from banking_pipeline.tax.uk.currency import RateGap
-from banking_pipeline.tax.uk.eri import EriResult, compute_eri, load_eri
+from banking_pipeline.tax.uk.eri import (
+    EriResult,
+    compute_eri,
+    cumulative_base_cost_adjustments,
+    load_eri,
+)
 from banking_pipeline.tax.uk.fig_advice import (
     FigPattern,
     FigYearInputs,
@@ -130,14 +135,25 @@ def _compute_tax_year(
     # Single tax-exemption choke point: ISA-wrapped transactions are
     # tax-free and never reach any computation.
     txns = [tx for tx in _load_sidecar_transactions(source) if not tx.is_tax_exempt]
+    # ERI income is declared for the current year only (year-scoped), but the
+    # section 104 pool is cumulative: a disposal this year whose units accrued
+    # ERI in an earlier year needs that earlier base-cost uplift too. So take
+    # the income rows from the year-scoped result but feed the *cumulative*
+    # base-cost adjustments (every ERI year the table spans) to the pool.
+    # ``match_disposals`` applies adjustments chronologically, so future-dated
+    # ones land after this year's disposals and can't affect them.
     eri_result = compute_eri(
         txns, tax_year_label=year, eri_entries=eri_entries,
         commodities=commodities_map, opening_positions=opening, source=rates,
     )
+    cost_adjustments, eri_adj_gaps = cumulative_base_cost_adjustments(
+        txns, eri_entries=eri_entries, commodities=commodities_map,
+        opening_positions=opening, source=rates,
+    )
     sa108 = compute_sa108(
         txns, tax_year_label=year, commodities=commodities_map, source=rates,
         rate_change_date=settings.cgt_rate_change_dates.get(year),
-        opening_positions=opening, cost_adjustments=eri_result.base_cost_adjustments,
+        opening_positions=opening, cost_adjustments=cost_adjustments,
         arrival=arrival,
     )
     sa106 = compute_sa106_dividends(
@@ -146,7 +162,7 @@ def _compute_tax_year(
     )
     history = match_history(
         txns, commodities=commodities_map, source=rates,
-        opening_positions=opening, cost_adjustments=eri_result.base_cost_adjustments,
+        opening_positions=opening, cost_adjustments=cost_adjustments,
     )
     losses_path = settings.cgt_losses_path
     pre_ledger_losses = (
@@ -163,7 +179,11 @@ def _compute_tax_year(
         arrival=arrival,
         fig_claim_years=settings.fig_claim_years,
         fig_claimed=year in settings.fig_claim_years,
-        rate_gaps=sa108.missing_rates + sa106.missing_rates + eri_result.missing_rates,
+        # ``eri_adj_gaps`` spans every ERI year the pool draws on and so
+        # supersets the single-year ``eri_result.missing_rates`` — a
+        # prior-year ERI entry with no GBP rate now leaves the current pool's
+        # uplift incomplete, so surface it in the same understatement channel.
+        rate_gaps=sa108.missing_rates + sa106.missing_rates + eri_adj_gaps,
     )
 
 
@@ -424,6 +444,10 @@ def _partition_fig_relief(
         missing_rates=sa106.missing_rates,
     )
     eri_uk = EriResult(
+        # NB ``base_cost_adjustments`` here is the year-scoped set and is inert
+        # after partition — the pool already matched with the *cumulative*
+        # adjustments upstream (_compute_tax_year). Don't read it as the pool's
+        # actual uplift; it's carried only to keep the dataclass shape.
         rows=[r for r in eri.rows if r.country == "GB"],
         base_cost_adjustments=eri.base_cost_adjustments,
         missing_rate_isins=eri.missing_rate_isins,
@@ -509,6 +533,7 @@ def _write_tax_summary(
     aea_missing: bool = False,
     fig_claimed: bool = False,
     fig_designation: list[FigDesignationRow] | None = None,
+    rate_gaps: list[RateGap] | None = None,
 ) -> None:
     cgt = [r for r in sa108.rows if r.reporting_status in CGT_STATUSES]
     offshore = [r for r in sa108.rows if r.reporting_status == "non-reporting"]
@@ -682,8 +707,12 @@ def _write_tax_summary(
         for isin in sa106.dropped_uk_situs_foreign:
             lines.append(f"  {isin}")
         lines.append("")
+    # ``rate_gaps`` (passed by the caller) folds in the cumulative ERI
+    # base-cost gaps too; fall back to the report-local single-year set.
     gap_lines = _rate_gap_lines(
-        sa108.missing_rates + sa106.missing_rates + eri.missing_rates
+        rate_gaps
+        if rate_gaps is not None
+        else sa108.missing_rates + sa106.missing_rates + eri.missing_rates
     )
     if gap_lines:
         lines += gap_lines
@@ -860,6 +889,7 @@ def tax_report(
         aea_missing=aea_missing,
         fig_claimed=fig_claimed,
         fig_designation=designation,
+        rate_gaps=comp.rate_gaps,
     )
 
     fig_note = (
@@ -873,7 +903,10 @@ def tax_report(
         f"{n_eri} ERI group(s){fig_note})"
     )
 
-    gaps = sa108.missing_rates + sa106.missing_rates + eri_result.missing_rates
+    # ``comp.rate_gaps`` includes the cumulative ERI base-cost gaps (prior
+    # years the pool draws on), not just this year's — so a dropped uplift
+    # from an earlier year still trips the understatement gate below.
+    gaps = comp.rate_gaps
     if gaps:
         for line in _rate_gap_lines(gaps):
             err_console.print(line)

@@ -8,6 +8,20 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## UK tax
 
+- **ERI base-cost uplift is cumulative in the tax pipeline (correction)** —
+  `tax-report` / `tax-forecast` / `tax-pack` now feed the **cumulative**
+  section 104 base-cost adjustments (every ERI year the `eri.toml` spans) to
+  the pool, not just the report year's. A disposal whose units accrued Excess
+  Reportable Income in an *earlier* year was under-counting its allowable cost,
+  so the CGT gain was **overstated** (too much tax; the loss-carry-forward
+  chain consumed the same mis-costed rows). ERI *income* stays year-scoped
+  (SA106 declares only the current year); only the pool uplift is cumulative.
+  `match_disposals` applies adjustments chronologically, so a future-dated
+  uplift can't affect the current year's disposals. Cumulative ERI GBP-rate
+  gaps now fold into the `--strict` understatement gate. Live for 2025-26 (the
+  first affected filing — regenerate it). Plan:
+  [docs/plans/eri-cumulative-basis-fix.md](docs/plans/eri-cumulative-basis-fix.md).
+  (`cli/tax.py`)
 - **ERI / SA106 consistency warnings** — two silent inconsistencies now
   surface in `summary.txt`. ERI for a bond fund (`distributions_as_interest`)
   follows the commodity flag (foreign *interest*), overriding a mistyped

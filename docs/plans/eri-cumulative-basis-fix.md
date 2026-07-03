@@ -1,6 +1,47 @@
 # Plan: ERI base-cost adjustments must be cumulative in the tax pipeline
 
-**Status:** Not started.
+**Status:** Done. Shipped on branch `holdings-cost-basis-report`.
+
+- **Stage 1 (reproduce):** added a failing-first CLI test —
+  `test_prior_year_eri_uplifts_current_year_disposal_cost` in
+  `tests/tax/uk/test_tax_report_cli.py` (buy 1000 @ £1000 in 2023-24, £100 ERI
+  uplift that year, sell in 2025-26). Confirmed it reported cost £1000 / gain
+  £500 against the old wiring; now cost £1100 / gain £400.
+- **Stage 2 (rewire):** `_compute_tax_year` (`cli/tax.py`) keeps
+  `compute_eri(…, year)` for the income rows but now computes
+  `cumulative_base_cost_adjustments(…)` and passes those to both
+  `compute_sa108` and `match_history`. The cumulative ERI rate-gaps
+  (`eri_adj_gaps`) replace the single-year `eri_result.missing_rates` in
+  `_TaxComputation.rate_gaps` (a superset — nothing dropped; set-dedup handles
+  overlap). `tax_report` now threads `comp.rate_gaps` through the summary (new
+  optional `_write_tax_summary(rate_gaps=…)` param) and the `--strict`
+  understatement blocker. `tax-pack` / `tax-forecast` / `fig-advice` already
+  read `comp.rate_gaps`, so they inherit the fix.
+- **Stage 3 (re-run):** full `uv run pytest` green (1028). No existing golden
+  or number moved — no prior test paired an earlier-year ERI entry with a
+  later-year disposal, so nothing regressed; the correction only shows on the
+  new test and on real data.
+- **Stage 4 (FIG / arrival cross-check):** no double-count.
+  - *FIG:* `_partition_fig_relief` moves foreign disposals to the designation
+    using `r.gain_gbp`, which now carries the (larger) uplifted cost → the
+    relieved gain is the true gain. The base-cost uplift and FIG relief are
+    orthogonal: the uplift makes the gain figure correct, and whatever happens
+    to that gain (taxed or relieved) uses the correct figure. Existing FIG
+    tests still pass.
+  - *arrival:* the residence filter (`is_pre_residence`) drops pre-arrival
+    disposals at the *reporting* layer; adjustments are applied to the *pool*
+    chronologically, exactly as pre-arrival acquisition costs already are. This
+    fix doesn't change that treatment — it only makes the adjustment set
+    cumulative. (Whether non-resident-year ERI *should* uplift a UK base cost
+    is a separate, pre-existing rebasing question that also applied to the old
+    single-year path; out of scope here, noted for the backlog.)
+- **Stage 5 (docs):** design-decisions.md gains a "tax pipeline feeds
+  cumulative ERI base-cost uplift" entry (and the stale clause in the holdings
+  entry is corrected); CHANGELOG entry added.
+
+**Follow-up:** regenerate the 2025-26 return (first affected filing).
+
+## Original plan (below, for reference)
 
 ## Problem (confirmed, live)
 

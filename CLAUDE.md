@@ -228,8 +228,17 @@ advice — verify against HMRC guidance.
 ## Active plan
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
-(A separate session is working the [ERI cumulative-basis tax fix](docs/plans/eri-cumulative-basis-fix.md).)
 
+- Last shipped: [docs/plans/eri-cumulative-basis-fix.md](docs/plans/eri-cumulative-basis-fix.md)
+  — the tax pipeline now feeds **cumulative** ERI section 104 base-cost
+  adjustments to the pool (`_compute_tax_year` in `cli/tax.py` uses
+  `cumulative_base_cost_adjustments`, not the year-scoped
+  `eri_result.base_cost_adjustments`). Fixes an overstated CGT gain when a
+  disposal post-dated its ERI year; income rows stay year-scoped, only the pool
+  uplift is cumulative. Cumulative ERI rate-gaps fold into the `--strict`
+  understatement gate. Live for 2025-26 — **regenerate that return**. No golden
+  moved (no prior test paired earlier-year ERI with a later disposal). Rationale:
+  [design-decisions.md](docs/design-decisions.md#the-tax-pipeline-feeds-cumulative-eri-base-cost-uplift-to-the-pool).
 - Last shipped: [docs/plans/holdings-cost-basis-report.md](docs/plans/holdings-cost-basis-report.md)
   — the `holdings` cost-basis + unrealised-P&L report. Pluggable
   per-jurisdiction cost basis (`basis_lens.py` neutral `BasisLens` /
