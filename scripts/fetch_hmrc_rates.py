@@ -43,7 +43,7 @@ URL_TEMPLATE = (
 # Inclusive month range. Start covers the earliest ledger activity (2021);
 # the end is generous — unpublished future months are skipped.
 START = (2021, 1)
-END = (2026, 6)
+END = (2026, 7)
 
 # Plenty of precision for the reciprocal; the model parses these as Decimal.
 getcontext().prec = 28

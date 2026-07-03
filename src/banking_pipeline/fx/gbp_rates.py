@@ -95,8 +95,10 @@ class ForwardFillRateSource:
 
     For *mark-to-market valuation* only. A month-end statement is dated to
     the following day (a 30 June snapshot carries ``on_date`` 1 July), so it
-    asks for the current month's rate — which HMRC hasn't published until
-    that month closes. Rather than drop every non-GBP holding as a
+    asks for a leading-edge month the local CSV may not carry yet — HMRC
+    publishes each month's rate in advance (near the end of the prior month),
+    but the CSV is refreshed manually (``scripts/fetch_hmrc_rates.py``) and
+    can lag the newest statement. Rather than drop every non-GBP holding as a
     :class:`RateGap` and collapse the snapshot, valuation reports mark to the
     latest *known* rate, matching the balance sheet's "latest rate on or
     before the as-of date" behaviour.
@@ -107,8 +109,9 @@ class ForwardFillRateSource:
     valuing at a stale rate.
     """
 
-    # A leading-edge gap is a single unpublished month; the cap only guards
-    # against a genuinely absent stretch (which then still flags a gap).
+    # A leading-edge gap is a single month the CSV hasn't been refreshed to
+    # yet; the cap only guards against a genuinely absent stretch (which then
+    # still flags a gap).
     _MAX_LOOKBACK_MONTHS = 12
 
     def __init__(self, base: GbpRateSource) -> None:
