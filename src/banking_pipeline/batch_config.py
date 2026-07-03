@@ -274,6 +274,12 @@ class ReportsStep(BaseModel):
     # ``"calendar"`` (see the ``income`` command's ``--period``).
     income_period: str = "tax-year"
 
+    # Resample the net-worth timeline onto a first-of-month grid (the
+    # ``net-worth`` command's ``--monthly``) instead of one row per raw
+    # statement date. Drops the mid-month rows where only the Vanguard ISA
+    # or a property valuation refreshed. Off → the event-driven default.
+    net_worth_monthly: bool = False
+
     @field_validator("income_period")
     @classmethod
     def _validate_income_period(cls, v: str) -> str:

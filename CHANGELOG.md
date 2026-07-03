@@ -87,6 +87,15 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`net-worth --monthly`** — resamples the timeline onto a first-of-month
+  grid instead of one row per raw statement date. Portfolios statement on
+  mixed cadences (Pictet month-end → dated the 1st, the Vanguard ISA and
+  property valuations mid-month), so the default event-driven grid shows
+  spurious mid-month rows where only one portfolio refreshed; monthly mode
+  keeps the fresh-Pictet first-of-month points, folds each mid-month update
+  into the next, and forward-fills gap months. Also a `net_worth_monthly`
+  rebuild toggle (`[post.reports]`, default off). (`net_worth.py`,
+  `cli/reports.py`, `batch_config.py`)
 - **Valuation reports forward-fill the GBP rate** — a month-end statement
   is dated to the following day (a 30 June snapshot carries `on_date`
   1 July), so it asked for a month HMRC hadn't published yet, dropping every

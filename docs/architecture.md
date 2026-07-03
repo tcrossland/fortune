@@ -588,7 +588,11 @@ usage examples; this is the behavioural reference.
   `--strict` exits non-zero on any gap.
 - `net-worth` — net-worth-over-time. Values *every* statement at its own
   date and builds a combined timeline (as-of forward-fill, same-date
-  duplicates deduped). Writes `net-worth.md` + `net-worth.csv`.
+  duplicates deduped). Writes `net-worth.md` + `net-worth.csv`. `--monthly`
+  resamples onto a first-of-month grid instead of one row per raw statement
+  date, dropping the mid-month rows where only the Vanguard ISA or a
+  property valuation refreshed (the rebuild step's `net_worth_monthly`
+  toggle does the same).
 - `allocation` — asset-allocation-over-time. At each timeline date reports
   the asset-class mix as a share of gross long, with net cash shown
   separately. Writes `allocation.md` + `allocation.csv`.

@@ -830,7 +830,7 @@ def _run_rebuild_reports(
     if rep.net_worth:
         timeline = net_worth_mod.build_timeline(
             texts, commodities=commodities_map, rate_source=rates,
-            properties=properties,
+            properties=properties, monthly=rep.net_worth_monthly,
         )
         _write_report(
             _resolve_report_dir(settings.net_worth_reports_dir, project_root),

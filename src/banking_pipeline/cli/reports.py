@@ -141,6 +141,15 @@ def net_worth(
             "(no statement mark or no GBP rate), so a point understates.",
         ),
     ] = False,
+    monthly: Annotated[
+        bool,
+        typer.Option(
+            "--monthly",
+            help="Resample onto a first-of-month grid instead of one row per "
+            "raw statement date — drops the mid-month rows where only the ISA "
+            "or a property valuation refreshed.",
+        ),
+    ] = False,
     verbose: VerboseOpt = False,
 ) -> None:
     """Net worth over time.
@@ -158,7 +167,7 @@ def net_worth(
     )
     timeline = net_worth_mod.build_timeline(
         texts, commodities=commodities_map, rate_source=rates,
-        properties=_load_properties(property_source),
+        properties=_load_properties(property_source), monthly=monthly,
     )
 
     out_dir = out or settings.net_worth_reports_dir

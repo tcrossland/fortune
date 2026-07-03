@@ -77,6 +77,74 @@ def test_leverage_shows_in_net_cash() -> None:
     assert p.net_worth_gbp == D(4000)
 
 
+def test_event_driven_keeps_mid_month_rows() -> None:
+    """The default grid emits a point at every raw statement date, including
+    a mid-month one where only one portfolio refreshed."""
+
+    raws = [
+        _sec("A", date(2025, 2, 1), "IE00B3VWN518", D(10), D(100)),
+        _sec("B", date(2025, 2, 13), "LU1287023185", D(5), D(100)),  # mid-month
+    ]
+    tl = _timeline_from_raw(raws, commodities={}, rate_source=NullSource())
+    assert [p.on_date for p in tl.points] == [date(2025, 2, 1), date(2025, 2, 13)]
+
+
+def test_monthly_resamples_onto_first_of_month_grid() -> None:
+    """``monthly`` drops mid-month rows: a portfolio's mid-month update folds
+    into the next first-of-month anchor via the as-of forward-fill."""
+
+    raws = [
+        _sec("A", date(2025, 2, 1), "IE00B3VWN518", D(10), D(100)),   # A=1000
+        _sec("B", date(2025, 2, 13), "LU1287023185", D(5), D(100)),   # B=500
+        _sec("A", date(2025, 3, 1), "IE00B3VWN518", D(12), D(100)),   # A=1200
+    ]
+    tl = _timeline_from_raw(
+        raws, commodities={}, rate_source=NullSource(), monthly=True
+    )
+    assert [p.on_date for p in tl.points] == [date(2025, 2, 1), date(2025, 3, 1)]
+    pts = {p.on_date: p for p in tl.points}
+    # Feb 1: B's statement (the 13th) isn't in scope yet — only A.
+    assert pts[date(2025, 2, 1)].net_worth_gbp == D(1000)
+    assert pts[date(2025, 2, 1)].portfolios == 1
+    # Mar 1: A steps to 1200; B forward-filled from the 13th at 500.
+    assert pts[date(2025, 3, 1)].net_worth_gbp == D(1700)
+    assert pts[date(2025, 3, 1)].portfolios == 2
+
+
+def test_monthly_skips_leading_anchor_before_first_data() -> None:
+    """The earliest snapshot dated mid-month leaves the grid's first anchor
+    (that month's 1st) with no data — it's skipped, not emitted as an empty
+    row — so the series starts at the first anchor that actually values."""
+
+    raws = [
+        _sec("A", date(2025, 2, 13), "IE00B3VWN518", D(10), D(100)),  # mid-month min
+        _sec("A", date(2025, 3, 1), "IE00B3VWN518", D(12), D(100)),
+    ]
+    tl = _timeline_from_raw(
+        raws, commodities={}, rate_source=NullSource(), monthly=True
+    )
+    # No empty 2025-02-01 row; the first emitted point is 2025-03-01.
+    assert [p.on_date for p in tl.points] == [date(2025, 3, 1)]
+    assert tl.points[0].net_worth_gbp == D(1200)
+    assert tl.points[0].change_gbp is None
+
+
+def test_monthly_fills_gap_months_by_forward_fill() -> None:
+    """A month with no statement still gets a row, carrying the last value."""
+
+    raws = [
+        _sec("A", date(2025, 1, 1), "IE00B3VWN518", D(10), D(100)),  # 1000
+        _sec("A", date(2025, 4, 1), "IE00B3VWN518", D(11), D(100)),  # 1100
+    ]
+    tl = _timeline_from_raw(
+        raws, commodities={}, rate_source=NullSource(), monthly=True
+    )
+    assert [p.on_date for p in tl.points] == [
+        date(2025, 1, 1), date(2025, 2, 1), date(2025, 3, 1), date(2025, 4, 1),
+    ]
+    assert [p.net_worth_gbp for p in tl.points] == [D(1000), D(1000), D(1000), D(1100)]
+
+
 def test_month_end_snapshot_marks_to_latest_rate_not_gapped() -> None:
     """A month-end statement dated to the 1st of the next (unpublished)
     month values its non-GBP holdings at the latest known rate instead of
@@ -122,6 +190,23 @@ def test_cli_writes_timeline(tmp_path: Path) -> None:
     assert csv_text.splitlines()[0] == (
         "date,gross_long_gbp,net_cash_gbp,net_worth_gbp,change_gbp,portfolios"
     )
+
+
+def test_cli_monthly_flag_accepted(tmp_path: Path) -> None:
+    out_dir = tmp_path / "nw"
+    commodities = tmp_path / "commodities.toml"
+    commodities.write_text("", encoding="utf-8")
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "net-worth", "--statement", str(_VANGUARD), "--monthly",
+            "--out", str(out_dir), "--commodities", str(commodities),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    # All emitted rows are first-of-month under --monthly.
+    rows = (out_dir / "net-worth.csv").read_text(encoding="utf-8").splitlines()[1:]
+    assert rows and all(r.split(",")[0].endswith("-01") for r in rows)
 
 
 _PICTET = Path("tests/fixtures/en/pictet/monthly_statement.txt")

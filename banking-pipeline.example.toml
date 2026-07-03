@@ -108,6 +108,11 @@ net_worth = true
 allocation = true
 portfolio_allocation = true
 income_period = "tax-year"
+# Resample the net-worth timeline onto a first-of-month grid (the
+# ``net-worth --monthly`` flag) instead of one row per raw statement date —
+# drops the mid-month rows where only the Vanguard ISA or a property
+# valuation refreshed. Off → the event-driven default.
+net_worth_monthly = false
 # Trial balance is opt-in: it reads the *ledger* via bean-query (not the
 # statement archive), so it needs the bean-query binary and a tolerance-
 # bearing root ledger. Empty trial_balance_ledger → the [post.check]

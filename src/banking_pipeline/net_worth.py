@@ -81,18 +81,38 @@ def build_timeline(
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
     properties: list[Property] | None = None,
+    monthly: bool = False,
 ) -> NetWorthTimeline:
     """Build the net-worth timeline from ``(text, source-name)`` pairs.
 
     ``properties`` (off-ledger residential property) each become a
     pseudo-portfolio contributing a snapshot per valuation date, so they
-    join the timeline via the same as-of forward-fill."""
+    join the timeline via the same as-of forward-fill.
+
+    ``monthly`` resamples the timeline onto a first-of-month grid instead of
+    emitting a point per raw statement date — see :func:`_timeline_from_raw`."""
 
     raws: list[RawHolding] = []
     for text, source in statements:
         raws.extend(raw_from_statement(text, source))
     raws.extend(property_raws(properties or []))
-    return _timeline_from_raw(raws, commodities=commodities, rate_source=rate_source)
+    return _timeline_from_raw(
+        raws, commodities=commodities, rate_source=rate_source, monthly=monthly
+    )
+
+
+def _month_start_grid(first: date, last: date) -> list[date]:
+    """First-of-month dates from ``first``'s month through ``last``'s month,
+    inclusive — the monthly resample grid."""
+
+    out: list[date] = []
+    year, month = first.year, first.month
+    while (year, month) <= (last.year, last.month):
+        out.append(date(year, month, 1))
+        month += 1
+        if month > 12:
+            year, month = year + 1, 1
+    return out
 
 
 def _timeline_from_raw(
@@ -100,12 +120,23 @@ def _timeline_from_raw(
     *,
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
+    monthly: bool = False,
 ) -> NetWorthTimeline:
     # One snapshot per (portfolio, statement date), valued at that date.
     # Dedupe by commodity within a snapshot: two statements can share an
     # "as at" date (a monthly and a quarterly/annual both dated to the same
     # period end), and counting the same holding from both would double the
     # valuation.
+    #
+    # ``monthly`` resamples the emitted points onto a first-of-month grid
+    # (each valued by the same as-of forward-fill) instead of one point per
+    # raw statement date. Portfolios statement on mixed cadences — Pictet
+    # month-end (dated to the 1st of the next month), the Vanguard ISA and
+    # property valuations mid-month — so the default event-driven grid shows
+    # spurious mid-month rows where only one portfolio refreshed. The monthly
+    # grid keeps the fresh-Pictet first-of-month points and folds each
+    # mid-month update into the next one. Trade-off: an update in the current
+    # in-progress month isn't shown until that month's first-of-month anchor.
     groups: dict[tuple[str, date], dict[str, RawHolding]] = defaultdict(dict)
     for r in raws:
         groups[(r.portfolio, r.on_date)][r.key] = r
@@ -135,7 +166,11 @@ def _timeline_from_raw(
 
     points: list[NetWorthPoint] = []
     prev_nw: Decimal | None = None
-    all_dates = sorted({s.on_date for s in snapshots})
+    snapshot_dates = {s.on_date for s in snapshots}
+    if monthly and snapshot_dates:
+        all_dates = _month_start_grid(min(snapshot_dates), max(snapshot_dates))
+    else:
+        all_dates = sorted(snapshot_dates)
     for d in all_dates:
         gross = net_cash = net_worth = _ZERO
         contributing = 0
@@ -146,6 +181,10 @@ def _timeline_from_raw(
                 net_cash += chosen.net_cash_gbp
                 net_worth += chosen.net_worth_gbp
                 contributing += 1
+        # A leading monthly anchor before any portfolio has data contributes
+        # nothing; skip it so the series starts at the first real valuation.
+        if contributing == 0:
+            continue
         change = None if prev_nw is None else net_worth - prev_nw
         points.append(
             NetWorthPoint(d, gross, net_cash, net_worth, change, contributing)

@@ -229,6 +229,16 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped (feature, no plan): `net-worth --monthly` — resample the
+  timeline onto a first-of-month grid (`_month_start_grid` +
+  `monthly` param through `build_timeline`/`_timeline_from_raw`), dropping
+  the mid-month rows where only the Vanguard ISA or a property valuation
+  refreshed (Pictet is month-end → dated the 1st; the ISA and property
+  marks land mid-month). Folds each mid-month update into the next anchor,
+  forward-fills gap months. CLI `--monthly` + a default-off
+  `[post.reports] net_worth_monthly` rebuild toggle. Event-driven remains
+  the default. (`net_worth.py`, `cli/reports.py`, `batch_config.py`,
+  `cli/rebuild.py`)
 - Last shipped (fix, no plan): valuation reports forward-fill the GBP rate.
   A month-end statement dated to the 1st of the next month asked for an
   unpublished HMRC month and dropped every non-GBP holding as a `RateGap`,
