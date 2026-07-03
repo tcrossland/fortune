@@ -87,6 +87,17 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **Valuation reports forward-fill the GBP rate** — a month-end statement
+  is dated to the following day (a 30 June snapshot carries `on_date`
+  1 July), so it asked for a month HMRC hadn't published yet, dropping every
+  non-GBP holding as a `RateGap` and collapsing the newest net-worth row.
+  `value_holdings` now wraps its source in `ForwardFillRateSource` (walks
+  back month-by-month, bounded to 12, to the latest published rate), so
+  concentration / net-worth / allocation / portfolio-allocation /
+  mandate-returns mark to the latest known rate — matching the balance
+  sheet. The tax pipeline keeps the exact-month source (CGT needs it);
+  wrapping a rateless `NullSource` stays `None`, preserving the `--strict`
+  understated-snapshot gate. (`fx/gbp_rates.py`, `valuation.py`)
 - **Interactive balance sheet (`balance-sheet`)** — a single
   self-contained, **offline** `balance-sheet.html` (+ a JSON sidecar) you
   open in any browser and scrub to *any* as-of date. A ledger construct

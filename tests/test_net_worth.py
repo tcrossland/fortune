@@ -9,13 +9,13 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from banking_pipeline import cli
-from banking_pipeline.fx.gbp_rates import NullSource
+from banking_pipeline.fx.gbp_rates import HmrcMonthlyAverageSource, NullSource
 from banking_pipeline.net_worth import (
     _timeline_from_raw,
     build_timeline,
     render_markdown,
 )
-from banking_pipeline.valuation import RawHolding
+from banking_pipeline.valuation import RawHolding, value_holdings
 
 D = Decimal
 
@@ -75,6 +75,24 @@ def test_leverage_shows_in_net_cash() -> None:
     assert p.gross_long_gbp == D(10000)
     assert p.net_cash_gbp == D(-6000)
     assert p.net_worth_gbp == D(4000)
+
+
+def test_month_end_snapshot_marks_to_latest_rate_not_gapped() -> None:
+    """A month-end statement dated to the 1st of the next (unpublished)
+    month values its non-GBP holdings at the latest known rate instead of
+    collapsing to a rate gap — the forward-fill in value_holdings."""
+
+    rates = HmrcMonthlyAverageSource.from_text(
+        "month,currency,rate\n2026-06,EUR,0.86\n"
+    )
+    # A 30-June snapshot carries on_date 1 July; July's EUR rate isn't out.
+    raws = [
+        RawHolding("A", date(2026, 7, 1), "LU0000000001", D(100), D(50), "EUR", False),
+    ]
+    valued = value_holdings(raws, commodities={}, rate_source=rates)
+    # 100 × 50 EUR × 0.86 (June, forward-filled) = 4300, no gap.
+    assert valued.rate_gaps == ()
+    assert valued.gross_long_gbp == D("4300.00")
 
 
 def test_build_timeline_end_to_end_vanguard() -> None:

@@ -229,6 +229,15 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped (fix, no plan): valuation reports forward-fill the GBP rate.
+  A month-end statement dated to the 1st of the next month asked for an
+  unpublished HMRC month and dropped every non-GBP holding as a `RateGap`,
+  collapsing the newest net-worth row (~£millions phantom drop).
+  `value_holdings` now wraps its source in `ForwardFillRateSource`
+  (`fx/gbp_rates.py`) — latest rate ≤ statement month, bounded 12-month
+  walk-back — so all five valuation reports mark to the latest known rate,
+  matching the balance sheet. Tax keeps the exact-month source. Rationale:
+  [design-decisions.md](docs/design-decisions.md#valuation-reports-forward-fill-the-gbp-rate-tax-uses-the-exact-month).
 - Last shipped: [docs/archive/pictet-effective-date-filing.md](docs/archive/pictet-effective-date-filing.md)
   — date tax reports by their **effective date** (the `-<YYYYMMDD>` in the
   source filename = Pictet's Publication/Effective date) via

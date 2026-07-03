@@ -39,6 +39,47 @@ Why:
 Trade-off accepted: no Fava-visible realised gains directly on the
 ledger. The figures live in the `tax-report` CSVs instead.
 
+## Valuation reports forward-fill the GBP rate; tax uses the exact month
+
+The same `HmrcMonthlyAverageSource` feeds two paths with **opposite**
+requirements on a missing month:
+
+- **UK tax** (`tax-report`) needs the *exact* trade-month HMRC average —
+  section 104 cost basis is defined by it, and substituting a neighbouring
+  month would be wrong. So `to_gbp(..., source=…)` on the tax path uses the
+  raw source: an absent month yields `None`, and the transaction's
+  `gbp_rate` is left unset rather than guessed.
+- **Mark-to-market valuation reports** (concentration, net-worth,
+  allocation, portfolio-allocation, mandate-returns — everything through
+  `value_holdings`) want the *latest known* rate. A month-end statement is
+  dated to the following day (a 30 June snapshot carries `on_date` 1 July),
+  so it asks for a month HMRC hasn't published until that month closes.
+  Dropping every non-GBP holding as a `RateGap` collapses the snapshot — a
+  ~£-millions phantom drop on the newest row, purely a calendar artifact.
+
+So `value_holdings` wraps its source in `ForwardFillRateSource`, which
+walks back month-by-month (bounded to 12) to the most recent published
+rate. This matches the balance sheet, which already values at the latest
+rate on or before the as-of date.
+
+Why the wrap lives in `value_holdings`, not in `get_rate`:
+
+- **`get_rate` is shared with tax**, whose correctness depends on the
+  exact-month lookup. Forward-filling there would silently corrupt CGT.
+  The valuation path is the only one that should relax the lookup, so the
+  relaxation is applied there and nowhere else.
+- **The bound surfaces genuine holes.** A one-month leading-edge gap is
+  expected and filled; a multi-month absence (a CSV the user forgot to
+  update) walks past the 12-month cap and still reports a `RateGap` rather
+  than valuing at a year-stale rate.
+- **Wrapping a rateless source is a no-op** — `NullSource` stays `None`
+  through the walk-back, so the `--strict` "understated snapshot" gate and
+  the rate-gap warnings are preserved for truly unconvertible holdings.
+
+Trade-off accepted: within the 12-month window a real (2–11 month) hole is
+filled silently with a stale rate and isn't flagged — acceptable because
+the only recurring gap is the single unpublished current month.
+
 ## Reconcile delegates its verdict to `bean-check`
 
 `reconcile` compares statement-asserted balances against

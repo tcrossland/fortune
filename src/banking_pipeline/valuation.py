@@ -23,7 +23,7 @@ from decimal import Decimal
 
 from banking_pipeline.balances_extract import extract_balances_from_statement
 from banking_pipeline.commodities_metadata import CommodityMetadata
-from banking_pipeline.fx.gbp_rates import GbpRateSource
+from banking_pipeline.fx.gbp_rates import ForwardFillRateSource, GbpRateSource
 from banking_pipeline.prices_extract import extract_prices_from_statement
 from banking_pipeline.property import Property
 from banking_pipeline.tax.uk.currency import RateGap, to_gbp
@@ -184,8 +184,17 @@ def value_holdings(
     """Value a set of raw holdings to GBP and aggregate (no latest-per-
     portfolio filtering — the caller decides what to pass). Securities are
     valued at ``qty × mark``; cash is netted by currency; everything is
-    converted at each holding's statement date. Shared by the concentration
-    report and the net-worth timeline."""
+    converted at the latest GBP rate on or before each holding's statement
+    date. Shared by every valuation report (concentration, net-worth,
+    allocation, portfolio-allocation, mandate-returns).
+
+    The rate lookup forward-fills (:class:`ForwardFillRateSource`): a
+    month-end snapshot dated to the 1st of the next month would otherwise ask
+    for a not-yet-published month's rate and drop every non-GBP holding as a
+    gap. This is a mark-to-market path, so a stale-by-a-month rate beats a
+    collapsed valuation; the tax pipeline keeps the exact-month source."""
+
+    rate_source = ForwardFillRateSource(rate_source)
 
     securities: list[Holding] = []
     # Cash is netted across portfolios by currency (a Lombard loan on one

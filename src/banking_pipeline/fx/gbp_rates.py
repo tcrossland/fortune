@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Protocol, Self, runtime_checkable
@@ -86,6 +86,43 @@ class NullSource:
     """A source that has no rates — always returns ``None``."""
 
     def get_rate(self, on_date: date, currency: str) -> Decimal | None:
+        return None
+
+
+class ForwardFillRateSource:
+    """Wrap a rate source so a missing month falls back to the most recent
+    earlier month that has a rate (bounded month-by-month look-back).
+
+    For *mark-to-market valuation* only. A month-end statement is dated to
+    the following day (a 30 June snapshot carries ``on_date`` 1 July), so it
+    asks for the current month's rate — which HMRC hasn't published until
+    that month closes. Rather than drop every non-GBP holding as a
+    :class:`RateGap` and collapse the snapshot, valuation reports mark to the
+    latest *known* rate, matching the balance sheet's "latest rate on or
+    before the as-of date" behaviour.
+
+    NOT for tax: UK CGT requires the exact trade-month HMRC average, so the
+    tax pipeline keeps the un-wrapped source. The look-back is bounded so a
+    genuine multi-month hole still surfaces as a gap rather than silently
+    valuing at a stale rate.
+    """
+
+    # A leading-edge gap is a single unpublished month; the cap only guards
+    # against a genuinely absent stretch (which then still flags a gap).
+    _MAX_LOOKBACK_MONTHS = 12
+
+    def __init__(self, base: GbpRateSource) -> None:
+        self._base = base
+
+    def get_rate(self, on_date: date, currency: str) -> Decimal | None:
+        month = on_date
+        for _ in range(self._MAX_LOOKBACK_MONTHS + 1):
+            rate = self._base.get_rate(month, currency)
+            if rate is not None:
+                return rate
+            # Step to the last day of the previous month (get_rate snaps to
+            # ``%Y-%m``, so any day within the target month resolves it).
+            month = month.replace(day=1) - timedelta(days=1)
         return None
 
 

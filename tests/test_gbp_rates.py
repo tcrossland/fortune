@@ -9,6 +9,7 @@ from pathlib import Path
 from banking_pipeline.config import Settings
 from banking_pipeline.fields.hybrid import HybridExtractor
 from banking_pipeline.fx.gbp_rates import (
+    ForwardFillRateSource,
     HmrcMonthlyAverageSource,
     NullSource,
 )
@@ -117,6 +118,43 @@ def test_gbp_transaction_always_unit_rate() -> None:
     assert gbp.gbp_rate == Decimal("1")
     # Sanity: the source IS consulted for non-GBP currencies.
     assert eur.gbp_rate == Decimal("999")
+
+
+def test_forward_fill_uses_exact_month_when_present() -> None:
+    source = ForwardFillRateSource(HmrcMonthlyAverageSource.from_text(_CSV))
+    assert source.get_rate(date(2023, 11, 24), "EUR") == Decimal("0.8696")
+    assert source.get_rate(date(2023, 12, 31), "EUR") == Decimal("0.8625")
+
+
+def test_forward_fill_falls_back_to_prior_month() -> None:
+    """A month with no published rate marks to the latest earlier month —
+    the month-end-snapshot-dated-to-the-1st boundary case."""
+
+    source = ForwardFillRateSource(HmrcMonthlyAverageSource.from_text(_CSV))
+    # Jan 2024 is absent; falls back to Dec 2023.
+    assert source.get_rate(date(2024, 1, 1), "EUR") == Decimal("0.8625")
+    # USD only exists in Nov 2023; Dec falls back to it.
+    assert source.get_rate(date(2023, 12, 1), "USD") == Decimal("0.8013")
+
+
+def test_forward_fill_bounded_lookback_edge() -> None:
+    """Pins the 12-month cap exactly: the last EUR row is 2023-12, so a
+    query exactly 12 months later still hits (query month + 12 prior), but
+    13 months later falls past the window and surfaces as no rate."""
+
+    source = ForwardFillRateSource(HmrcMonthlyAverageSource.from_text(_CSV))
+    # 2024-12 is 12 months after 2023-12 → reached on the final look-back.
+    assert source.get_rate(date(2024, 12, 1), "EUR") == Decimal("0.8625")
+    # 2025-01 is 13 months out → past the cap.
+    assert source.get_rate(date(2025, 1, 1), "EUR") is None
+
+
+def test_forward_fill_of_null_source_is_none() -> None:
+    """Wrapping a rateless source never fabricates a rate — the rate-gap
+    reporting path is preserved."""
+
+    source = ForwardFillRateSource(NullSource())
+    assert source.get_rate(date(2023, 11, 24), "EUR") is None
 
 
 def test_settings_default_disables_gbp_sourcing() -> None:
