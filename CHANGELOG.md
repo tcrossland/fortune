@@ -20,7 +20,7 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
   uplift can't affect the current year's disposals. Cumulative ERI GBP-rate
   gaps now fold into the `--strict` understatement gate. Live for 2025-26 (the
   first affected filing — regenerate it). Plan:
-  [docs/plans/eri-cumulative-basis-fix.md](docs/plans/eri-cumulative-basis-fix.md).
+  [docs/archive/eri-cumulative-basis-fix.md](docs/archive/eri-cumulative-basis-fix.md).
   (`cli/tax.py`)
 - **ERI / SA106 consistency warnings** — two silent inconsistencies now
   surface in `summary.txt`. ERI for a bond fund (`distributions_as_interest`)

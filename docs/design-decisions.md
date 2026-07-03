@@ -342,7 +342,7 @@ ERI base-cost uplift is folded into the pool via
 tax year the `eri` table spans and merges the adjustments. This matters because
 `compute_eri` scopes to a single year but the pool is cumulative: a *current*
 cost basis needs every year's uplift. Plan + staged history:
-[plans/holdings-cost-basis-report.md](plans/holdings-cost-basis-report.md).
+[archive/holdings-cost-basis-report.md](archive/holdings-cost-basis-report.md).
 
 ## The tax pipeline feeds cumulative ERI base-cost uplift to the pool
 
@@ -366,7 +366,7 @@ uplift lands *after* this year's disposals and can't affect them. The cumulative
 ERI rate-gaps (a prior-year ERI entry with no GBP rate now leaves the current
 pool's uplift incomplete) fold into the report's `rate_gaps` /
 `--strict` understatement channel — superseding the single-year set, which they
-contain. Plan: [plans/eri-cumulative-basis-fix.md](plans/eri-cumulative-basis-fix.md).
+contain. Plan: [archive/eri-cumulative-basis-fix.md](archive/eri-cumulative-basis-fix.md).
 
 ## Licence hygiene
 

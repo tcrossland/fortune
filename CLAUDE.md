@@ -229,7 +229,7 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
-- Last shipped: [docs/plans/eri-cumulative-basis-fix.md](docs/plans/eri-cumulative-basis-fix.md)
+- Last shipped: [docs/archive/eri-cumulative-basis-fix.md](docs/archive/eri-cumulative-basis-fix.md)
   — the tax pipeline now feeds **cumulative** ERI section 104 base-cost
   adjustments to the pool (`_compute_tax_year` in `cli/tax.py` uses
   `cumulative_base_cost_adjustments`, not the year-scoped
@@ -239,7 +239,7 @@ advice — verify against HMRC guidance.
   understatement gate. Live for 2025-26 — **regenerate that return**. No golden
   moved (no prior test paired earlier-year ERI with a later disposal). Rationale:
   [design-decisions.md](docs/design-decisions.md#the-tax-pipeline-feeds-cumulative-eri-base-cost-uplift-to-the-pool).
-- Last shipped: [docs/plans/holdings-cost-basis-report.md](docs/plans/holdings-cost-basis-report.md)
+- Last shipped: [docs/archive/holdings-cost-basis-report.md](docs/archive/holdings-cost-basis-report.md)
   — the `holdings` cost-basis + unrealised-P&L report. Pluggable
   per-jurisdiction cost basis (`basis_lens.py` neutral `BasisLens` /
   `HoldingBasis`; `tax/uk/basis.py` `UkSection104Lens`) over the residual

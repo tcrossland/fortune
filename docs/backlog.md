@@ -55,8 +55,8 @@ not tax advice" framing.
   crystallise to offset gains. Flag any repurchase that would trip the
   30-day bed-and-breakfast rule and undo a harvested loss. *Foundation:* the
   per-holding unrealised table this needs is the
-  [holdings cost-basis report](plans/holdings-cost-basis-report.md) (active
-  plan) — build and verify that first, then this is the headroom query +
+  [holdings cost-basis report](archive/holdings-cost-basis-report.md)
+  (shipped) — build on it: this is the headroom query +
   advice + prospective bed-and-breakfast check layered on top.
 - **Allowance-utilisation dashboard.** From year-to-date actuals, show
   used-vs-remaining for each statutory headroom: dividend allowance,
@@ -119,7 +119,7 @@ not tax advice" framing.
   P&L column** (needs per-date FIFO booking) and the **statement-assertion
   drift overlay** (the dataset already carries the assertions; rendering
   overlaps `reconcile`). *The cost-basis half is available from the shipped*
-  [holdings cost-basis report](plans/holdings-cost-basis-report.md) *— its
+  [holdings cost-basis report](archive/holdings-cost-basis-report.md) *— its
   residual section-104 pool per holding is the same substrate this column
   needs.*
 - **Holdings cost basis + unrealised P&L (`holdings`) — shipped (UK).** Joins
