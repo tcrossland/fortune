@@ -355,6 +355,10 @@ advice — verify against HMRC guidance.
 - **Verify, don't assume.** Run the commands above and check against the
   Definition of Done (`.claude/rules/definition-of-done.md`) before
   reporting a change done.
+- **Re-read repo state before asserting it.** When a parallel session may be
+  mutating the repo (a spun-off task, another worktree), re-run
+  `git status` / `git log` immediately before reporting branch or commit
+  state — don't report from an earlier read.
 
 ## Where to find more
 

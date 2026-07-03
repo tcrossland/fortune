@@ -101,6 +101,16 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`holdings` — cost basis + unrealised P&L** — joins the latest statement
+  market value per portfolio with a pluggable per-jurisdiction cost basis and
+  reports per-holding unrealised gain/loss, cross-checking the statement
+  quantity against the section 104 pool. The UK lens (`--basis uk`) reads cost
+  basis from the sidecars (ERI-adjusted across all years), never the ledger;
+  the EUR/Spanish lens (`--basis es`) is reserved. ISA holdings show from the
+  statement side but carry no section 104 basis (tax-exempt). Securities are
+  consolidated by ISIN before the join (the pool is NIF-level). A `holdings`
+  rebuild toggle (`[post.reports]`, default off). (`holdings.py`,
+  `basis_lens.py`, `tax/uk/basis.py`, `cli/reports.py`)
 - **`net-worth --monthly`** — resamples the timeline onto a first-of-month
   grid instead of one row per raw statement date. Portfolios statement on
   mixed cadences (Pictet month-end → dated the 1st, the Vanguard ISA and
