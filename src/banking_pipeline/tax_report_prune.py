@@ -67,9 +67,12 @@ def is_canonical_name(name: str) -> bool:
     """True if ``name`` is a canonical tax-report filename (a P&L report or
     the annual ``Fiscal statement``).
 
-    Used to tell an already-normalised report from a legacy-named one (which
-    must be deduped by *content*, not its filename — the legacy names encode
-    the download date, not the report's as-of)."""
+    Used to tell an already-normalised report from a legacy-named one. A
+    legacy copy is deduped via :func:`archive.file_documents`, which now dates
+    a report by the effective date in its filename (see
+    ``archive._effective_date_from_filename``) — so a legacy copy is a
+    duplicate only when a canonical of that same effective date already
+    exists."""
 
     return _CANONICAL_NAME.match(name) is not None
 

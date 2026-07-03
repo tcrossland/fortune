@@ -287,6 +287,80 @@ def test_filing_info_tax_report_carries_as_of_and_stem(fixtures_dir: Path) -> No
     assert (info.as_of, info.tax_label) == (date(2024, 12, 31), "Fiscal statement")
 
 
+def test_effective_date_from_filename() -> None:
+    cases = {
+        "0173837-Tax+-+Realised+P%2FL+report-20231005.pdf": date(2023, 10, 5),
+        "0173837.001-Tax+-+Unrealised+P%2FL+report-20231211.pdf": date(2023, 12, 11),
+        # a ``-(N)`` re-cut suffix is tolerated
+        "0173837-Tax+-+Realised+P%2FL+report-20250422-(1).pdf": date(2025, 4, 22),
+        # canonical archived names carry the date the same way
+        "Realised PL 20231229.pdf": date(2023, 12, 29),
+        "Fiscal statement 20241231.pdf": date(2024, 12, 31),
+        # dateless / invalid → None (fall back to content)
+        "Tax - Realised PL report-.pdf": None,
+        "Realised PL 20239999.pdf": None,
+    }
+    for name, expected in cases.items():
+        assert archive._effective_date_from_filename(name) == expected, name
+
+
+def test_filing_info_tax_report_prefers_effective_date(fixtures_dir: Path) -> None:
+    """A tax report is dated by the effective date in its filename, not the
+    (possibly stale) content fiscal date. The realised fixture's content as-of
+    is 2023-07-20; a source filename dated 2023-10-05 wins."""
+
+    text = (fixtures_dir / "es" / "pictet" / "tax_realised_pl.txt").read_text()
+    info = archive.filing_info(
+        _classification(DocumentType.TAX_REALISED_PL, BankId.PICTET),
+        text,
+        source_name="0173837-Tax+-+Realised+P%2FL+report-20231005.pdf",
+    )
+    assert info is not None
+    assert info.as_of == date(2023, 10, 5)  # effective (filename) date wins
+    assert archive.destination_for(Path("/arch"), info).name == (
+        "Realised PL 20231005.pdf"
+    )
+
+
+def test_filing_info_tax_report_falls_back_to_content_date(fixtures_dir: Path) -> None:
+    """When the filename carries no date (or no source name is passed), the
+    content fiscal date is used."""
+
+    text = (fixtures_dir / "es" / "pictet" / "tax_realised_pl.txt").read_text()
+    cls = _classification(DocumentType.TAX_REALISED_PL, BankId.PICTET)
+    # no source_name at all
+    assert archive.filing_info(cls, text).as_of == date(2023, 7, 20)  # type: ignore[union-attr]
+    # dateless source_name
+    info = archive.filing_info(
+        cls, text, source_name="Tax - Realised PL report-.pdf"
+    )
+    assert info is not None and info.as_of == date(2023, 7, 20)
+
+
+def test_filing_info_logs_effective_content_date_mismatch(fixtures_dir: Path) -> None:
+    """A filename/content date disagreement (the stale-label signal) is logged;
+    agreement is silent."""
+    from structlog.testing import capture_logs
+
+    text = (fixtures_dir / "es" / "pictet" / "tax_realised_pl.txt").read_text()
+    cls = _classification(DocumentType.TAX_REALISED_PL, BankId.PICTET)
+    ev = "archive.tax_report_date_mismatch"
+    # content 2023-07-20 vs filename 2023-10-05 → warn
+    with capture_logs() as logs:
+        archive.filing_info(
+            cls, text, source_name="0173837-Tax+-+Realised+P%2FL+report-20231005.pdf"
+        )
+    warns = [e for e in logs if e.get("event") == ev]
+    assert len(warns) == 1 and warns[0]["used"] == "effective"
+    assert warns[0]["effective_date"] == date(2023, 10, 5)
+    # filename matches content → no warning
+    with capture_logs() as logs2:
+        archive.filing_info(
+            cls, text, source_name="0173837-Tax+-+Realised+P%2FL+report-20230720.pdf"
+        )
+    assert not [e for e in logs2 if e.get("event") == ev]
+
+
 def test_filing_info_none_when_tax_report_has_no_date() -> None:
     """A tax-report classification with no scrapable as-of date is left
     unfiled rather than filed under a wrong name."""

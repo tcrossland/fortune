@@ -67,9 +67,13 @@ from datetime import date
 from pathlib import Path
 from typing import Literal
 
+import structlog
+
 from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.extractors import load_pdf
 from banking_pipeline.models import BankId, Classification, DocumentType
+
+_log = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -195,6 +199,35 @@ def _pictet_as_of(text: str) -> date | None:
         return None
     try:
         return date(int(year), month, int(day))
+    except ValueError:
+        return None
+
+
+# The report's **effective date** (= the portal's Publication / Effective
+# date) is carried in the download filename's trailing ``-<YYYYMMDD>`` — the
+# canonical archived name (``<stem> <YYYYMMDD>.pdf``) carries it the same way.
+# This is authoritative: unlike the content's fiscal-reference date it never
+# drifts, so it's the primary filing date for a tax report (see
+# :func:`filing_info`). A ``-(N)`` re-cut suffix is tolerated; ``\.pdf$``
+# anchors the match to the trailing date, so the leading account digits
+# (``0173837``, 7 digits) can't be mistaken for it. The ``20`` century prefix
+# keeps a stray longer digit-run (e.g. ``201231005`` → ``01231005``) from
+# yielding a bogus year-0123 date — every Pictet report is 2000s.
+_FILENAME_DATE = re.compile(r"(20\d{6})(?:[-\s]?\(\d+\))?\.pdf$", re.IGNORECASE)
+
+
+def _effective_date_from_filename(name: str) -> date | None:
+    """The effective date encoded in a Pictet tax-report filename, or ``None``
+    when the name carries no parseable ``YYYYMMDD`` (some legacy names are
+    dateless, e.g. ``Tax - Realised PL report-.pdf`` — those fall back to the
+    content date). An 8-digit token that isn't a real date yields ``None``."""
+
+    match = _FILENAME_DATE.search(name)
+    if match is None:
+        return None
+    stamp = match.group(1)
+    try:
+        return date(int(stamp[:4]), int(stamp[4:6]), int(stamp[6:8]))
     except ValueError:
         return None
 
@@ -327,7 +360,12 @@ _TAX_REPORT_STEMS: dict[DocumentType, str] = {
 }
 
 
-def filing_info(classification: Classification, text: str) -> FilingInfo | None:
+def filing_info(
+    classification: Classification,
+    text: str,
+    *,
+    source_name: str | None = None,
+) -> FilingInfo | None:
     """Combine the classifier verdict with the scraped fields, or ``None``.
 
     ``None`` when no bank was identified, the bank has no filing parser, or
@@ -336,6 +374,11 @@ def filing_info(classification: Classification, text: str) -> FilingInfo | None:
     account header — it carries none). A periodic valuation statement needs an
     account + an as-of date; a transaction advice needs an account + a
     reference + publication date.
+
+    ``source_name`` is the source PDF's filename; a tax report is dated by the
+    **effective date** it encodes (see below), so pass it through from the
+    filing pass. It's optional so callers with only text fall back to the
+    content date.
     """
 
     bank = classification.bank.bank if classification.bank else BankId.UNKNOWN
@@ -344,13 +387,39 @@ def filing_info(classification: Classification, text: str) -> FilingInfo | None:
         return None
     doc_type = classification.document_type
     # Spanish IRPF tax reports carry no account header, so they're routed
-    # before the account-requiring parser path: keyed on the numeric as-of
-    # date alone, filed into ``<year>/tax/``.
+    # before the account-requiring parser path: keyed on their as-of date
+    # alone, filed into ``<year>/tax/``.
+    #
+    # The as-of date is the report's **effective date** — taken from the
+    # source filename (the portal's Publication/Effective date), which is
+    # authoritative. The content's fiscal-reference date can be *stale* (Pictet
+    # froze the ``Al 10.09.2023`` label on a run of re-valued unrealised
+    # reports), so it's only a fallback for filenames with no date. The two
+    # agree on a normal report; a disagreement is the stale-label signal and
+    # is logged.
     tax_stem = _TAX_REPORT_STEMS.get(doc_type)
     if tax_stem is not None:
-        as_of = _pictet_tax_as_of(text, doc_type)
+        content_as_of = _pictet_tax_as_of(text, doc_type)
+        filename_as_of = (
+            _effective_date_from_filename(source_name)
+            if source_name is not None
+            else None
+        )
+        as_of = filename_as_of or content_as_of
         if as_of is None:
             return None
+        if (
+            filename_as_of is not None
+            and content_as_of is not None
+            and filename_as_of != content_as_of
+        ):
+            _log.warning(
+                "archive.tax_report_date_mismatch",
+                source=source_name,
+                effective_date=filename_as_of,
+                content_date=content_as_of,
+                used="effective",
+            )
         return FilingInfo(
             account="",
             reference=None,
@@ -496,7 +565,9 @@ def file_documents(
     for pdf in pdfs:
         try:
             doc = load_pdf(pdf)
-            info = filing_info(classifier.classify(doc), doc.text)
+            info = filing_info(
+                classifier.classify(doc), doc.text, source_name=pdf.name
+            )
         except Exception as exc:  # noqa: BLE001 — one bad PDF mustn't abort filing
             early[pdf] = FilingPlan(
                 pdf, None, "error", f"{type(exc).__name__}: {exc}"

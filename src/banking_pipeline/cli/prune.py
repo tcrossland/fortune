@@ -33,16 +33,19 @@ from banking_pipeline.tax_report_prune import SUPERSEDED_DIRNAME
 def _superseded_duplicates(
     tax_dir: Path, archive_root: Path, classifier: LayeredClassifier
 ) -> list[Path]:
-    """Non-canonically-named P&L files in ``tax_dir`` that are content
-    duplicates of an already-filed canonical report.
+    """Non-canonically-named tax-report files in ``tax_dir`` that duplicate an
+    already-filed canonical report.
 
-    The legacy filenames encode the *download* date, not the report's as-of
-    (the same report re-downloaded on several days), so duplicates can only
-    be found by content. Reuses :func:`archive.file_documents` in dry-run:
-    its ``"skip"`` status is exactly "this document's canonical destination
-    already exists" — i.e. a redundant copy. A file whose canonical does
-    *not* yet exist (``"move"``) or that isn't a P&L report (``"no-match"``,
-    e.g. ETE / Modelo 720) is left untouched.
+    Reuses :func:`archive.file_documents` in dry-run, which dates a report by
+    the **effective date** in its filename (Pictet's Publication/Effective
+    date; see ``archive._effective_date_from_filename``). Its ``"skip"`` status
+    is exactly "this document's canonical destination already exists" — i.e. a
+    redundant copy of that effective date. A file whose canonical does *not*
+    yet exist (``"move"``) or that isn't a tax report (``"no-match"``, e.g. an
+    unfiled doctype) is left untouched. (Legacy copies re-downloaded on
+    different days carry *different* effective dates, so they don't collapse
+    together here — the retention policy's month-end dedup handles that
+    volume.)
     """
 
     candidates = [
@@ -115,13 +118,13 @@ def prune_tax_reports(
     ``Modelo 720`` / any other name and the ``_superseded/`` folder itself
     are left untouched, so a second run is a no-op.
 
-    It also sweeps aside legacy-named P&L duplicates — a pre-normalisation
-    copy (``Tax - Realised PL report-<date>.pdf`` and the URL-encoded
-    variant) that duplicates an already-filed canonical report. Duplicates
-    are found by **content** (the legacy names encode the download date, not
-    the report's as-of), so several re-downloads of one report all collapse.
-    This tidies the archive after the one-off normalise pass; a legacy file
-    whose canonical doesn't yet exist is never moved.
+    It also sweeps aside legacy-named duplicates — a pre-normalisation copy
+    (``Tax - Realised PL report-<date>.pdf`` and the URL-encoded variant) that
+    duplicates an already-filed canonical report. A copy is dated by the
+    effective date in its filename (via ``file_documents``), so it's a
+    duplicate only when a canonical of that same effective date already
+    exists. This tidies the archive after the one-off normalise pass; a legacy
+    file whose canonical doesn't yet exist is never moved.
     """
 
     _configure_logging(verbose)
@@ -167,9 +170,9 @@ def prune_tax_reports(
         superseded_dir = tax_dir / SUPERSEDED_DIRNAME
 
         # First, sweep aside legacy-named copies that duplicate an already-
-        # filed canonical report (found by content, not filename) so only the
-        # canonical set remains to prune. Guarded: a file whose canonical
-        # doesn't yet exist, and non-P&L files (ETE / Modelo 720), are left.
+        # filed canonical report (keyed on the effective date in the filename)
+        # so only the canonical set remains to prune. Guarded: a file whose
+        # canonical doesn't yet exist, and non-tax files, are left.
         legacy_dups = _superseded_duplicates(tax_dir, archive_root, classifier)
 
         reports = tax_report_prune.discover_reports(tax_dir)

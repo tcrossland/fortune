@@ -498,7 +498,13 @@ usage examples; this is the behavioural reference.
   <YYYYMMDD>.pdf`, `MODELO_720` → `Modelo 720 <YYYYMMDD>.pdf`, and
   `INCOME_CAPITAL_GAINS_UK` → `Income and capital gains UK <YYYYMMDD>.pdf`
   (their as-of is pinned per kind — 31 Dec for ETE/720, 5 Apr for the UK
-  report — from a prose period end). These are all an archive-only
+  report — from a prose period end). The `<YYYYMMDD>` for a tax report is its
+  **effective date**, taken from the source filename's trailing `-<YYYYMMDD>`
+  (Pictet's Publication/Effective date, `_effective_date_from_filename`) —
+  authoritative, since the content's fiscal-reference date can be stale (a
+  frozen `Al …` label); the content scraper (`_pictet_tax_as_of`) is only the
+  fallback for dateless names, and a filename/content disagreement is logged
+  (`archive.tax_report_date_mismatch`). These are all an archive-only
   reference source (never ingested, never fed to the UK-tax pipeline); the
   `prune-tax-reports` command trims the daily P&L volume (the annual statement
   and the tax-authority filings are kept, never pruned). An existing destination is left untouched; an unplaceable /

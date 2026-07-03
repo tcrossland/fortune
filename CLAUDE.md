@@ -229,6 +229,16 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped: [docs/archive/pictet-effective-date-filing.md](docs/archive/pictet-effective-date-filing.md)
+  — date tax reports by their **effective date** (the `-<YYYYMMDD>` in the
+  source filename = Pictet's Publication/Effective date) via
+  `filing_info(..., source_name=)` → `_effective_date_from_filename`,
+  filename-primary with the content fiscal date (`_pictet_tax_as_of`) as
+  fallback + an `archive.tax_report_date_mismatch` warning. Fixes the stale
+  content-label problem (Pictet froze `Al 10.09.2023` on a run of re-valued
+  unrealised reports, collapsing 31 distinct valuations). No-op where filename
+  and content dates agree; the prune legacy-sweep is effective-date-keyed too
+  (goes through `file_documents`). Audit found no other stale-label batches.
 - Last shipped: [docs/archive/pictet-tax-authority-filings.md](docs/archive/pictet-tax-authority-filings.md)
   — classify Pictet's three annual tax-authority filings (`DECLARACION_ETE`,
   `MODELO_720`, `INCOME_CAPITAL_GAINS_UK`) as their own `NO_OUTPUT` doctypes

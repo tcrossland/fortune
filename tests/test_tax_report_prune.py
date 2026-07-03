@@ -227,17 +227,18 @@ def test_prune_sweeps_content_duplicates(
     tmp_path: Path, fixtures_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A legacy-named copy that duplicates an already-filed canonical report
-    (by content) is swept aside; a legacy copy whose canonical doesn't yet
-    exist, and the ETE report, are left in place.
+    (by its effective date — the filename's ``-<YYYYMMDD>``) is swept aside; a
+    legacy copy whose canonical doesn't yet exist, and the ETE report, are
+    left in place.
 
-    The realised fixture's content as-of is 2023-07-20, so its canonical name
-    is ``Realised PL 20230720.pdf``. Two legacy-named files carry that same
-    content — one collides with an existing canonical (→ swept), the other
-    (dated 2022) has no canonical present (→ left).
+    Filing is keyed on the effective date in the filename, so a legacy
+    ``…report-20230720.pdf`` collides with ``Realised PL 20230720.pdf``; a
+    legacy ``…report-20240105.pdf`` has no canonical and is kept.
     """
 
     # Route the filing module's PDF loader to a plain text reader, so the
-    # legacy files' text content drives classification.
+    # legacy files' text content drives classification (the *date*, though,
+    # comes from the filename).
     def fake_load(path: Path) -> RawDocument:
         return RawDocument(
             path=path, text=path.read_text(encoding="utf-8"), page_count=1
@@ -251,16 +252,18 @@ def test_prune_sweeps_content_duplicates(
 
     tax = tmp_path / "2023" / "tax"
     tax.mkdir(parents=True)
-    # The canonical report this duplicate collides with (content as-of
-    # 2023-07-20). Its own name is canonical, so the sweep ignores it.
+    # The canonical report the duplicate collides with. Its own name is
+    # canonical, so the sweep ignores it.
     (tax / "Realised PL 20230720.pdf").write_text(realised_text)
-    # A legacy-named re-download of the same 2023-07-20 report → swept.
-    dup = tax / "0173837-Tax+-+Realised+P%2FL+report-20231005.pdf"
+    # A legacy-named copy with the *same* effective date (filename 20230720) →
+    # files to Realised PL 20230720, which exists → swept.
+    dup = tax / "0173837-Tax+-+Realised+P%2FL+report-20230720.pdf"
     dup.write_text(realised_text)
-    # A P&L report whose canonical isn't present here → left (would be
-    # normalised, not superseded). Lives in a 2023 folder but its content
-    # files under 2023/tax as Realised PL 20230720 — which *does* exist, so
-    # to model an orphan we put it under a year with no canonical.
+    # A legacy copy with a different effective date (20240105) whose canonical
+    # isn't present → kept (would be normalised, not superseded).
+    orphan = tax / "0173837-Tax+-+Realised+P%2FL+report-20240105.pdf"
+    orphan.write_text(realised_text)
+    # A non-P&L file → no-match → left.
     ete = tax / "Tax - Tax valuations - ETE-20221231.pdf"
     ete.write_text("not a P&L report, just some ETE text")
 
@@ -271,6 +274,7 @@ def test_prune_sweeps_content_duplicates(
 
     assert (tax / "_superseded" / dup.name).exists()
     assert not dup.exists()
+    assert orphan.exists()  # different effective date, no canonical → kept
     assert ete.exists()  # non-P&L file untouched
     assert (tax / "Realised PL 20230720.pdf").exists()  # canonical retained
 
