@@ -84,6 +84,14 @@ not tax advice" framing.
   confidence and which rule fired into a queryable index, so the
   lowest-confidence documents in a run can be surfaced for manual review
   rather than trusted silently.
+- **`prune-tax-reports` differing-twin convergence.** A non-retained daily
+  P&L report whose same-named `_superseded/` twin *differs* in content can't
+  be superseded (move-aside no-ops on the name collision) and warns on every
+  run; the `moved N` summary counts that non-move too. The byte-identical
+  stray-convergence step (shipped) settles identical re-files but not
+  differing ones. Fix is upstream — a `pruned-dates` manifest so import
+  doesn't re-file an already-pruned daily — or rename-on-collision in
+  `_superseded/`. Surfaced in the stray-convergence review (commit `e1566ea`).
 
 ## Accounting
 

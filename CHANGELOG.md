@@ -256,6 +256,14 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Archiving
 
+- **`prune-tax-reports` converges re-filed strays** — when a rebuild/import
+  re-files an already-pruned daily P/L report into `<year>/tax/`, prune now
+  deletes it if a **byte-identical** (md5) copy already sits in
+  `_superseded/` (the superseded copy is the record), instead of warning and
+  leaving it. Only byte-identical, **non-retained** reports are removed — an
+  unrealised report re-valued under the same effective date shares a name but
+  differs in bytes and is left untouched. Dry-run by default.
+  (`cli/prune.py`, `tax_report_prune.py`)
 - **Tax reports dated by their effective date, not the content label** —
   a Spanish tax report now files under the effective date in its source
   filename (Pictet's Publication/Effective date, `-<YYYYMMDD>`), with the
