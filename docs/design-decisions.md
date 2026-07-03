@@ -247,6 +247,29 @@ guidance; none of this is tax advice):
 - `tax-forecast` / `fig-advice` use year-to-date actuals (no run-rate
   projection) and England/Wales/NI rates for a single taxpayer.
 
+## Tax reports file by their effective date, not the content fiscal date
+
+A Spanish tax report's archive filename date is the **effective date** carried
+in the source download filename (`-<YYYYMMDD>` = Pictet's Publication/Effective
+date), taken in preference to the as-of date scraped from the document body.
+The content scraper (`archive._pictet_tax_as_of`) is only a fallback for
+dateless legacy names, and a filename/content disagreement is logged
+(`archive.tax_report_date_mismatch`).
+
+The content's fiscal-reference date can go **stale**: Pictet issued a run of
+Oct–Nov 2023 unrealised reports that were re-valued live each day but kept a
+frozen `Al 10.09.2023` label. Dating by content collapsed 31 distinct daily
+valuations onto one canonical name (`Unrealised PL 20230910.pdf`) — a silent
+loss. The effective date in the filename never drifted, and the two coincide
+on every normal report, so the rule is a no-op except where it corrects a
+stale label. Realised reports (fixed data) are unaffected either way; it's
+unrealised valuations where it earns its keep.
+
+This deliberately re-couples filing to the source *filename* — which the
+archive pass otherwise ignores by design, deriving everything from content —
+because the filename's date is the more reliable signal. Full rationale +
+audit in [archive/pictet-effective-date-filing.md](archive/pictet-effective-date-filing.md).
+
 ## Licence hygiene
 
 This project is MIT, and every runtime dependency is MIT / BSD / Apache-2.0

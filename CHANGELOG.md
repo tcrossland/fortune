@@ -254,6 +254,31 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
   so weights don't blow past 100%. Writes `concentration.md` +
   `holdings.csv`. (`concentration.py`)
 
+## Archiving
+
+- **Tax reports dated by their effective date, not the content label** —
+  a Spanish tax report now files under the effective date in its source
+  filename (Pictet's Publication/Effective date, `-<YYYYMMDD>`), with the
+  content fiscal date as a fallback and a warning on disagreement. Fixes a
+  silent data loss: Pictet froze the `Al 10.09.2023` content label on a run
+  of re-valued unrealised reports, which the old content-date scraper
+  collapsed onto one canonical name. (`archive.py`)
+- **Annual tax-authority filings classified + auto-filed** — Declaración ETE,
+  Modelo 720 and the UK income & capital-gains report file into `<year>/tax/`
+  under canonical names (`ETE <date>` / `Modelo 720 <date>` / `Income and
+  capital gains UK <date>`). Archive-only. (`classifiers/rules.py`,
+  `archive.py`)
+- **Annual fiscal statement is its own doctype** — the comprehensive "Informe
+  fiscal personas físicas" files as `Fiscal statement <date>.pdf`, distinct
+  from the daily Realised P/L it was misclassified as (discriminated by its
+  `VALORACIÓN DE CARTERA` + `Gastos de administración` sections).
+- **Pictet IRPF P/L reports filed + pruned** — Realised/Unrealised P/L reports
+  auto-file to `<year>/tax/<Type> PL <date>.pdf`, and a new `prune-tax-reports`
+  command keeps month-end + year-end / 5-Apr anchors (moving daily noise to
+  `_superseded/`; dry-run by default). `[import] source_globs` composes extra
+  source globs. Archive-only — never ingested or fed to the UK-tax pipeline.
+  (`cli/prune.py`, `tax_report_prune.py`, `archive.py`)
+
 ## Bookkeeping & accounting
 
 - **Revolut self-to-self contra-leg → `Equity:Transfers`** — the
