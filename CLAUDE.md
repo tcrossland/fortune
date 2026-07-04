@@ -229,6 +229,16 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped (feat, no plan): `holdings` **decomposes the ERI base-cost
+  uplift** — an `of which ERI` column (`eri_uplift_gbp`) splits out the ERI
+  portion inside each section-104 cost (the main reason the UK basis differs
+  from a broker's book cost). The lens builds the pool a second time *without*
+  the cost adjustments and diffs — the ERI *remaining* after disposals remove
+  it proportionally at the pool average, not the raw figure; a neutral
+  `HoldingBasis.cost_adjustment` carries it. Retired the case for a
+  `reconcile-holdings` command (dropped as overkill — see
+  [docs/design-decisions.md](docs/design-decisions.md#reconcile-holdings-is-overkill-the-portal-reconciliation-is-complete-without-it)).
+  (`holdings.py`, `basis_lens.py`, `tax/uk/basis.py`)
 - Last shipped: [docs/archive/reconcile-transactions.md](docs/archive/reconcile-transactions.md)
   — `reconcile-transactions`, the transaction-level counterpart to
   `completeness`: diffs the portal **Transactions** CSV (every trade leg, both

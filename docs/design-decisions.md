@@ -478,6 +478,36 @@ entries were excluded, the 30 Sep 2023 / 31 Mar 2024 entries kept — arrival
 2023-07-14.) Equalisation, a return of capital, is netted off the uplift
 regardless of residence.
 
+## Reconcile-holdings is overkill: the portal reconciliation is complete without it
+
+The portal exports are reconciled against the sidecars on three axes —
+`completeness` (cash movements), `reconcile-transactions` (every trade leg by
+`Order nr.`), and the `holdings` report's statement-qty ↔ pool-qty drift check
+(positions). A fourth, position-level `reconcile-holdings` against the portal
+Holdings export was designed but **not built** — it earns too little on top of
+those.
+
+Why:
+
+- **Its quantity check is bracketed already.** `reconcile-transactions` verifies
+  every trade *input* is ingested with the right amount; the `holdings` drift
+  check verifies the resulting *positions* against the broker. A holding is the
+  running sum of verified trades, so a separate position reconciliation sits
+  between two things already checked.
+- **Its cost-basis check can't gate and no longer even informs.** Pictet's
+  `Net cost (GBP)` is book cost, not section 104 — they legitimately differ, so
+  a drift there is a *convention* difference, never a bug signal. And the point
+  of the comparison — understanding *why* they differ — is now built into the
+  `holdings` report: the `of which ERI` column shows the excess-reportable-income
+  uplift, which is the structural driver of the gap (dominant on reporting
+  funds). What remains is a small, expected FX/averaging residual.
+- **The one residual sliver isn't a command.** The drift check compares against
+  the settlement-lagged *statement*, so it carries expected "timing" noise; the
+  live Holdings **CSV** export matches the pool exactly (verified). So `holdings`
+  could optionally take the export as a cleaner, timing-free qty cross-check
+  source — a few lines in an existing report, recorded in the backlog under the
+  holdings item, not a new feature.
+
 ## Licence hygiene
 
 This project is MIT, and every runtime dependency is MIT / BSD / Apache-2.0
