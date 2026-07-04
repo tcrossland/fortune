@@ -88,33 +88,6 @@ not tax advice" framing.
   confidence and which rule fired into a queryable index, so the
   lowest-confidence documents in a run can be surfaced for manual review
   rather than trusted silently.
-- **`reconcile-holdings` — cross-check the pool against the portal Holdings
-  export.** The position-level sibling of the shipped `reconcile-transactions`
-  (transaction-level) and `completeness` (cash-level) checks. Pictet's
-  e-banking `Holdings` xlsx is a per-position
-  snapshot (`Account nr.`, ISIN, quantity, market value, **Net cost (GBP)**,
-  and the price-vs-FX-split unrealised columns) across both mandates. Two
-  checks fall out, both validated in a one-off run against a 2026-07-03 export:
-  (a) **quantity** — join by ISIN (the pool is NIF-level; consolidate the
-  export across mandates) and assert export qty == section-104 `pool_qty`; on
-  the spot date every security matched the pool (siding with it over the stale
-  month-end statement), a direct corroboration of the `holdings` drift-
-  classifier's *timing* verdicts; (b) **cost basis** — Pictet `Net cost (GBP)`
-  vs the section-104 lens reconciled within ~1% aggregate (per-holding mostly
-  <2%, FX-convention-driven; see the source-options item). Low-risk to
-  formalise as a periodic tolerance check. Same caveats: broker-side FX,
-  Pictet book cost (a third basis), spot (not month-end) valuation date — a
-  management-view cross-check, never a tax feed. Overlaps the deferred
-  balance-sheet phase-4 cost-basis overlay.
-  *Prefer the `.csv` form of the Holdings export* (same 90 columns as the
-  `.xlsx`, one row per position) — stdlib-parseable, no `openpyxl`, same
-  format family as the cash-statement CSV: `;`-delimited, CRLF, `YYYY/MM/DD`
-  dates, dot-decimal (high precision, no thousands sep), **bare `Account nr.`**
-  (`173837.001`, no K-/P- letter — resolve via `lettered_portfolio_map` like
-  the completeness CSV path does). Decode **cp1252** to be safe (the export
-  family is Windows-1252; a given Holdings file may be ASCII-clean, but an
-  accented holding name would need it). When this is built, the CSV cash-
-  statement parser (`parse_cash_statement_csv`) is the pattern to mirror.
 - **`prune-tax-reports` differing-twin convergence.** A non-retained daily
   P&L report whose same-named `_superseded/` twin *differs* in content can't
   be superseded (move-aside no-ops on the name collision) and warns on every
@@ -158,6 +131,20 @@ not tax advice" framing.
   longer tax-exempt and Spanish FIFO/EUR rules apply. **Before building that
   lens, settle the cost-basis source** (see the next item) — a bare stub was
   deliberately not built.
+  - *Optional: cross-check qty against the portal Holdings export.* A standalone
+    `reconcile-holdings` command was considered and **dropped as overkill** —
+    the position check is already bracketed by `reconcile-transactions` (verifies
+    every trade *input*) and this report's statement-qty ↔ pool-qty drift check
+    (verifies *positions* vs the broker), and the cost-basis gap vs Pictet's Net
+    cost is now *explained* by the `of which ERI` column (ERI is its structural
+    driver; the residual is a small, expected FX/averaging convention difference,
+    not a bug signal). The one sliver with residual value: the drift check
+    compares against the settlement-lagged *statement*, so it carries expected
+    "timing" noise — the live Holdings **CSV** export matches the pool *exactly*
+    (verified), so `holdings` could optionally take it as a cleaner, timing-free
+    qty cross-check source. A few lines here (parse the Holdings CSV — same
+    `parse_cash_statement_csv` pattern, cp1252, bare `Account nr.` →
+    `lettered_portfolio_map`), not a new command.
   - *FIG-awareness (enhancement).* The report computes one undifferentiated
     UK section-104 unrealised P&L; it ignores situs. Under a **FIG claim**
     (`fig_claim_years`), foreign (non-UK-situs) gains are relieved to nil, the
