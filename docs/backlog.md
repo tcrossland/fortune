@@ -130,21 +130,40 @@ not tax advice" framing.
   source for the **shipped** `completeness` command, which today parses the
   current-account cash ledger out of a `Financial-statement` PDF and *recovers
   each movement's sign from the running-balance delta*. The e-banking `Cash
-  statements by booking date` xlsx gives the same ledger structured across both
-  mandates and all currency sub-accounts, with a **signed `Net amount`**, a
-  **running `Balance` per sub-account** (`prev + net == balance` holds exactly —
-  a free integrity self-check, no sign-recovery needed), and an `Order nr.` on
-  every row (ID-joinable to the sidecar `transaction_number`). Validated in a
-  one-off `Order nr.` join over 2021→2026: **0 missing** (every cash movement
-  ingested) and every ingested transaction absent from the ledger legitimately
-  cash-neutral (fund→fund switches, limit extensions, in-specie receipts). Two
-  caveats for whoever formalises it: (a) **export all currency sub-accounts** —
-  a first download silently omitted the HKD sub-account, and the ID-keyed diff
-  is what caught it (8 HKD trades/income flagged as ledger-only until the
-  re-pull); (b) it's *by booking date* — the export also offers *by value date*,
-  and it carries trade/booking/value dates, so a reader picks the date the
-  check keys on. A bulk feed with no per-document provenance, so a reconciliation
-  input, not an ingest source.
+  statements` xlsx gives the same ledger structured across both mandates and all
+  currency sub-accounts, with a **signed `Net amount`**, a **running `Balance`
+  per sub-account** (`prev + net == balance` holds exactly — a free integrity
+  self-check, no sign-recovery needed), and an `Order nr.` on every row
+  (ID-joinable to the sidecar `transaction_number`). Validated by an `Order nr.`
+  join over 2021→2026: **0 missing** (every cash movement ingested) and every
+  ingested transaction absent from the ledger legitimately cash-neutral
+  (fund→fund switches, limit extensions, in-specie receipts) or settlement-timing
+  (see rule 3).
+
+  **Export it *by value date*, not booking date.** `completeness` keys each cash
+  line on its `settlement_date`, which *is* the statement's value date
+  (`statement_completeness.py`), so the value-date variant matches the command's
+  match key and its running `Balance` is on the same settlement basis as the
+  month-end statement balance assertions `reconcile` checks. Both variants carry
+  the same `Order nr.` set, so a *presence* diff is basis-independent; the basis
+  matters for the running balance and for near-edge timing. Three hygiene rules,
+  each learned from a bad download this session:
+  1. **Export all currency sub-accounts.** The portal's currency selector
+     defaults to a subset — one download silently dropped HKD, another dropped
+     EUR (the largest, 458 rows). The ID-keyed diff caught both, but a naive
+     reader wouldn't.
+  2. **Use value date** (above) so the reader matches the shipped command.
+  3. **Cut the value-date window past the latest settlement.** On a value-date
+     export, a trade executed near the edge but settling later sits *beyond* the
+     horizon (e.g. trades on 30.06–02.07 value-dated 06.07 were absent from an
+     export cut at value date 03.07) — correctly ingested (trade-dated), just
+     not yet on the value-date ledger. `completeness` already excludes
+     out-of-window events, so this is expected, not a gap; the booking-date
+     variant *includes* them (booked earlier), which is the visible sign of the
+     two bases diverging by the settlement lag.
+
+  A bulk feed with no per-document provenance, so a reconciliation input, not an
+  ingest source.
 - **`prune-tax-reports` differing-twin convergence.** A non-retained daily
   P&L report whose same-named `_superseded/` twin *differs* in content can't
   be superseded (move-aside no-ops on the name collision) and warns on every
