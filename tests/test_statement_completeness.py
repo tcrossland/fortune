@@ -16,6 +16,7 @@ digit to ``9``, which can't exercise a balance self-check).
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -24,8 +25,13 @@ from banking_pipeline.statement_completeness import (
     MatchStatus,
     StatementParseError,
     diff,
+    group_cash_statement,
+    lettered_portfolio_map,
+    parse_cash_statement_csv,
     parse_current_account,
     parse_statement_period,
+    portfolio_is_known,
+    resolve_portfolio,
     sidecar_cash_events,
 )
 
@@ -455,3 +461,104 @@ def test_duplicate_same_day_amount_each_needs_its_own_event() -> None:
     report = diff(lines, one_event)
     assert report.matched == 1
     assert len(report.missing_in_ledger) == 1
+
+
+# --- Portal CSV cash statement (parse_cash_statement_csv) -------------------
+#
+# The e-banking export is Windows-1252, semicolon-delimited, dates
+# ``YYYY/MM/DD``, ``Net amount`` already signed, ``Account nr.`` *bare* (no
+# K-/P- mandate letter). Written cp1252 here so the ``°`` (byte 0xb0) exercises
+# the encoding the parser must use. Figures invented, internally consistent so
+# the running-balance self-check reconciles. Rows are newest-first, as exported.
+_CASH_CSV = (
+    "Account nr.;Booking date;Value date;Description of transaction;"
+    "Current account currency;Net amount in current account currency;"
+    "Balance in current account currency\n"
+    "999999.002;2099/07/03;2099/07/03;Bonificación;GBP;5000.00;5000.00\n"
+    "999999.001;2099/03/16;2099/03/17;Gastos de custodia 3° trimestre;"
+    "EUR;-10.00;59990.00\n"
+    "999999.001;2099/02/10;2099/02/12;Suscripción 100 ACME-FUND;"
+    "EUR;-40000.00;60000.00\n"
+    "999999.001;2099/01/06;2099/01/05;Bonificación;EUR;100000.00;100000.00\n"
+)
+
+
+def _write_cash_csv(tmp_path: Path, text: str = _CASH_CSV) -> Path:
+    path = tmp_path / "Cash_statements_by_value_date_20990101000000.csv"
+    path.write_bytes(text.encode("cp1252"))
+    return path
+
+
+def test_cash_csv_parses_signed_amounts_and_bare_portfolio(tmp_path: Path) -> None:
+    lines = parse_cash_statement_csv(_write_cash_csv(tmp_path))
+    assert len(lines) == 4
+    # ``Account nr.`` has no mandate letter → portfolio is the bare numeric.
+    assert {ln.portfolio for ln in lines} == {"999999001", "999999002"}
+    deposit = next(
+        ln
+        for ln in lines
+        if ln.portfolio == "999999001"
+        and ln.currency == "EUR"
+        and ln.value_date == "2099-01-05"
+    )
+    assert deposit.amount == Decimal("100000.00")  # credit, already signed
+    sub = next(ln for ln in lines if "ACME-FUND" in ln.description)
+    assert sub.amount == Decimal("-40000.00")  # debit, already signed
+    assert sub.value_date == "2099-02-12" and sub.book_date == "2099-02-10"
+
+
+def test_cash_csv_balance_self_check_raises_on_break(tmp_path: Path) -> None:
+    broken = _CASH_CSV.replace("60000.00", "61000.00")  # breaks EUR chain
+    with pytest.raises(StatementParseError):
+        parse_cash_statement_csv(_write_cash_csv(tmp_path, broken))
+
+
+def test_cash_csv_missing_value_date_skipped_in_self_check(tmp_path: Path) -> None:
+    # A row with no value date can't be ordered; it's kept but not chained.
+    text = _CASH_CSV.replace("2099/07/03;2099/07/03", "2099/07/03;")
+    lines = parse_cash_statement_csv(_write_cash_csv(tmp_path, text))
+    gbp = next(ln for ln in lines if ln.currency == "GBP")
+    assert gbp.value_date is None and gbp.amount == Decimal("5000.00")
+
+
+def test_group_cash_statement_splits_by_portfolio_and_synthesises_period(
+    tmp_path: Path,
+) -> None:
+    groups = group_cash_statement(parse_cash_statement_csv(_write_cash_csv(tmp_path)))
+    by_pf = {pf: (lines, period) for pf, lines, period in groups}
+    assert set(by_pf) == {"999999001", "999999002"}
+    assert by_pf["999999001"][1] == ("2099-01-05", "2099-03-17")  # min/max value
+    assert by_pf["999999002"][1] == ("2099-07-03", "2099-07-03")
+
+
+def test_lettered_portfolio_map_resolves_bare_csv_account() -> None:
+    rows = [
+        {"account_number": "K-999999.001"},
+        {"account_number": "P-999999.002"},
+    ]
+    mapping = lettered_portfolio_map(rows)
+    assert resolve_portfolio("999999001", mapping) == "K999999001"
+    assert resolve_portfolio("999999002", mapping) == "P999999002"
+    # An already-lettered portfolio round-trips; an unknown one passes through.
+    assert resolve_portfolio("K999999001", mapping) == "K999999001"
+    assert resolve_portfolio("999999999", mapping) == "999999999"
+
+
+def test_portfolio_is_known_flags_mandate_absent_from_sidecars() -> None:
+    mapping = lettered_portfolio_map([{"account_number": "K-999999.001"}])
+    assert portfolio_is_known("999999001", mapping) is True  # bare CSV account
+    assert portfolio_is_known("K999999001", mapping) is True  # lettered
+    assert portfolio_is_known("999999002", mapping) is False  # no such sidecar
+
+
+def test_limit_extension_excluded_from_cash_events() -> None:
+    """A limit-extension advice records no cash movement (Net amount 0.00),
+    so it yields no sidecar event — not a spurious UNMATCHED."""
+
+    row = {
+        "document_type": "limit_extension",
+        "currency": "GBP",
+        "settlement_date": "2099-02-26",
+        "amount": "0.00",
+    }
+    assert sidecar_cash_events(row) == []

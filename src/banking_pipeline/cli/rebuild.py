@@ -269,7 +269,14 @@ def _run_import(cfg_import: ImportStep, *, dry_run: bool) -> None:
     for pattern in cfg_import.source_globs:
         sources.extend(archive.expand_source_glob(pattern))
 
-    if not sources or archive_dir is None:
+    # Portal cash-statement CSV exports file separately from the PDF sources —
+    # a CSV isn't a PDF, so it bypasses the classifier and files by content
+    # (keep-latest). Independent of the PDF sources: a run may have either.
+    csv_sources: list[Path] = []
+    for pattern in cfg_import.cash_statement_globs:
+        csv_sources.extend(archive.expand_source_glob(pattern))
+
+    if archive_dir is None or (not sources and not csv_sources):
         err_console.print(
             "[yellow]import skipped:[/yellow] no source/archive resolved "
             "([import] source_glob / source_dir / archive_dir or the "
@@ -278,11 +285,19 @@ def _run_import(cfg_import: ImportStep, *, dry_run: bool) -> None:
         return
 
     err_console.print(
-        f"[bold]import[/bold] {len(sources)} source(s) → {archive_dir}"
+        f"[bold]import[/bold] {len(sources)} source(s)"
+        + (f" + {len(csv_sources)} cash CSV(s)" if csv_sources else "")
+        + f" → {archive_dir}"
     )
 
-    with archive.source_pdfs(sources, cfg_import.pattern) as pdfs:
-        plans = archive.file_documents(pdfs, archive_dir, dry_run=dry_run)
+    plans: list[archive.FilingPlan] = []
+    if sources:
+        with archive.source_pdfs(sources, cfg_import.pattern) as pdfs:
+            plans = archive.file_documents(pdfs, archive_dir, dry_run=dry_run)
+    if csv_sources:
+        plans += archive.file_cash_statements(
+            csv_sources, archive_dir, dry_run=dry_run
+        )
 
     moved = sum(1 for p in plans if p.status == "move")
     skipped = sum(1 for p in plans if p.status == "skip")

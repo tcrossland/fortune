@@ -863,3 +863,91 @@ def test_import_glob_disambiguates_reference_across_zips(
     assert (base / "20240615-900000001-DebitoDeGastos.pdf").is_file()
     assert not (base / "20240615-900000001.pdf").exists()
     assert "2 filed, 0 skipped, 0 unmatched, 0 error(s)." in result.output
+
+
+# --- portal cash-statement CSV filing (file_cash_statements) ----------------
+#
+# Not a PDF, so it bypasses the classifier: files by content (max value date)
+# into <root>/cash-statements/, keep-latest with a _superseded/ sibling.
+_CSV_HEADER = (
+    "Account nr.;Value date;Description of transaction;"
+    "Current account currency;Net amount in current account currency;"
+    "Balance in current account currency\n"
+)
+
+
+def _cash_csv(tmp_path: Path, name: str, end_ymd: str) -> Path:
+    """A minimal two-row cash-statement CSV whose max value date is
+    ``end_ymd`` (``YYYY/MM/DD``). cp1252-encoded, self-consistent balance."""
+
+    # Newest-first, as the portal exports (the balance self-check walks it in
+    # reverse to reconcile chronologically).
+    body = (
+        f"999999001;{end_ymd};Suscripción;GBP;-400.00;600.00\n"
+        "999999001;2099/01/01;Bonificación;GBP;1000.00;1000.00\n"
+    )
+    path = tmp_path / name
+    path.write_bytes((_CSV_HEADER + body).encode("cp1252"))
+    return path
+
+
+def test_file_cash_statements_files_by_max_value_date(tmp_path: Path) -> None:
+    src = _cash_csv(tmp_path, "download.csv", "2099/03/31")
+    root = tmp_path / "archive"
+    plans = archive.file_cash_statements([src], root, dry_run=False)
+    assert [p.status for p in plans] == ["move"]
+    dest = root / "cash-statements" / "Cash statement by value date 20990331.csv"
+    assert dest.is_file()
+    assert not src.exists()  # moved, not copied
+
+
+def test_file_cash_statements_dry_run_moves_nothing(tmp_path: Path) -> None:
+    src = _cash_csv(tmp_path, "download.csv", "2099/03/31")
+    root = tmp_path / "archive"
+    plans = archive.file_cash_statements([src], root, dry_run=True)
+    assert plans[0].status == "move"
+    assert src.exists() and not (root / "cash-statements").exists()
+
+
+def test_file_cash_statements_keep_latest_supersedes_older(tmp_path: Path) -> None:
+    root = tmp_path / "archive"
+    archive.file_cash_statements(
+        [_cash_csv(tmp_path, "a.csv", "2099/03/31")], root, dry_run=False
+    )
+    # A newer export supersedes the older canonical into _superseded/.
+    archive.file_cash_statements(
+        [_cash_csv(tmp_path, "b.csv", "2099/06/30")], root, dry_run=False
+    )
+    cash = root / "cash-statements"
+    assert [p.name for p in cash.glob("*.csv")] == [
+        "Cash statement by value date 20990630.csv"
+    ]
+    assert [p.name for p in (cash / "_superseded").glob("*.csv")] == [
+        "Cash statement by value date 20990331.csv"
+    ]
+
+
+def test_file_cash_statements_identical_redownload_skips(tmp_path: Path) -> None:
+    root = tmp_path / "archive"
+    archive.file_cash_statements(
+        [_cash_csv(tmp_path, "a.csv", "2099/03/31")], root, dry_run=False
+    )
+    plans = archive.file_cash_statements(
+        [_cash_csv(tmp_path, "b.csv", "2099/03/31")], root, dry_run=False
+    )
+    assert plans[0].status == "skip"
+
+
+def test_file_cash_statements_older_than_archived_skips(tmp_path: Path) -> None:
+    root = tmp_path / "archive"
+    archive.file_cash_statements(
+        [_cash_csv(tmp_path, "new.csv", "2099/06/30")], root, dry_run=False
+    )
+    plans = archive.file_cash_statements(
+        [_cash_csv(tmp_path, "old.csv", "2099/03/31")], root, dry_run=False
+    )
+    assert plans[0].status == "skip"
+    # The newer one stays canonical, untouched.
+    assert (
+        root / "cash-statements" / "Cash statement by value date 20990630.csv"
+    ).is_file()

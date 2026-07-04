@@ -393,6 +393,26 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Bookkeeping & accounting
 
+- **`completeness` reads the portal cash-statement CSV; the CSV is archived**
+  — the statement-completeness cross-check now accepts the e-banking `Cash
+  statements by value date` CSV export as well as the `Financial-statement`
+  PDF (format detected by suffix). This matters because only 4 of those PDFs
+  were ever pulled (K mandate, to 2023-06-30); the CSV is the current source —
+  both mandates, all currency sub-accounts, to date. `parse_cash_statement_csv`
+  reads it (Windows-1252, `;`-delimited, signed amounts) and still self-checks
+  the running balance per sub-account; the worker groups the multi-mandate file
+  into one report per portfolio (period synthesised from its value dates) and
+  resolves the CSV's letterless `Account nr.` to the lettered sidecar portfolio
+  (`lettered_portfolio_map`). Validated on the real export: **0 missing / 0
+  unmatched** for both mandates, reconciling exactly to the PDF parser and the
+  sidecars. The CSV is filed keep-latest into `<archive>/cash-statements/` by
+  the import step (`[import] cash_statement_globs`, bypassing the PDF
+  classifier — a CSV isn't a PDF), and `[post.completeness]` reads it from
+  there each rebuild. Along the way, `limit_extension` (a `Net amount = 0.00`
+  credit-facility advice) joins the cash-neutral exclusion set — latent until
+  the CSV widened coverage past 2023. No new dependency (stdlib `csv`).
+  (`statement_completeness.py`, `cli/_main.py`, `cli/reports.py`, `archive.py`,
+  `batch_config.py`, `cli/rebuild.py`)
 - **Order number captured on three previously-unkeyed doctypes** — the
   `pago_interna`, `final_redemption`, and `limit_extension` templates now
   populate `Transaction.transaction_number` from the document header

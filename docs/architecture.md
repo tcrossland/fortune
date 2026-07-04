@@ -514,6 +514,15 @@ usage examples; this is the behavioural reference.
   further globs (e.g. the loose tax-report PDFs) that compose with the
   primary source. Pictet (both locales) is recognised today via
   `archive.FIELD_PARSERS`; a second bank is data-only.
+  A fourth filing path handles the portal **cash-statement CSV** export
+  (`archive.file_cash_statements`), wired into `rebuild`'s import step via
+  `[import] cash_statement_globs` (not the classifier — a CSV isn't a PDF).
+  Each export is a full-history, both-mandate superset, so it files
+  **keep-latest**: named by its max value date (parsed from content) into
+  `<dest>/cash-statements/Cash statement by value date <YYYYMMDD>.csv`, with
+  any older canonical copy moved to `cash-statements/_superseded/` (never
+  deleted, the tax-report supersede convention). A byte-identical re-download
+  is skipped; an export older than one already archived is skipped.
 - `prune-tax-reports` — retention command for the archived Pictet P&L
   reports. Keeps, per calendar year + kind, the latest report per month plus
   the realised year-final and the unrealised on-or-before-5-April snapshot
@@ -719,11 +728,20 @@ usage examples; this is the behavioural reference.
   whole-statement drop), and `unreadable`.
 - `completeness` — statement-*completeness* cross-check, the
   transaction-level counterpart to `reconcile`'s balance-level one. Parses
-  each Pictet current-account statement (the authoritative list of every
+  the Pictet current-account cash ledger (the authoritative list of every
   cash movement for its period — see
   [`statement_completeness.py`](../src/banking_pipeline/statement_completeness.py))
-  and diffs it against the `*.transactions.jsonl` sidecars under
-  `--source` (default `data`). Writes one
+  from either a `Financial-statement-*.pdf` (one mandate + period; sign
+  recovered from the running-balance delta) **or** a portal `Cash
+  statement*.csv` export (`parse_cash_statement_csv` — all mandates + all
+  currency sub-accounts over a long range, signed amounts direct, one report
+  per mandate with the period synthesised from its value dates; the format
+  is detected by suffix). The CSV export is the current source — only 4
+  `Financial-statement` PDFs were ever pulled (K, to 2023-06-30) — and its
+  bare `Account nr.` (no `K-`/`P-` letter) is resolved to the lettered
+  sidecar portfolio via `lettered_portfolio_map`. Diffs against the
+  `*.transactions.jsonl` sidecars under `--source` (default `data`). Writes
+  one
   `summary-<portfolio>-<period-end>.txt` +
   `findings-<portfolio>-<period-end>.csv` per statement (keyed so
   successive runs or multiple portfolios don't clobber) under `completeness_dir`
@@ -736,8 +754,8 @@ usage examples; this is the behavioural reference.
   Match key is `(currency, amount, date≈)`; the FX/transfer counter-leg is
   expanded so both legs match. Pass statements via `--statement`
   (repeatable) and/or `--statements-dir` (scans `Financial-statement-*.pdf`
-  recursively). Exits non-zero on any MISSING; `--strict` also fails on
-  UNMATCHED.
+  and `Cash statement*.csv` recursively). Exits non-zero on any MISSING;
+  `--strict` also fails on UNMATCHED.
 - `rebuild` — end-to-end run driven by `banking-pipeline.toml`. Owns the
   `clean → ingest per source → prices/portfolio/balances → reports →
   reconcile → completeness → check` sequence. `[post.reports]` (off by
@@ -747,9 +765,14 @@ usage examples; this is the behavioural reference.
   so they land even when `bean-check` later exits nonzero; its `statements`
   glob falls back to `balance_statements` when unset. `[post.reconcile]`
   (off by default) runs *before* `check` for the same reason.
-  `[post.completeness]` (off by default; needs a `statements` glob of
-  Financial-statement PDFs) runs alongside reconcile — MISSING fails the
-  rebuild, UNMATCHED fails it under `strict`.
+  `[post.completeness]` (off by default; needs a `statements` glob — the
+  archived `cash-statements/*.csv`, or Financial-statement PDFs) runs
+  alongside reconcile — MISSING fails the rebuild, UNMATCHED fails it under
+  `strict`. Its CSV source is filed by the import step: `[import]
+  cash_statement_globs` (e.g. `~/Downloads/Cash_statements_by_value_date_*.csv`)
+  files the portal export into `<archive>/cash-statements/` by content
+  (keep-latest — see the archive filing shapes above), bypassing the PDF
+  classifier since a CSV isn't a PDF.
 
 ### UK tax
 

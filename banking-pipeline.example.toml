@@ -36,6 +36,10 @@ clean_glob = "20*.beancount"
 # # loose Pictet IRPF P&L tax-report PDFs that land outside the zip:
 # source_globs = ["~/Downloads/0173837-Tax*P?L report*.pdf"]
 # archive_dir = "~/Dropbox/Finance/Accounts/Pictet"
+# # Portal "Cash statements by value date" CSV exports. Filed separately from
+# # the PDF sources (a CSV isn't a PDF): keep-latest into
+# # <archive>/cash-statements/, feeding the [post.completeness] step below.
+# cash_statement_globs = ["~/Downloads/Cash_statements_by_value_date_*.csv"]
 
 
 # --- One [[sources]] entry per ingest call -----------------------------
@@ -160,6 +164,21 @@ enabled = false
 ledger = ""      # "" = data/portfolio.beancount (same default as [post.check])
 balances = ""    # "" = data/balances.beancount
 strict = false   # set true to fail the rebuild on coverage gaps too
+
+
+# Statement-completeness cross-check — the transaction-level counterpart to
+# reconcile's balance-level check. Diffs the current-account cash ledger
+# against the ingested sidecars: statement lines with no ingested advice
+# (MISSING — fails the rebuild), and ingested cash events with no statement
+# line (UNMATCHED — fails under strict). ``statements`` globs the ledger
+# source: either ``Financial-statement-*.pdf`` statements or the archived
+# portal ``Cash statement*.csv`` export (one report per mandate). The CSV is
+# the current source — point this at the ``cash-statements/`` folder the
+# [import] cash_statement_globs above files into.
+[post.completeness]
+enabled = false
+# statements = ["~/Dropbox/Finance/Accounts/Pictet/cash-statements/*.csv"]
+strict = false   # set true to fail the rebuild on UNMATCHED too
 
 
 # bean-check validation. Runs after every other post-step so it sees

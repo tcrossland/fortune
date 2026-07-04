@@ -1026,18 +1026,25 @@ def benchmark(
 
 
 def _discover_financial_statements(directory: Path) -> list[Path]:
-    """Walk ``directory`` (recursive) for ``Financial-statement-*.pdf``.
+    """Walk ``directory`` (recursive) for cash-ledger statements.
 
-    Case-insensitive on the suffix so ``.PDF`` siblings are picked up, like
-    the prices/scan discovery. Returns a sorted, de-duplicated list.
+    Picks up the ``Financial-statement-*.pdf`` statements *and* the archived
+    portal ``Cash statement*.csv`` exports (the completeness worker parses
+    each by suffix). Case-insensitive on the suffix so ``.PDF`` / ``.CSV``
+    siblings are caught, like the prices/scan discovery. Returns a sorted,
+    de-duplicated list.
     """
 
-    pattern = "Financial-statement-*.pdf"
+    patterns = ("Financial-statement-*.pdf", "Cash statement*.csv")
     seen: set[Path] = set()
-    for pat in {pattern, pattern.lower(), pattern.upper()}:
-        for candidate in directory.rglob(pat):
-            if candidate.is_file():
-                seen.add(candidate)
+    for pattern in patterns:
+        for pat in {pattern, pattern.lower(), pattern.upper()}:
+            for candidate in directory.rglob(pat):
+                # Skip superseded cash-statement copies the keep-latest filing
+                # moved aside — else scanning the archive root diffs stale
+                # exports and writes duplicate older-period reports.
+                if candidate.is_file() and "_superseded" not in candidate.parts:
+                    seen.add(candidate)
     return sorted(seen)
 
 
@@ -1048,8 +1055,9 @@ def completeness(
         typer.Option(
             "--statement",
             "-S",
-            help="A Financial-statement PDF (repeatable). Combine with "
-            "--statements-dir to scan a tree.",
+            help="A Financial-statement PDF or a portal ``Cash statement*.csv`` "
+            "export (repeatable; the format is detected by suffix). Combine "
+            "with --statements-dir to scan a tree.",
         ),
     ] = [],  # noqa: B006 — list-option default lives here
     statements_dir: Annotated[
@@ -1057,7 +1065,7 @@ def completeness(
         typer.Option(
             "--statements-dir",
             help="Directory scanned recursively for "
-            "``Financial-statement-*.pdf``.",
+            "``Financial-statement-*.pdf`` and ``Cash statement*.csv``.",
         ),
     ] = None,
     source: Annotated[
@@ -1091,8 +1099,11 @@ def completeness(
     """Cross-check the statement cash ledger against the ingested sidecars.
 
     The Pictet current-account statement is the authoritative list of every
-    cash movement for its period. This diffs that list against the
-    ``*.transactions.jsonl`` sidecars and writes one
+    cash movement for its period. Accepts either a ``Financial-statement``
+    PDF (single mandate + period) or a portal ``Cash statement*.csv`` export
+    (all mandates + all currency sub-accounts over a long range — one report
+    per mandate, period synthesised from its value dates). This diffs that
+    list against the ``*.transactions.jsonl`` sidecars and writes one
     ``summary-<portfolio>-<period-end>.txt`` +
     ``findings-<portfolio>-<period-end>.csv`` per statement (keyed so
     successive runs / multiple portfolios don't clobber): statement

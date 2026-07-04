@@ -66,6 +66,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+from pathlib import Path
 
 from banking_pipeline.prices_extract import _parse_statement_date
 
@@ -309,6 +310,175 @@ def _parse_movement(
     )
 
 
+# --- Portal CSV cash statement -------------------------------------------
+#
+# The e-banking ``Cash statements by value date`` export is the same
+# current-account ledger as the ``Financial-statement`` PDF, but structured:
+# one row per cash movement, across both mandates and all currency
+# sub-accounts, with a *signed* ``Net amount`` (so no balance-delta sign
+# recovery is needed — but we still self-check the running balance) and an
+# ``Order nr.`` per row. Two format gotchas: the file is **Windows-1252**
+# (the ``°`` in ``N° de transacción`` is byte 0xb0 — a UTF-8 read crashes)
+# and semicolon-delimited. The ``Account nr.`` column is *bare*
+# (``173837.001``, no ``K-``/``P-`` mandate letter), so the sanitised
+# portfolio here won't carry the letter; the caller reconciles it against
+# the lettered sidecar accounts.
+_CASH_CSV_ENCODING = "cp1252"
+_CASH_CSV_DELIMITER = ";"
+
+
+def _csv_iso_date(token: str) -> str | None:
+    """``YYYY/MM/DD`` (the export's date format) → ISO ``YYYY-MM-DD``."""
+
+    parts = token.strip().split("/")
+    if len(parts) != 3:
+        return None
+    year, month, day = parts
+    return _iso_date(day, month, year)
+
+
+def parse_cash_statement_csv(path: Path) -> list[CashLine]:
+    """Parse a portal ``Cash statements by value date`` CSV into cash lines.
+
+    One :class:`CashLine` per data row. ``amount`` is taken straight from
+    the signed ``Net amount in current account currency`` column (no
+    balance-delta recovery), but the running ``Balance`` is still
+    self-checked per ``(portfolio, currency)`` sub-account in value-date
+    order — a break raises :class:`StatementParseError`, mirroring the PDF
+    parser's guarantee. Multiple mandates / currencies coexist in one file;
+    grouping is left to the caller. Rows with an unparseable value date are
+    kept (``value_date=None``) but excluded from the balance self-check.
+    """
+
+    with path.open(encoding=_CASH_CSV_ENCODING, newline="") as fh:
+        rows = list(csv.DictReader(fh, delimiter=_CASH_CSV_DELIMITER))
+
+    lines: list[CashLine] = []
+    for row in rows:
+        account = (row.get("Account nr.") or "").strip()
+        currency = (row.get("Current account currency") or "").strip()
+        amount_tok = (row.get("Net amount in current account currency") or "").strip()
+        balance_tok = (row.get("Balance in current account currency") or "").strip()
+        if not account or not currency or not amount_tok or not balance_tok:
+            continue
+        try:
+            amount = _to_decimal(amount_tok)
+            balance = _to_decimal(balance_tok)
+        except InvalidOperation:
+            continue
+        lines.append(
+            CashLine(
+                portfolio=_sanitise_portfolio(account),
+                currency=currency,
+                book_date=_csv_iso_date(row.get("Booking date") or "") or "",
+                value_date=_csv_iso_date(row.get("Value date") or ""),
+                description=(row.get("Description of transaction") or "").strip(),
+                amount=amount,
+                running_balance=balance,
+            )
+        )
+
+    _check_cash_csv_balance_chain(lines)
+    return lines
+
+
+def _check_cash_csv_balance_chain(lines: list[CashLine]) -> None:
+    """Assert ``prev_balance + amount == balance`` per currency sub-account.
+
+    The export lists rows newest-first (including same-value-date intra-day
+    ties in booking sequence), so walking each ``(portfolio, currency)``
+    sub-account in reverse reproduces the running-balance order — the property
+    is *inherited* from the export, not re-derived here (sorting can't recover
+    an intra-day sequence). A row with no value date can't be ordered, so it's
+    skipped. Raises :class:`StatementParseError` on the first break — so a
+    mis-ordered or corrupted export fails loud rather than passing wrongly, the
+    same guarantee the PDF parser gives via the balance delta.
+    """
+
+    prev: dict[tuple[str, str], Decimal] = {}
+    for line in reversed(lines):
+        if line.value_date is None:
+            continue
+        sub = (line.portfolio, line.currency)
+        last = prev.get(sub)
+        if last is not None:
+            expected = last + line.amount
+            if abs(expected - line.running_balance) > _BALANCE_TOLERANCE:
+                raise StatementParseError(
+                    f"{line.portfolio} {line.currency} on {line.value_date}: "
+                    f"running balance {line.running_balance} != {last} + "
+                    f"{line.amount}"
+                )
+        prev[sub] = line.running_balance
+
+
+def group_cash_statement(
+    lines: list[CashLine],
+) -> list[tuple[str, list[CashLine], tuple[str, str] | None]]:
+    """Split CSV cash lines into per-portfolio ``(portfolio, lines, period)``.
+
+    The portal CSV holds every mandate in one file, but the diff is
+    per-portfolio. Each group's period is ``(min, max value_date)`` across its
+    dated lines (``None`` if none are dated), so a sidecar event settling
+    after the export's horizon falls out-of-period rather than reading as
+    unmatched. Portfolios are emitted in first-seen order for stable output.
+    """
+
+    by_pf: dict[str, list[CashLine]] = {}
+    for line in lines:
+        by_pf.setdefault(line.portfolio, []).append(line)
+    groups: list[tuple[str, list[CashLine], tuple[str, str] | None]] = []
+    for portfolio, pf_lines in by_pf.items():
+        dates = sorted(ln.value_date for ln in pf_lines if ln.value_date)
+        period = (dates[0], dates[-1]) if dates else None
+        groups.append((portfolio, pf_lines, period))
+    return groups
+
+
+def _match_key(sanitised: str) -> str:
+    """Drop a leading mandate letter, so a letterless portal-CSV account
+    (``999999001``) matches a lettered sidecar account (``K999999001``).
+    The numeric suffix still separates the mandates (``…001`` vs ``…002``)."""
+
+    return sanitised[1:] if sanitised[:1].isalpha() else sanitised
+
+
+def lettered_portfolio_map(
+    sidecar_rows: Sequence[Mapping[str, object]],
+) -> dict[str, str]:
+    """Map each letterless account key to the sidecar's lettered portfolio.
+
+    The portal CSV's ``Account nr.`` omits the ``K-``/``P-`` mandate letter,
+    so its sanitised portfolio won't match the lettered form the sidecars
+    (and the PDF statements) use. This builds ``{999999001: K999999001}``
+    from the sidecars, the source of truth for the letter."""
+
+    out: dict[str, str] = {}
+    for row in sidecar_rows:
+        account = row.get("account_number")
+        if isinstance(account, str) and account:
+            sanitised = _sanitise_portfolio(account)
+            out.setdefault(_match_key(sanitised), sanitised)
+    return out
+
+
+def resolve_portfolio(portfolio: str, lettered_map: dict[str, str]) -> str:
+    """Resolve a (possibly letterless) portfolio to its lettered form, or
+    return it unchanged when the sidecars don't know it."""
+
+    return lettered_map.get(_match_key(portfolio), portfolio)
+
+
+def portfolio_is_known(portfolio: str, lettered_map: dict[str, str]) -> bool:
+    """Whether the sidecars carry an account for this (possibly letterless)
+    portfolio. A CSV mandate with no ingested sidecars would otherwise read as
+    entirely MISSING (the diff's portfolio filter drops every lettered sidecar
+    row), so the caller warns and skips it rather than failing the rebuild on
+    a wall of spurious findings."""
+
+    return _match_key(portfolio) in lettered_map
+
+
 # Doctypes whose cash leg settles *outside* the EUR/USD current account —
 # a dedicated ``Switch`` sub-account (fund-to-fund rotations) or an
 # ``Equity:…:Transfers`` in-specie leg (free securities receipts). They
@@ -322,6 +492,12 @@ _NON_CURRENT_ACCOUNT_DOCTYPES = frozenset({
     "switch_entrada",
     "liquidacion_recepcion_de_valores",
     "liquidacion_aviso_previo_recepcion",
+    # A limit-extension advice records a credit-facility renewal with
+    # ``Net amount = 0.00`` — no cash moves, so it never appears on the
+    # current-account ledger. Latent until the CSV export widened coverage
+    # past 2023 (the PDF statements predate any limit extension); without
+    # this it would surface as a spurious UNMATCHED_IN_LEDGER.
+    "limit_extension",
 })
 
 # A statement line's VALUE DATE and a sidecar's settlement date should

@@ -429,42 +429,80 @@ def _run_completeness(
     """
 
     rows = _load_sidecar_rows(sidecar_dir)
+    # The portal CSV's ``Account nr.`` omits the K-/P- mandate letter; resolve
+    # each group's portfolio to the lettered form the sidecars use so the diff
+    # filter and the report key match the PDF path.
+    lettered = statement_completeness.lettered_portfolio_map(rows)
     total_missing = total_unmatched = written = 0
     for path in statement_paths:
-        text = _statement_text(path)
         try:
-            lines = statement_completeness.parse_current_account(text)
+            groups = _completeness_groups(path)
         except statement_completeness.StatementParseError as exc:
             err_console.print(
                 f"[red]{path.name}: statement parse failed — {exc}[/red]"
             )
             raise typer.Exit(code=1) from exc
-        if not lines:
+        if not groups:
             err_console.print(
                 f"[yellow]{path.name}: no current-account section found "
                 "— skipped[/yellow]"
             )
             continue
-        portfolio = lines[0].portfolio
-        period = statement_completeness.parse_statement_period(text)
-        report = statement_completeness.diff(
-            lines, rows, period=period, portfolio=portfolio
-        )
-        # Key on portfolio + period end so two portfolios sharing a period
-        # (or a repeated run) each get their own report, never clobbering.
-        key = f"{portfolio}-{period[1] if period is not None else path.stem}"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / f"summary-{key}.txt").write_text(
-            statement_completeness.render_summary(path.name, report),
-            encoding="utf-8",
-        )
-        (out_dir / f"findings-{key}.csv").write_text(
-            statement_completeness.render_csv(path.name, report),
-            encoding="utf-8",
-        )
-        total_missing += len(report.missing_in_ledger)
-        total_unmatched += len(report.unmatched_in_ledger)
-        written += 1
+        for portfolio, lines, period in groups:
+            if not statement_completeness.portfolio_is_known(portfolio, lettered):
+                # No sidecar account matches this portfolio, so every line will
+                # read MISSING (the diff filters out all lettered rows). That's
+                # the correct signal — its advices genuinely aren't ingested —
+                # but warn so "whole mandate un-ingested" is distinguishable
+                # from "a few missing advices". Still diffed + gated below.
+                err_console.print(
+                    f"[yellow]{path.name}: portfolio {portfolio} has no ingested "
+                    f"sidecars — its {len(lines)} line(s) will read MISSING[/yellow]"
+                )
+            portfolio = statement_completeness.resolve_portfolio(
+                portfolio, lettered
+            )
+            report = statement_completeness.diff(
+                lines, rows, period=period, portfolio=portfolio
+            )
+            # Key on portfolio + period end so two portfolios sharing a period
+            # (or a repeated run) each get their own report, never clobbering.
+            key = f"{portfolio}-{period[1] if period is not None else path.stem}"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / f"summary-{key}.txt").write_text(
+                statement_completeness.render_summary(path.name, report),
+                encoding="utf-8",
+            )
+            (out_dir / f"findings-{key}.csv").write_text(
+                statement_completeness.render_csv(path.name, report),
+                encoding="utf-8",
+            )
+            total_missing += len(report.missing_in_ledger)
+            total_unmatched += len(report.unmatched_in_ledger)
+            written += 1
     return total_missing, total_unmatched, written
+
+
+def _completeness_groups(
+    path: Path,
+) -> list[tuple[str, list[statement_completeness.CashLine], tuple[str, str] | None]]:
+    """Resolve one statement path to ``(portfolio, cash_lines, period)`` groups.
+
+    A portal ``.csv`` export holds every mandate, so it yields one group per
+    portfolio (period synthesised from its value dates); a ``Financial-
+    statement`` PDF / ``.txt`` dump is single-portfolio, single-period, so it
+    yields one group. May raise
+    :class:`~banking_pipeline.statement_completeness.StatementParseError`.
+    """
+
+    if path.suffix.lower() == ".csv":
+        lines = statement_completeness.parse_cash_statement_csv(path)
+        return statement_completeness.group_cash_statement(lines)
+    text = _statement_text(path)
+    lines = statement_completeness.parse_current_account(text)
+    if not lines:
+        return []
+    period = statement_completeness.parse_statement_period(text)
+    return [(lines[0].portfolio, lines, period)]
 
 

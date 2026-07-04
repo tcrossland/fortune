@@ -229,6 +229,18 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped: [docs/archive/csv-completeness-input.md](docs/archive/csv-completeness-input.md)
+  — `completeness` now reads the portal **cash-statement CSV** (both mandates,
+  all currency sub-accounts, to date) as well as the `Financial-statement` PDF
+  (only 4 ever pulled, K to 2023-06-30). `parse_cash_statement_csv` (cp1252,
+  `;`, signed amounts, running-balance self-check); the worker groups the
+  multi-mandate file into one report per portfolio and resolves the CSV's
+  letterless `Account nr.` via `lettered_portfolio_map`. The CSV is filed
+  keep-latest into `<archive>/cash-statements/` by the import step
+  (`[import] cash_statement_globs`, bypassing the PDF classifier), and
+  `[post.completeness]` reads it each rebuild. `limit_extension` joined the
+  cash-neutral exclusion set. Verified: 0 missing / 0 unmatched both mandates.
+  No new dep (stdlib `csv`).
 - Last shipped (fix, no plan): **order number now captured on the three
   previously-unkeyed doctypes**. `pago_interna` / `final_redemption` /
   `limit_extension` templates now call the shared `find_transaction_number`

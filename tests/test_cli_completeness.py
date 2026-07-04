@@ -174,3 +174,19 @@ def test_two_statements_write_separate_files(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert (tmp_path / "out" / "summary-K999999001-2099-12-31.txt").exists()
     assert (tmp_path / "out" / "summary-K999999001-2098-12-31.txt").exists()
+
+
+def test_discover_skips_superseded_cash_statements(tmp_path: Path) -> None:
+    """Scanning a tree for statements must ignore keep-latest ``_superseded/``
+    copies, else old cash-statement exports write stale duplicate reports."""
+
+    from banking_pipeline.cli.reports import _discover_financial_statements
+
+    cash = tmp_path / "cash-statements"
+    (cash / "_superseded").mkdir(parents=True)
+    live = cash / "Cash statement by value date 20260703.csv"
+    live.write_text("x", encoding="utf-8")
+    (cash / "_superseded" / "Cash statement by value date 20260630.csv").write_text(
+        "x", encoding="utf-8"
+    )
+    assert _discover_financial_statements(tmp_path) == [live]

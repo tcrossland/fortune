@@ -411,6 +411,14 @@ class ImportStep(BaseModel):
     # extension). Matches the ``import`` command's ``--pattern`` default.
     pattern: str = "*.pdf"
 
+    # Globs selecting portal cash-statement CSV exports (e.g.
+    # ``~/Downloads/Cash_statements_by_value_date_*.csv``). Filed separately
+    # from the PDF sources — a CSV isn't a PDF, so it bypasses the classifier
+    # and files by content (keep-latest) via
+    # :func:`banking_pipeline.archive.file_cash_statements`. Empty → no CSV
+    # filing. ``~`` is expanded.
+    cash_statement_globs: list[str] = Field(default_factory=list)
+
 
 class BatchConfig(BaseModel):
     """Top-level rebuild config loaded from ``banking-pipeline.toml``."""

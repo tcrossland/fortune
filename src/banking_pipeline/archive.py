@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import fnmatch
 import glob
+import hashlib
 import os
 import re
 import shutil
@@ -622,6 +623,117 @@ def file_documents(
             shutil.move(str(pdf), str(dest))
         plans.append(FilingPlan(pdf, dest, "move"))
 
+    return plans
+
+
+# --- Portal cash-statement CSV filing ------------------------------------
+#
+# The e-banking ``Cash statements by value date`` CSV export is a full-
+# history, both-mandate superset — a periodic download, not a per-document
+# advice — so it files outside the PDF classification path (it isn't a PDF)
+# and only the latest is kept: it lands under ``<root>/cash-statements/`` by
+# its max value date (the period end), and any older canonical copy is moved
+# aside to ``cash-statements/_superseded/`` (never deleted), the same
+# supersede convention the tax-report prune uses.
+CASH_STATEMENT_DIRNAME = "cash-statements"
+_CASH_STATEMENT_STEM = "Cash statement by value date"
+_CASH_STATEMENT_RE = re.compile(
+    rf"^{re.escape(_CASH_STATEMENT_STEM)} (\d{{8}})\.csv$"
+)
+
+
+def _canonical_cash_statements(cash_dir: Path) -> dict[Path, str]:
+    """Canonically-named cash-statement CSVs in ``cash_dir`` → their
+    ``YYYYMMDD`` period-end. The ``_superseded/`` sibling isn't scanned."""
+
+    out: dict[Path, str] = {}
+    if not cash_dir.is_dir():
+        return out
+    for path in cash_dir.glob("*.csv"):
+        m = _CASH_STATEMENT_RE.match(path.name)
+        if m is not None:
+            out[path] = m.group(1)
+    return out
+
+
+def _same_bytes(a: Path, b: Path) -> bool:
+    if not (a.is_file() and b.is_file()):
+        return False
+    return hashlib.md5(a.read_bytes()).digest() == hashlib.md5(b.read_bytes()).digest()
+
+
+def _supersede(path: Path, superseded_dir: Path) -> None:
+    """Move ``path`` into ``superseded_dir`` (never delete), disambiguating a
+    name collision with a numeric suffix."""
+
+    superseded_dir.mkdir(parents=True, exist_ok=True)
+    target = superseded_dir / path.name
+    n = 1
+    while target.exists():
+        target = superseded_dir / f"{path.stem}.{n}{path.suffix}"
+        n += 1
+    shutil.move(str(path), str(target))
+
+
+def file_cash_statements(
+    csv_paths: Sequence[Path], dest_root: Path, *, dry_run: bool
+) -> list[FilingPlan]:
+    """File portal cash-statement CSV exports into ``<dest_root>/cash-statements/``.
+
+    Not routed through :func:`file_documents` / the classifier — a CSV isn't a
+    PDF. Each export is a full-history, both-mandate superset, so only the
+    latest is retained: the file is named ``Cash statement by value date
+    <YYYYMMDD>.csv`` by its **max value date** (parsed from the content, the
+    meaningful period-end), and every older canonical copy is superseded into
+    ``cash-statements/_superseded/``. A byte-identical re-download of the same
+    date is a ``skip``; an export older than one already archived is a ``skip``
+    (the newer stays canonical); a differing same-date export replaces (old
+    aside).
+    """
+
+    from banking_pipeline.statement_completeness import (
+        StatementParseError,
+        parse_cash_statement_csv,
+    )
+
+    cash_dir = dest_root / CASH_STATEMENT_DIRNAME
+    superseded_dir = cash_dir / "_superseded"
+    plans: list[FilingPlan] = []
+    for src in csv_paths:
+        try:
+            lines = parse_cash_statement_csv(src)
+        except (StatementParseError, OSError, ValueError) as exc:
+            plans.append(
+                FilingPlan(src, None, "error", f"{type(exc).__name__}: {exc}")
+            )
+            continue
+        dates = [ln.value_date for ln in lines if ln.value_date]
+        if not dates:
+            plans.append(FilingPlan(src, None, "no-match", "no dated cash rows"))
+            continue
+        ymd = max(dates).replace("-", "")
+        dest = cash_dir / f"{_CASH_STATEMENT_STEM} {ymd}.csv"
+        existing = _canonical_cash_statements(cash_dir)
+        # A strictly-newer canonical is already archived → this export isn't
+        # the latest; leave the newer one in place, don't disturb it.
+        if any(other > ymd for other in existing.values()):
+            plans.append(
+                FilingPlan(
+                    src, dest, "skip", "a newer cash statement is already archived"
+                )
+            )
+            continue
+        if dest.exists() and _same_bytes(src, dest):
+            plans.append(FilingPlan(src, dest, "skip"))
+            continue
+        if not dry_run:
+            # Supersede every existing canonical (older, or a differing
+            # same-date export) before placing the new latest.
+            for path in existing:
+                _supersede(path, superseded_dir)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(src), str(dest))
+        plans.append(FilingPlan(src, dest, "move"))
     return plans
 
 
