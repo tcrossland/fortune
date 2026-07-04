@@ -140,6 +140,20 @@ not tax advice" framing.
   absent from the ledger legitimately cash-neutral (fund→fund switches, limit
   extensions, in-specie receipts) or settlement-timing (see rule 3).
 
+  **Drop-in evidence:** the CSV also reconciles *exactly* to the shipped
+  command's own PDF parser. Re-running `completeness` over the 4 archived
+  `Financial-statement-*.pdf` (K mandate, periods ending 2021-12-31 →
+  2023-06-30 — the only ones ever downloaded) and comparing each statement's
+  parsed `CashLine`s against the CSV rows for the same period matched on
+  `(value_date, currency, signed amount)` gave **284/284 lines, 0 PDF-only,
+  0 CSV-only** across the four periods. The parser's sign-recovery-from-
+  balance-delta (its trickiest, most failure-prone step) reproduces the CSV's
+  *native* signed amounts to the cent — so the CSV can replace the PDF
+  cash-ledger parser with no change in results, and drop the sign-recovery
+  logic entirely. The CSV also extends coverage the PDFs don't: only K
+  through 2023-06-30 was ever pulled as a `Financial-statement`, whereas the
+  CSV spans both mandates to 2026.
+
   **Prefer the `.csv` export over the `.xlsx`.** Same 22 columns and the same
   `Order nr.` key, but `.csv` is stdlib-parseable (`csv` module — no `openpyxl`
   dependency, so it stays clear of the licence-hygiene surface too) and
