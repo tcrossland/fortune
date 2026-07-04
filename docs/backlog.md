@@ -108,6 +108,23 @@ not tax advice" framing.
   CHANGELOG), so the join is fully ID-based. (`limit_extension` is the one
   doctype that carries an order number but never appears in this export — a
   credit-facility event — so it won't cross-check here regardless.)
+- **`reconcile-holdings` — cross-check the pool against the portal Holdings
+  export.** The position-level sibling of `reconcile-export` (which is
+  transaction-level). Pictet's e-banking `Holdings` xlsx is a per-position
+  snapshot (`Account nr.`, ISIN, quantity, market value, **Net cost (GBP)**,
+  and the price-vs-FX-split unrealised columns) across both mandates. Two
+  checks fall out, both validated in a one-off run against a 2026-07-03 export:
+  (a) **quantity** — join by ISIN (the pool is NIF-level; consolidate the
+  export across mandates) and assert export qty == section-104 `pool_qty`; on
+  the spot date every security matched the pool (siding with it over the stale
+  month-end statement), a direct corroboration of the `holdings` drift-
+  classifier's *timing* verdicts; (b) **cost basis** — Pictet `Net cost (GBP)`
+  vs the section-104 lens reconciled within ~1% aggregate (per-holding mostly
+  <2%, FX-convention-driven; see the source-options item). Low-risk to
+  formalise as a periodic tolerance check. Same caveats: broker-side FX,
+  Pictet book cost (a third basis), spot (not month-end) valuation date — a
+  management-view cross-check, never a tax feed. Overlaps the deferred
+  balance-sheet phase-4 cost-basis overlay.
 - **`prune-tax-reports` differing-twin convergence.** A non-retained daily
   P&L report whose same-named `_superseded/` twin *differs* in content can't
   be superseded (move-aside no-ops on the name collision) and warns on every
@@ -191,12 +208,28 @@ not tax advice" framing.
   (statement columns) dominates on cost and gives the portfolio dimension;
   reserve option 2 only if a Spanish-CGT-grade figure is actually needed. UK
   tax planning already has its exact basis (the shipped section-104 lens).
-  *Open question (spot-check before committing to option 1):* does Pictet's
-  **Net cost (GBP)** reconcile closely enough to our section-104 basis to be
-  trusted / usable as a cross-check? They will **not** match exactly —
-  different averaging (Pictet book cost vs UK pooling) and FX conventions — so
-  quantify the typical gap on a few holdings and decide whether it's a
-  tolerance mismatch or a genuine divergence before relying on the column.
+  *Even-cleaner source discovered — the portal `Holdings` xlsx export.* Pictet's
+  e-banking Holdings report exports the same per-holding **Net cost (GBP)** and
+  **Net unrealised (GBP)** as a structured workbook (one row per position, with
+  `Account nr.`, so it keeps the portfolio dimension), and — unlike the
+  statement PDF — it already carries the **price-vs-FX split** (`Net unrealised
+  on market` / `on currency`), which also satisfies the Accounting item below
+  for free. It's a bulk snapshot with broker-side FX and no per-document
+  provenance, so it's a reconciliation/management-view input, not a tax feed —
+  but as a source it dominates the wrapped-PDF columns of option 1.
+  *Open question — resolved (cross-checked the export against the section-104
+  lens per holding, spot date 2026-07-03):* Pictet's **Net cost (GBP)**
+  reconciles to our section-104 basis **within ~1% in aggregate**, per-holding
+  gaps mostly **under 2%**. The divergence is **FX-convention, not lot-
+  averaging** — the GBP-native funds match to the penny (no FX), every non-GBP
+  fund diverges, and the sign is systematically one-way; the worst single
+  holding is a non-GBP bond fund in the high-single-digit-percent range.
+  Verdict: **usable as a tolerance cross-check, not as a substitute** for the
+  exact UK basis (exactly as predicted). Bonus from the same join: on the spot
+  date the export's per-ISIN **quantities matched the section-104 pool on every
+  security** (siding with the pool, not the stale month-end statement) — an
+  independent confirmation of the pool's live accuracy and the drift-classifier's
+  *timing* verdicts.
 - **Period reports beyond beancount/Fava.** Net-worth-over-time
   (`net-worth`), income-by-source (`income`, by tax or calendar year),
   asset-allocation-over-time (`allocation`), and per-portfolio allocation
