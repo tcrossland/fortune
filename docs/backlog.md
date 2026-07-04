@@ -125,6 +125,15 @@ not tax advice" framing.
   Pictet book cost (a third basis), spot (not month-end) valuation date — a
   management-view cross-check, never a tax feed. Overlaps the deferred
   balance-sheet phase-4 cost-basis overlay.
+  *Prefer the `.csv` form of the Holdings export* (same 90 columns as the
+  `.xlsx`, one row per position) — stdlib-parseable, no `openpyxl`, same
+  format family as the cash-statement CSV: `;`-delimited, CRLF, `YYYY/MM/DD`
+  dates, dot-decimal (high precision, no thousands sep), **bare `Account nr.`**
+  (`173837.001`, no K-/P- letter — resolve via `lettered_portfolio_map` like
+  the completeness CSV path does). Decode **cp1252** to be safe (the export
+  family is Windows-1252; a given Holdings file may be ASCII-clean, but an
+  accented holding name would need it). When this is built, the CSV cash-
+  statement parser (`parse_cash_statement_csv`) is the pattern to mirror.
 - **Portal `Cash statements` export as a `completeness` input.** The
   cash-ledger sibling of `reconcile-export`/`reconcile-holdings`, and a cleaner
   source for the **shipped** `completeness` command, which today parses the
