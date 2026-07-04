@@ -10,6 +10,7 @@ Each document has one job:
 | [../CHANGELOG.md](../CHANGELOG.md) | **What shipped** — notable features, newest first. |
 | [backlog.md](backlog.md) | **What's next** — open, unimplemented ideas only. |
 | [design-decisions.md](design-decisions.md) | **Why it's built this way** — the durable rationale behind the load-bearing choices. |
+| [glossary.md](glossary.md) | **Vocabulary** — tight definitions of the recurring domain terms (dates, mandates, tax, pipeline), with pointers to the authoritative detail. |
 | [reporting-audit.md](reporting-audit.md) | **Point-in-time audit** — what's solid / missing in the reporting subsystems (tax reporting-status + the analytical reports), prioritised. A dated snapshot; adopted items move to the backlog. |
 | [plans/](plans/) | **In-flight plans** — implementation briefs for features not yet built. When a plan ships, move it to `archive/`. |
 | [archive/](archive/) | **Historical record** — the implementation briefs / plans that built shipped features (kept for provenance; not current guidance). |
@@ -17,9 +18,9 @@ Each document has one job:
 If you're adding a doc, place it by *role*, not by topic: a how-to (for
 users) goes in the README, an internals reference (modules, CLI, config) in
 architecture.md, a must-obey constraint in CLAUDE.md, a rationale in
-design-decisions.md, a future idea in the backlog. When a backlog item
-ships, move its line to the CHANGELOG rather than annotating it in
-place.
+design-decisions.md, a term definition in the glossary, a future idea in the
+backlog. When a backlog item ships, move its line to the CHANGELOG rather
+than annotating it in place.
 
 The agent-operating config lives outside `docs/`: the project Definition of
 Done is `.claude/rules/definition-of-done.md` and the review subagent is

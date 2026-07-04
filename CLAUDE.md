@@ -404,6 +404,7 @@ advice — verify against HMRC guidance.
 - Architecture (module map, CLI + config reference, tax pipeline, extension
   recipes): [docs/architecture.md](docs/architecture.md)
 - Design decisions (the durable *why*): [docs/design-decisions.md](docs/design-decisions.md)
+- Glossary (domain vocabulary): [docs/glossary.md](docs/glossary.md)
 - Plans (with folded status): [docs/plans/](docs/plans/)
 - Backlog: [docs/backlog.md](docs/backlog.md)
 - Definition of Done: `.claude/rules/definition-of-done.md`
