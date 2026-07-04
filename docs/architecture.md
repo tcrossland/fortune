@@ -772,7 +772,15 @@ usage examples; this is the behavioural reference.
   cash_statement_globs` (e.g. `~/Downloads/Cash_statements_by_value_date_*.csv`)
   files the portal export into `<archive>/cash-statements/` by content
   (keep-latest — see the archive filing shapes above), bypassing the PDF
-  classifier since a CSV isn't a PDF.
+  classifier since a CSV isn't a PDF. Three things to get right when
+  **downloading** the export (each a real footgun found in testing): (1)
+  select **all currency sub-accounts** — the portal's currency filter defaults
+  to a subset and silently drops one (an omitted sub-account reads as no cash
+  movements for that currency); (2) export **by value date**, not booking date
+  — `completeness` keys on `settlement_date` = the value date; (3) cut the
+  window **past the latest settlement**, else a near-edge trade settling later
+  sits beyond the horizon (correctly ingested, just not yet on the value-date
+  ledger — an out-of-window row, not a gap).
 
 ### UK tax
 
