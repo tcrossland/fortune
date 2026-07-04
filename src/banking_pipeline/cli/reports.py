@@ -844,6 +844,15 @@ def mandate_returns(
     statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
     statements_dir: StatementsDirOpt = None,
     statements_recursive: StatementsRecursiveOpt = False,
+    source: Annotated[
+        Path,
+        typer.Option(
+            "--source",
+            help="Directory walked recursively for *.transactions.jsonl "
+            "sidecars — supplies the distribution income the price-only "
+            "holdings gain misses. Defaults to ``data``.",
+        ),
+    ] = Path("data"),
     out: Annotated[
         Path | None,
         typer.Option(
@@ -867,7 +876,8 @@ def mandate_returns(
     Computed **from the statement holdings** (price moves on units held
     through each pair of statements), so it needs no flow tagging in the
     ledger — deposits and withdrawals never read as performance and emerge
-    instead as a "detected movements" table. Statement-only; no bean-query.
+    instead as a "detected movements" table. The sidecars under ``--source``
+    supply the distribution income the price-only gain misses; no bean-query.
     """
 
     _configure_logging(verbose)
@@ -876,7 +886,8 @@ def mandate_returns(
     )
 
     report = mandate_returns_mod.build_report(
-        texts, commodities=commodities_map, rate_source=rates
+        texts, commodities=commodities_map, rate_source=rates,
+        transactions=_load_sidecar_transactions(source),
     )
 
     out_dir = out or settings.mandate_returns_reports_dir
@@ -922,6 +933,15 @@ def benchmark(
             "``benchmark_path`` (``data/benchmarks.csv``).",
         ),
     ] = None,
+    source: Annotated[
+        Path,
+        typer.Option(
+            "--source",
+            help="Directory walked recursively for *.transactions.jsonl "
+            "sidecars — supplies the distribution income folded into the "
+            "mandate return. Defaults to ``data``.",
+        ),
+    ] = Path("data"),
     out: Annotated[
         Path | None,
         typer.Option(
@@ -958,7 +978,8 @@ def benchmark(
         statements, statements_dir, statements_recursive, commodities, rate_source
     )
     periods = mandate_returns_mod.aggregate_period_returns(
-        texts, commodities=commodities_map, rate_source=rates
+        texts, commodities=commodities_map, rate_source=rates,
+        transactions=_load_sidecar_transactions(source),
     )
     bench_series = mandate_benchmark_mod.load_benchmarks(bench_path)
     report = mandate_benchmark_mod.build_report(periods, bench_series)

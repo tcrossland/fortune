@@ -101,6 +101,19 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`mandate-returns` counts distributing-fund income as return, not a flow**
+  — the holdings-based gain is a *price* return, so a distributing fund's cash
+  payout used to fall into the inferred-flow residual and be stripped from
+  performance, understating TWR/MWR by the distributed yield. `build_report` /
+  `aggregate_period_returns` now read the sidecars (`--source`) and add each
+  period's distributions (`distribution_income` — `DIVIDEND_TYPES` rows with an
+  ISIN, incl. bond-fund payouts) back into the gain and out of the flow. Income
+  is folded in only for a portfolio with **tracked positions**, so the P
+  mandate (whose by-name holdings aren't valued here, leaving a tiny
+  residual-cash base) isn't divided into a nonsense return. Live effect: a
+  sub-percentage-point uplift to the whole-mandate TWR. Rationale:
+  [design-decisions.md](docs/design-decisions.md#mandate-returns-counts-distribution-income-as-return).
+  (`mandate_returns.py`, `cli/reports.py`, `cli/rebuild.py`)
 - **Net-worth / allocation retire a wound-down portfolio on a nil statement**
   — the timeline reports' as-of forward-fill carries each portfolio's last
   snapshot forward, which overstated net worth once the Vanguard ISA wound

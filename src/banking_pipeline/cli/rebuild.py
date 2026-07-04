@@ -1000,9 +1000,11 @@ def _run_rebuild_reports(
                 mandate_scorecard_mod.render_csv_rows(cost_report),
             )
     if rep.mandate_returns:
-        # Statement-only (holdings-based) — no ledger / bean-query needed.
+        # Holdings-based — no ledger / bean-query — but the sidecars supply the
+        # distribution income the price-only gain would otherwise miss.
         returns_report = mandate_returns_mod.build_report(
-            texts, commodities=commodities_map, rate_source=rates
+            texts, commodities=commodities_map, rate_source=rates,
+            transactions=_load_sidecar_transactions(data_dir),
         )
         _write_report(
             _resolve_report_dir(
@@ -1023,7 +1025,8 @@ def _run_rebuild_reports(
             )
         else:
             periods = mandate_returns_mod.aggregate_period_returns(
-                texts, commodities=commodities_map, rate_source=rates
+                texts, commodities=commodities_map, rate_source=rates,
+                transactions=_load_sidecar_transactions(data_dir),
             )
             bench_report = mandate_benchmark_mod.build_report(
                 periods, mandate_benchmark_mod.load_benchmarks(settings.benchmark_path)

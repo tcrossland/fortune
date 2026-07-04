@@ -27,13 +27,19 @@ For each basis, **TWR** (time-weighted — chained per-period market returns,
 the manager's scorecard) and, for net, **MWR / XIRR** (money-weighted over
 the inferred flows — the investor's actual experience).
 
-Limitations (documented, not silently wrong): the holdings-based gain is a
-*price* return, so income that a *distributing* fund pays out as cash —
-rather than accumulating into its price — is treated as a small inferred
-inflow, marginally understating total return; and an inferred flow lumps in
-loan interest and dealing spreads alongside the genuine deposit/withdrawal.
-Most of the book is accumulating funds, so the price return tracks total
-return closely. A reporting aid, not advice.
+A *distributing* fund pays income out as cash rather than accruing it into
+the unit price, so that payout isn't in the price-only market gain — left
+alone it would fall into the inferred-flow residual and be stripped from
+performance. :func:`distribution_income` reads the sidecars and adds each
+period's cash distributions back into the return (and removes them from the
+flow), so the gain is a total return for the distributing holdings, not just
+a price return. Accumulating funds are unaffected (their income is already in
+the price).
+
+Remaining limitation (documented, not silently wrong): an inferred flow still
+lumps in loan interest, dealing spreads, and bare current-account interest
+(no ISIN, so unattributable to a holding) alongside the genuine
+deposit/withdrawal. A reporting aid, not advice.
 """
 
 from __future__ import annotations
@@ -45,13 +51,17 @@ from decimal import Decimal
 
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
+from banking_pipeline.models import Transaction
 from banking_pipeline.report_format import gbp, money
+from banking_pipeline.tax.uk.currency import to_gbp
 from banking_pipeline.valuation import (
     RawHolding,
     as_of,
     raw_from_statement,
     value_holdings,
 )
+from banking_pipeline.writer.builders.dividend import DIVIDEND_TYPES
+from banking_pipeline.writer.format import portfolio_segment
 
 _ZERO = Decimal(0)
 _PICTET_PREFIX = "Assets:Pic:"
@@ -168,6 +178,70 @@ def build_snapshots(
     return out
 
 
+# --- distribution income ----------------------------------------------------
+
+
+def distribution_income(
+    transactions: list[Transaction], *, rate_source: GbpRateSource
+) -> dict[str, list[tuple[date, Decimal]]]:
+    """Per-portfolio ``(date, net_gbp)`` cash distributions a holding paid out.
+
+    The holdings-based market gain is a *price* return, so a distributing
+    fund's cash payout — which lands as cash rather than accruing into the
+    unit price — would otherwise fall into the inferred-flow residual and be
+    stripped from performance. Attributing it here lets the return maths add
+    it back (and remove it from the flow).
+
+    Only fund distributions count — ``DIVIDEND_TYPES`` rows carrying an ISIN
+    (this includes a bond fund's payout, which the writer books as a dividend
+    doctype even when it's economically interest) — because they carry the
+    holding's portfolio account number and land as cash. Bare current-account
+    interest (no ISIN) is out of scope: a separate, immaterial leak with no
+    clean portfolio attribution. Amounts are the **net** cash received
+    (``tx.amount``, i.e. after withholding) converted to GBP; an unconvertible
+    row is skipped."""
+
+    by_portfolio: dict[str, list[tuple[date, Decimal]]] = defaultdict(list)
+    for tx in transactions:
+        if (
+            tx.document_type not in DIVIDEND_TYPES
+            or tx.isin is None
+            or tx.account_number is None
+            or tx.amount <= _ZERO
+        ):
+            continue
+        portfolio = f"{_PICTET_PREFIX}{portfolio_segment(tx.account_number)}"
+        on = tx.booking_date or tx.settlement_date or tx.trade_date
+        g = to_gbp(
+            tx.amount, currency=tx.currency, on_date=on,
+            gbp_rate=tx.gbp_rate, source=rate_source,
+        )
+        if g is None:
+            continue
+        by_portfolio[portfolio].append((on, g))
+    return by_portfolio
+
+
+def _income_in(
+    events: dict[str, list[tuple[date, Decimal]]],
+    portfolios: set[str] | None,
+    start: date,
+    end: date,
+) -> Decimal:
+    """Net GBP distribution income received in ``(start, end]``. ``portfolios``
+    ``None`` sums the whole mandate (the aggregate series); a set restricts to
+    those portfolios (a per-account series)."""
+
+    total = _ZERO
+    for portfolio, rows in events.items():
+        if portfolios is not None and portfolio not in portfolios:
+            continue
+        for on, g in rows:
+            if start < on <= end:
+                total += g
+    return total
+
+
 # --- holdings-based return maths --------------------------------------------
 
 
@@ -251,12 +325,24 @@ def _xirr(cashflows: list[tuple[date, Decimal]]) -> float | None:
 
 
 def _series_for(
-    label: str, snaps: list[Snapshot]
+    label: str,
+    snaps: list[Snapshot],
+    *,
+    income_events: dict[str, list[tuple[date, Decimal]]] | None = None,
+    income_portfolios: set[str] | None = None,
 ) -> tuple[ReturnSeries, list[DetectedFlow]]:
     """Holdings-based net + gross TWR and net MWR for one snapshot series,
     plus the inferred external flows. No flow tags needed: the period return
     is the market gain over the basis value, so deposits/withdrawals never
-    enter the return — they emerge as the residual ``ΔValue − gain``."""
+    enter the return — they emerge as the residual ``ΔValue − gain``.
+
+    ``income_events`` (per-portfolio distributions, see
+    :func:`distribution_income`) is added to each period's market gain so a
+    distributing fund's cash payout counts as return, not as a spurious
+    inferred inflow. ``income_portfolios`` restricts which portfolios' income
+    to sum (``None`` = the whole mandate, for the aggregate series)."""
+
+    events = income_events or {}
 
     snaps = sorted(snaps, key=lambda s: s.on_date)
     if len(snaps) < 2:
@@ -280,7 +366,17 @@ def _series_for(
     flows: list[DetectedFlow] = []
 
     for prev, cur in zip(snaps, snaps[1:], strict=False):
+        # Total-return gain = price move + cash distributions received in the
+        # period. Adding the distribution keeps a distributing fund's payout
+        # in performance instead of the inferred-flow residual. Only when the
+        # portfolio has tracked positions: otherwise its value base is a tiny
+        # residual-cash figure (e.g. the P mandate, whose by-name holdings
+        # aren't valued here), and income ÷ that base is meaningless.
         gain = _market_gain(prev, cur)
+        if prev.positions:
+            gain += _income_in(
+                events, income_portfolios, prev.on_date, cur.on_date
+            )
         net_returns.append(
             float(gain / prev.net_value_gbp)
             if prev.net_value_gbp > _ZERO else None
@@ -289,9 +385,10 @@ def _series_for(
             float(gain / prev.gross_value_gbp)
             if prev.gross_value_gbp > _ZERO else None
         )
-        # Inferred external flow: the value change the market gain doesn't
-        # explain (a deposit adds value beyond price moves; a withdrawal
-        # removes it). Includes loan interest / dealing spreads as noise.
+        # Inferred external flow: the value change neither the price move nor
+        # the distribution income explains (a deposit adds value beyond those;
+        # a withdrawal removes it). Includes loan interest / dealing spreads as
+        # noise.
         inferred = (cur.net_value_gbp - prev.net_value_gbp) - gain
         flows.append(DetectedFlow(label, cur.on_date, inferred))
 
@@ -374,20 +471,26 @@ def aggregate_period_returns(
     *,
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
+    transactions: list[Transaction] | None = None,
 ) -> list[PeriodReturn]:
     """The whole-mandate per-period market returns + their date boundaries —
     the series a benchmark aligns against to compute value-add (step 3).
 
-    Same holdings-based gain as :func:`build_report`'s aggregate, exposed
-    period-by-period so a benchmark index can be sampled at the identical
-    statement-date boundaries."""
+    Same holdings-based total-return gain as :func:`build_report`'s aggregate
+    (price move + distribution income), exposed period-by-period so a benchmark
+    index can be sampled at the identical statement-date boundaries."""
 
-    snaps = _aggregate_snapshots(
-        build_snapshots(statements, commodities=commodities, rate_source=rate_source)
+    base = build_snapshots(
+        statements, commodities=commodities, rate_source=rate_source
     )
+    pictet = {s.portfolio for s in base}  # mandate portfolios (see build_report)
+    snaps = _aggregate_snapshots(base)
+    events = distribution_income(transactions or [], rate_source=rate_source)
     out: list[PeriodReturn] = []
     for prev, cur in zip(snaps, snaps[1:], strict=False):
         gain = _market_gain(prev, cur)
+        if prev.positions:  # only over a base that holds the income's source
+            gain += _income_in(events, pictet, prev.on_date, cur.on_date)
         out.append(
             PeriodReturn(
                 start=prev.on_date,
@@ -410,12 +513,18 @@ def build_report(
     *,
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
+    transactions: list[Transaction] | None = None,
 ) -> ReturnReport:
-    """Assemble the whole-mandate and per-portfolio holdings-based returns."""
+    """Assemble the whole-mandate and per-portfolio holdings-based returns.
+
+    ``transactions`` (the JSONL sidecars) supply the distribution income that
+    the price-only market gain misses; omitted → price return only (the prior
+    behaviour), which understates return by any distributing fund's yield."""
 
     snaps = build_snapshots(
         statements, commodities=commodities, rate_source=rate_source
     )
+    events = distribution_income(transactions or [], rate_source=rate_source)
 
     by_portfolio: dict[str, list[Snapshot]] = defaultdict(list)
     for s in snaps:
@@ -423,10 +532,18 @@ def build_report(
 
     per_portfolio: list[ReturnSeries] = []
     for p in sorted(by_portfolio):
-        series, _ = _series_for(p, by_portfolio[p])
+        series, _ = _series_for(
+            p, by_portfolio[p], income_events=events, income_portfolios={p}
+        )
         per_portfolio.append(series)
 
-    aggregate, agg_flows = _series_for("Pictet (all)", _aggregate_snapshots(snaps))
+    # Sum income only over portfolios the mandate actually holds (Pictet by
+    # construction — build_snapshots filters the prefix), so a stray dividend
+    # doctype from another bank can't leak into the Pictet mandate return.
+    aggregate, agg_flows = _series_for(
+        "Pictet (all)", _aggregate_snapshots(snaps), income_events=events,
+        income_portfolios={s.portfolio for s in snaps},
+    )
     detected = tuple(
         f for f in agg_flows if abs(f.amount_gbp) >= _FLOW_REPORT_THRESHOLD
     )
@@ -523,9 +640,9 @@ def render_markdown(report: ReturnReport) -> str:
             )
         lines += [
             "",
-            "> An inferred flow also absorbs loan interest, dealing spreads "
-            "and any cash income a *distributing* fund pays out rather than "
-            "accumulating, so treat the amounts as indicative.",
+            "> Fund distributions are now counted as return (not a flow). An "
+            "inferred flow still absorbs loan interest, dealing spreads and "
+            "bare current-account interest, so treat the amounts as indicative.",
             "",
         ]
 

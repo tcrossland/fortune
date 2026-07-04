@@ -80,6 +80,37 @@ Trade-off accepted: within the 12-month window a real (2–11 month) hole is
 filled silently with a stale rate and isn't flagged — acceptable because
 the only recurring gap is the single unpublished current month.
 
+## `mandate-returns` counts distribution income as return
+
+The mandate return is computed from statement holdings: a period's market gain
+is `Σ qty_held × Δ(unit price)`, and the leftover `ΔValue − gain` is treated as
+an inferred external flow (a deposit/withdrawal) and excluded from performance.
+That's exactly right for a price move on accumulating funds — but a
+*distributing* fund pays income out as cash, which lands in the portfolio value
+without moving the unit price. Left alone that payout falls into the leftover
+and is stripped from the return, understating TWR/MWR by the distributed yield.
+
+So `distribution_income` reads the sidecars and adds each period's cash
+distributions back into the gain (and removes them from the flow). Only fund
+distributions count — `DIVIDEND_TYPES` rows carrying an ISIN (this includes a
+bond fund's payout, which the writer books as a dividend doctype even when it's
+economically interest) — because they carry the holding's portfolio account
+number and land as cash. Bare current-account interest (no ISIN) stays out: a
+separate, immaterial leak with no clean attribution.
+
+The one trap: income is folded in **only for a portfolio with tracked
+positions**. The P mandate's by-name holdings aren't resolved to ISINs in the
+valuation path (`raw_from_statement` isn't given the name→ISIN index), so P's
+snapshots carry no securities and its value base is a tiny residual-cash figure.
+Dividing P's distributions by that base compounds to a nonsense three-figure
+percentage. Gating on `prev.positions` leaves P at its prior (position-less)
+behaviour while the aggregate and the K mandate — which do value their holdings
+— get the correction. The whole-mandate effect is a sub-percentage-point uplift;
+the book is mostly accumulating funds, so the residual understatement was small
+but real. (Reuses the recognition logic behind `income.py`; that report
+was never wrong — it records distributions as income correctly — it was only
+the source of the identifier.)
+
 ## A recognised nil statement retires its portfolio from the timeline
 
 The net-worth and allocation timelines combine portfolios statemented on

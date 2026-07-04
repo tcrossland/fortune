@@ -7,8 +7,10 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 from banking_pipeline import mandate_returns as mr
+from banking_pipeline.models import DocumentType, Transaction
 
 
 def dec(x: str) -> Decimal:
@@ -149,6 +151,102 @@ def test_series_negative_equity_net_suppressed() -> None:
 
 
 # --- report assembly + rendering ------------------------------------------
+
+
+# --- distribution income (the fund-payout fix) ----------------------------
+
+
+def _div(*, isin: str, account: str, amount: str, on: date) -> Transaction:
+    return Transaction(
+        trade_date=on, booking_date=on, narration="Dividend", title="Dividend",
+        currency="GBP", amount=dec(amount), isin=isin, account_number=account,
+        document_type=DocumentType.DIVIDEND_NOTICE, source_path=Path("d.pdf"),
+    )
+
+
+def test_distribution_income_maps_pictet_dividend_to_portfolio() -> None:
+    ev = mr.distribution_income(
+        [_div(isin="LU0000000000", account="K-999999.001", amount="500",
+              on=date(2024, 6, 15))],
+        rate_source=_NullRates(),
+    )
+    assert ev == {"Assets:Pic:K999999001": [(date(2024, 6, 15), dec("500"))]}
+
+
+def test_distribution_income_excludes_non_distribution_rows() -> None:
+    # A redemption (not a distribution doctype) and a dividend with no ISIN
+    # are both excluded — only fund payouts carrying an ISIN count.
+    redemption = Transaction(
+        trade_date=date(2024, 6, 1), booking_date=date(2024, 6, 1),
+        narration="Redemption", title="Redemption", currency="GBP",
+        amount=dec("1000"), isin="LU0000000000", account_number="K-999999.001",
+        quantity=dec("-10"), document_type=DocumentType.REDEMPTION_NOTICE,
+        source_path=Path("r.pdf"),
+    )
+    no_isin = Transaction(
+        trade_date=date(2024, 6, 1), booking_date=date(2024, 6, 1),
+        narration="Interest", title="Interest", currency="GBP", amount=dec("5"),
+        account_number="K-999999.001",
+        document_type=DocumentType.DIVIDEND_NOTICE, source_path=Path("i.pdf"),
+    )
+    assert mr.distribution_income(
+        [redemption, no_isin], rate_source=_NullRates()
+    ) == {}
+
+
+def test_income_in_windows_and_portfolio_filter() -> None:
+    ev = {
+        "Assets:Pic:K1": [(date(2024, 1, 15), dec("100")), (date(2024, 3, 1), dec("50"))],
+        "Assets:Pic:P1": [(date(2024, 1, 20), dec("30"))],
+    }
+    # (2024-01-01, 2024-02-01] over the whole mandate: K's 100 + P's 30.
+    assert mr._income_in(ev, None, date(2024, 1, 1), date(2024, 2, 1)) == dec("130")
+    # restricted to K1: only its 100.
+    assert mr._income_in(
+        ev, {"Assets:Pic:K1"}, date(2024, 1, 1), date(2024, 2, 1)
+    ) == dec("100")
+    # boundary: an event on `start` is excluded, on `end` included.
+    assert mr._income_in(ev, None, date(2024, 1, 15), date(2024, 3, 1)) == dec("80")
+
+
+def test_series_distribution_counts_as_return_not_flow() -> None:
+    # Flat unit price (no market gain) but a 50 cash distribution lands, so
+    # net worth rises 1000 → 1050. Without income the 50 reads as a spurious
+    # inflow and TWR is 0; with income it's a 5% return and no flow.
+    snaps = [
+        _snap(date(2024, 1, 1), net="1000", positions={"X": ("100", "1000")}),
+        _snap(date(2024, 2, 1), net="1050", positions={"X": ("100", "1000")}),
+    ]
+    events = {"Assets:Pic:K1": [(date(2024, 1, 20), dec("50"))]}
+
+    s0, f0 = mr._series_for("Assets:Pic:K1", snaps)
+    assert s0.twr_net is not None and abs(s0.twr_net) < 1e-9
+    assert f0[0].amount_gbp == dec("50")  # spurious inferred deposit
+
+    s1, f1 = mr._series_for(
+        "Assets:Pic:K1", snaps,
+        income_events=events, income_portfolios={"Assets:Pic:K1"},
+    )
+    assert s1.twr_net is not None and abs(s1.twr_net - 0.05) < 1e-9
+    assert abs(f1[0].amount_gbp) < 1e-9  # distribution no longer a flow
+
+
+def test_series_income_skipped_without_tracked_positions() -> None:
+    # A portfolio with no tracked positions (value is residual cash only, as
+    # with the P mandate's unvalued by-name holdings): income must NOT be
+    # folded in — dividing it by that tiny base is meaningless. The £50 rise
+    # stays an inferred flow, return 0.
+    snaps = [
+        _snap(date(2024, 1, 1), net="250", positions={}),
+        _snap(date(2024, 2, 1), net="300", positions={}),
+    ]
+    events = {"Assets:Pic:K1": [(date(2024, 1, 20), dec("50"))]}
+    s, flows = mr._series_for(
+        "Assets:Pic:K1", snaps,
+        income_events=events, income_portfolios={"Assets:Pic:K1"},
+    )
+    assert s.twr_net is not None and abs(s.twr_net) < 1e-9
+    assert flows[0].amount_gbp == dec("50")  # unchanged — still a flow
 
 
 def test_build_report_empty_renders_cleanly() -> None:

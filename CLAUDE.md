@@ -229,6 +229,15 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped (fix, no plan): `mandate-returns` now **counts distributing-fund
+  income as return, not an inferred flow**. The price-only holdings gain
+  stripped a distributing fund's cash payout into the flow residual,
+  understating TWR/MWR; `distribution_income` (sidecars via `--source`;
+  `DIVIDEND_TYPES` rows with an ISIN) folds each period's distributions back in.
+  Gated on `prev.positions` so the unvalued P mandate (tiny residual-cash base)
+  isn't divided into a nonsense return; aggregate + K get the correction (a
+  sub-percentage-point uplift). Rationale:
+  [design-decisions.md](docs/design-decisions.md#mandate-returns-counts-distribution-income-as-return).
 - Last shipped (fix, no plan): net-worth / allocation **retire a wound-down
   portfolio on a recognised nil statement**. The as-of forward-fill lingered a
   closed account's last non-empty snapshot (overstating net worth once the ISA
