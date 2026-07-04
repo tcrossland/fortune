@@ -626,6 +626,32 @@ usage examples; this is the behavioural reference.
 - `portfolio-allocation` — per-portfolio allocation of the *latest*
   valuation (cross-portfolio summary + per-portfolio asset-class + holdings;
   cash netted within a portfolio). Writes `portfolio-allocation.md` + `.csv`.
+- *Statement discovery (the four valuation reports above + the mandate
+  reports):* pass statements via `--statement` (repeatable) and/or
+  `--statements-dir` (with `-R`/`--statements-recursive` to descend). With
+  **neither**, the report falls back to the rebuild's configured
+  `balance_statements` globs (from `banking-pipeline.toml` in the cwd) — the
+  same canonical set the rebuild's report step uses (Pictet monthly + the
+  whole Vanguard ISA dir), expanded by filename (fast) and so matching
+  rebuild output without hand-listing files. No config file → the usual "no
+  statements given" error.
+  Directory discovery (`--statements-dir`) **opens and classifies every PDF**
+  to keep the valuation-bearing ones — robust on an arbitrary tree, but slow
+  on the full Pictet archive (thousands of PDFs, mostly daily tax-report
+  noise).
+  `--statements-glob` is the opt-in **fast path**: it prunes the walk by
+  filename *before* any PDF is opened, so only matches are classified. Pass
+  the Pictet monthly convention `--statements-glob '*monthly*.pdf'` (the same
+  the rebuild's `price_statements` / `balance_statements` globs use) to cut a
+  whole-archive run from ~90s to ~10s with identical output.
+  `holdings` additionally opts into `latest_only`: because it reports only the
+  *latest* snapshot per portfolio, it prunes each discovered directory to its
+  newest statement (by the `YYYYMMDD` in the filename) *before* opening any
+  PDF — Pictet files each portfolio's monthly series in its own dir, so the
+  superseded monthlies needn't be parsed. Content-based latest-per-portfolio
+  selection still runs on the survivors, so the prune only ever makes it
+  slower on an unexpected layout, never wrong. Combined with the glob, a
+  whole-archive `holdings` run drops to ~2s (8 statements opened, not 78).
 - `income` — income-by-source. Aggregates dividend + interest income from
   the sidecars by `--period` (`tax-year` default, or `calendar`) and paying
   source, in GBP. Unlike `tax-report` it **includes** ISA income (flagged in

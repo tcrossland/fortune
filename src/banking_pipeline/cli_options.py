@@ -56,6 +56,20 @@ StatementsRecursiveOpt = Annotated[
     ),
 ]
 
+StatementsGlobOpt = Annotated[
+    str | None,
+    typer.Option(
+        "--statements-glob",
+        help="Filename glob applied to ``--statements-dir`` *before* "
+        "classification, e.g. ``*monthly*.pdf`` (the Pictet monthly-statement "
+        "naming convention the rebuild uses). This is the fast path: it prunes "
+        "the walk to matching filenames so only those PDFs are opened and "
+        "classified, instead of text-extracting every PDF in the tree. "
+        "Defaults to ``*.pdf`` (classify everything — robust but slow on the "
+        "full archive).",
+    ),
+]
+
 ValuationRateSourceOpt = Annotated[
     str | None,
     typer.Option(

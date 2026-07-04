@@ -13,6 +13,7 @@ import ``app`` and these helpers from here and register their
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections.abc import Iterable
 from pathlib import Path
@@ -28,6 +29,7 @@ from banking_pipeline import (
 )
 from banking_pipeline.batch_config import (
     Source,
+    load_config,
 )
 from banking_pipeline.classifiers import LayeredClassifier
 from banking_pipeline.commodities_metadata import (
@@ -89,25 +91,57 @@ def _load_statement_context(
     statements_recursive: bool,
     commodities: Path | None,
     rate_source: str | None,
+    statements_glob: str | None = None,
+    latest_only: bool = False,
 ) -> tuple[list[tuple[str, str]], dict[str, CommodityMetadata], GbpRateSource]:
     """Resolve the inputs shared by the statement-valuation reports
     (``concentration`` / ``net-worth``): discover + load statement texts,
     the commodity metadata, and the GBP rate source. Exits (code 2) when no
-    statements are given."""
+    statements are given.
+
+    ``statements_glob`` narrows the ``--statements-dir`` walk to filenames
+    matching that glob before any PDF is opened — the fast path over a large
+    archive (e.g. ``*monthly*.pdf``). ``None`` keeps the default ``*.pdf``
+    (open + classify every PDF).
+
+    ``latest_only`` prunes each ``--statements-dir`` directory to its newest
+    statement(s) by filename date *before* opening them — for the reports
+    that use only the latest snapshot per portfolio (``holdings``). Explicit
+    ``--statement`` files are always kept verbatim.
+
+    With neither ``--statement`` nor ``--statements-dir``, falls back to the
+    configured ``balance_statements`` globs (see
+    :func:`_configured_statement_paths`) so an ad-hoc report matches the
+    rebuild's canonical statement set without hand-listing files."""
 
     paths = list(statements)
     if statements_dir is not None:
         discovered = _discover_priced_statements(
-            statements_dir, recursive=statements_recursive
+            statements_dir,
+            recursive=statements_recursive,
+            pattern=statements_glob or "*.pdf",
+            latest_only=latest_only,
         )
         paths += list(discovered)
         err_console.print(
             f"[dim]Discovered {len(discovered)} statement(s) under "
             f"{statements_dir}[/dim]"
         )
+    elif not paths:
+        configured = _configured_statement_paths()
+        if latest_only:
+            configured = _latest_statements_per_group(configured)
+        paths += configured
+        if configured:
+            err_console.print(
+                f"[dim]No statements given — using {len(configured)} "
+                f"configured balance_statements from "
+                f"{Path.cwd() / 'banking-pipeline.toml'}[/dim]"
+            )
     if not paths:
         err_console.print(
-            "[red]No statements given — pass --statement or --statements-dir.[/red]"
+            "[red]No statements given — pass --statement / --statements-dir, "
+            "or configure balance_statements in banking-pipeline.toml.[/red]"
         )
         raise typer.Exit(code=2)
 
@@ -132,8 +166,46 @@ def _load_properties(override: Path | None) -> list[Property]:
     return load_properties(path) if path is not None and path.is_file() else []
 
 
+_STATEMENT_DATE_RE = re.compile(r"(\d{8})")
+
+
+def _latest_statements_per_group(paths: Iterable[Path]) -> list[Path]:
+    """Keep only the newest statement(s) per parent directory, ranked by the
+    ``YYYYMMDD`` in the filename.
+
+    The 'latest snapshot' reports (``holdings``) use only the most recent
+    statement per portfolio, and Pictet files each portfolio's monthly series
+    in its own directory (``<year>/<K|P>-<acct>/reports/
+    Valuation-monthly-YYYYMMDD.pdf``), so an older-dated file in the same
+    directory can never be the latest and needn't be opened. All files sharing
+    a directory's max date are kept (a directory that marks two portfolios does
+    so at the same month-end); a file with no parseable date is kept (it can't
+    be ranked, so fall back to classifying it). This is a pre-open prune — the
+    content-based latest-per-portfolio selection still runs downstream, so a
+    directory that mixes portfolios with *different* latest dates degrades to
+    slower, never to wrong… as long as one directory holds one portfolio's
+    series, which is the archive's layout and what the rebuild globs assume.
+    """
+
+    max_date: dict[Path, str] = {}
+    for p in paths:
+        m = _STATEMENT_DATE_RE.search(p.name)
+        if m and m.group(1) > max_date.get(p.parent, ""):
+            max_date[p.parent] = m.group(1)
+    kept: list[Path] = []
+    for p in paths:
+        m = _STATEMENT_DATE_RE.search(p.name)
+        if m is None or m.group(1) == max_date.get(p.parent):
+            kept.append(p)
+    return kept
+
+
 def _discover_priced_statements(
-    directory: Path, *, recursive: bool, pattern: str = "*.pdf"
+    directory: Path,
+    *,
+    recursive: bool,
+    pattern: str = "*.pdf",
+    latest_only: bool = False,
 ) -> dict[Path, DocumentType]:
     """Walk ``directory`` for PDFs and keep those classified as
     monthly statements (the only doctype with per-ISIN pricing).
@@ -158,7 +230,13 @@ def _discover_priced_statements(
         for candidate in walk(pat):
             if candidate.is_file():
                 seen_paths.add(candidate)
-    return _filter_priced_statements(sorted(seen_paths))
+    candidates = sorted(seen_paths)
+    if latest_only:
+        # Prune to the newest statement(s) per directory *before* opening any
+        # PDF — the latest-snapshot reports (holdings) only use the most recent
+        # per portfolio, so classifying the superseded ones is wasted I/O.
+        candidates = _latest_statements_per_group(candidates)
+    return _filter_priced_statements(candidates)
 
 
 def _filter_priced_statements(
@@ -280,6 +358,26 @@ def _expand_globs(globs: list[str], project_root: Path) -> list[Path]:
     for glob in globs:
         seen.update(Source(label="_", glob=glob).expand(project_root))
     return sorted(seen)
+
+
+def _configured_statement_paths() -> list[Path]:
+    """Expand the rebuild's ``[post] balance_statements`` globs (from
+    ``banking-pipeline.toml`` in the cwd) to a flat path list — the canonical
+    statement set the rebuild's report step feeds the valuation reports.
+
+    This is the zero-config default for the ad-hoc report CLIs: it reproduces
+    what ``rebuild`` uses (Pictet monthly + the whole Vanguard ISA dir, so the
+    ISA isn't silently dropped the way a bare ``*monthly*`` glob would), and
+    it's filename-glob expansion (fast — no classify-every-PDF walk). Returns
+    ``[]`` when no config file is present, so the caller falls through to its
+    "no statements given" error exactly as before."""
+
+    project_root = Path.cwd()
+    try:
+        cfg = load_config(project_root)
+    except FileNotFoundError:
+        return []
+    return _expand_globs(cfg.post.balance_statements, project_root)
 
 
 def _load_sidecar_transactions(source: Path) -> list[Transaction]:

@@ -101,6 +101,23 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **Faster statement discovery for the valuation reports** — the ad-hoc
+  `holdings` / `net-worth` / `concentration` / `allocation` /
+  `portfolio-allocation` CLIs no longer text-extract the whole Pictet archive
+  (~2,900 PDFs) to find the ~monthly statements. Three composable changes:
+  (a) `--statements-glob` prunes the `--statements-dir` walk by filename
+  before opening any PDF (e.g. `'*monthly*.pdf'`, the convention the rebuild
+  globs already use); (b) `holdings` additionally opts into `latest_only`,
+  keeping only the newest statement per directory (by the `YYYYMMDD` in the
+  name) before opening, since it reports only the latest snapshot per
+  portfolio — the content-based latest-per-portfolio selection still runs on
+  the survivors, so it degrades to slower, never wrong; (c) with **no**
+  `--statement` / `--statements-dir`, the reports fall back to the rebuild's
+  configured `balance_statements` globs (from `banking-pipeline.toml`), so an
+  ad-hoc report reuses the canonical set (Pictet monthly + the whole Vanguard
+  ISA dir — no silent-drop) and matches rebuild output. A whole-archive
+  `holdings` run drops from ~90s to ~1-2s with byte-identical output.
+  (`cli/_main.py`, `cli/reports.py`, `cli_options.py`)
 - **`mandate-returns` counts distributing-fund income as return, not a flow**
   — the holdings-based gain is a *price* return, so a distributing fund's cash
   payout used to fall into the inferred-flow residual and be stripped from

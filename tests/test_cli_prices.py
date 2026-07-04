@@ -188,6 +188,174 @@ def test_prices_statements_dir_combined_with_explicit_statement(
     assert "2 statement(s) merged" in result.output
 
 
+def test_discover_filename_glob_fast_path_prunes_before_classify(
+    statements_tree: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The ``--statements-glob`` fast path prunes the walk by filename
+    *before* any PDF is opened: only files matching the glob are loaded +
+    classified, and the kept set is identical to the classify-every-PDF
+    default — just cheaper. This is what avoids text-extracting the whole
+    archive to find the ~monthly statements.
+    """
+
+    from banking_pipeline.cli._main import _discover_priced_statements
+
+    opened: list[str] = []
+    delegate = cli._main.load_pdf  # the fixture's text-reading fake
+
+    def recording(path: Path) -> RawDocument:
+        opened.append(path.name)
+        return delegate(path)
+
+    monkeypatch.setattr(cli._main, "load_pdf", recording)
+
+    # Fast path: only the two ``*monthly*`` files are ever opened; the
+    # non-statement, quarterly, and annual PDFs are pruned by name and
+    # never classified.
+    fast = _discover_priced_statements(
+        statements_tree, recursive=True, pattern="*monthly*.pdf"
+    )
+    assert {p.name for p in fast} == {"monthly_top.pdf", "monthly_nested.pdf"}
+    assert sorted(opened) == ["monthly_nested.pdf", "monthly_top.pdf"]
+
+    # Default path (pattern ``*.pdf``): every PDF is opened and the
+    # classifier does the filtering — same kept set, more work.
+    opened.clear()
+    full = _discover_priced_statements(
+        statements_tree, recursive=True, pattern="*.pdf"
+    )
+    assert {p.name for p in full} == {"monthly_top.pdf", "monthly_nested.pdf"}
+    assert len(opened) == 5  # all PDFs opened just to classify + discard 3
+
+
+def test_latest_statements_per_group_keeps_newest_per_dir() -> None:
+    """The ``latest_only`` pre-open prune: keep the newest file (by the
+    ``YYYYMMDD`` in the name) per directory, all files sharing a directory's
+    max date, and any undated file (can't rank)."""
+
+    from banking_pipeline.cli._main import _latest_statements_per_group
+
+    a, b = Path("2026/K/reports"), Path("2026/P/reports")
+    paths = [
+        a / "Valuation-monthly-20260131.pdf",  # superseded within dir a
+        a / "Valuation-monthly-20260228.pdf",  # newest in dir a
+        b / "Valuation-monthly-20260228.pdf",  # newest in dir b
+        b / "Valuation-monthly-20260131.pdf",  # superseded within dir b
+        a / "cover-note.pdf",                    # undated — kept (unrankable)
+    ]
+    kept = {p.name for p in _latest_statements_per_group(paths)}
+    # Newest per dir (a's 0228 and b's 0228), plus the undated file; the two
+    # January statements are pruned.
+    assert kept == {"Valuation-monthly-20260228.pdf", "cover-note.pdf"}
+
+    # Two portfolios marked the same month-end in one directory: both kept
+    # (equal max date), so neither portfolio's latest is dropped.
+    shared = Path("flat/reports")
+    both = [
+        shared / "K-monthly-20260228.pdf",
+        shared / "P-monthly-20260228.pdf",
+        shared / "K-monthly-20260131.pdf",
+    ]
+    kept2 = {p.name for p in _latest_statements_per_group(both)}
+    assert kept2 == {"K-monthly-20260228.pdf", "P-monthly-20260228.pdf"}
+
+
+def test_discover_latest_only_prunes_superseded_before_classify(
+    tmp_path: Path, fixtures_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``latest_only=True`` opens only the newest statement per directory —
+    the superseded monthlies are pruned by filename date and never
+    classified. This is the ``holdings`` fast path: parse the current
+    snapshot per portfolio, not the whole history.
+    """
+
+    from banking_pipeline.cli._main import _discover_priced_statements
+
+    monthly = fixtures_dir / "en" / "pictet" / "monthly_statement.txt"
+    k_dir = tmp_path / "K-999999.001" / "reports"
+    p_dir = tmp_path / "P-999999.002" / "reports"
+    k_dir.mkdir(parents=True)
+    p_dir.mkdir(parents=True)
+    for d, dates in ((k_dir, ("20260131", "20260228", "20260331")),
+                     (p_dir, ("20260228", "20260331"))):
+        for ymd in dates:
+            shutil.copy(monthly, d / f"Valuation-monthly-{ymd}.pdf")
+
+    opened: list[str] = []
+    delegate = cli._main.load_pdf
+
+    def recording(path: Path) -> RawDocument:
+        opened.append(path.name)
+        return delegate(path)
+
+    monkeypatch.setattr(cli._main, "load_pdf", recording)
+
+    discovered = _discover_priced_statements(
+        tmp_path, recursive=True, pattern="*monthly*.pdf", latest_only=True
+    )
+    # Only the March statement in each dir is opened + kept; the 3 earlier
+    # monthlies are pruned before classification.
+    assert sorted(opened) == [
+        "Valuation-monthly-20260331.pdf",
+        "Valuation-monthly-20260331.pdf",
+    ]
+    assert {p.name for p in discovered} == {"Valuation-monthly-20260331.pdf"}
+
+
+def test_configured_statement_paths_expands_balance_statements(
+    statements_tree: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The zero-config fallback: with no ``--statement`` / ``--statements-dir``
+    the report CLIs expand the rebuild's ``balance_statements`` globs from
+    ``banking-pipeline.toml`` in the cwd — so an ad-hoc report reuses the
+    canonical statement set (and doesn't silently drop non-``monthly`` files
+    the way a bare glob default would)."""
+
+    from banking_pipeline.cli._main import _configured_statement_paths
+
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "src_pdfs").mkdir()  # empty source dir keeps the config valid
+    config = textwrap.dedent(f"""
+        data_dir = "data"
+        clean_glob = ""
+
+        [[sources]]
+        label = "ingest"
+        glob = "src_pdfs/*.pdf"
+
+        [post]
+        balance_statements = [
+            "{statements_tree}/**/*monthly*.pdf",
+            "{statements_tree}/other.pdf",
+        ]
+    """)
+    (project / "banking-pipeline.toml").write_text(config, encoding="utf-8")
+
+    monkeypatch.chdir(project)
+    paths = _configured_statement_paths()
+    # Both globs expand and merge — the two monthly statements plus the
+    # explicitly-named non-monthly file (the whole point: the config list can
+    # name files a single ``*monthly*`` glob would miss, e.g. the ISA dir).
+    assert {p.name for p in paths} == {
+        "monthly_top.pdf",
+        "monthly_nested.pdf",
+        "other.pdf",
+    }
+
+
+def test_configured_statement_paths_no_config_returns_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No ``banking-pipeline.toml`` in the cwd → the fallback yields nothing,
+    so the caller falls through to its "no statements given" error unchanged."""
+
+    from banking_pipeline.cli._main import _configured_statement_paths
+
+    monkeypatch.chdir(tmp_path)
+    assert _configured_statement_paths() == []
+
+
 # --- batch_config price_statements + rebuild plumbing ----------------------
 
 

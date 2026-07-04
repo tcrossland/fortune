@@ -41,6 +41,7 @@ from banking_pipeline.cli_options import (
     PropertyOpt,
     StatementOpt,
     StatementsDirOpt,
+    StatementsGlobOpt,
     StatementsRecursiveOpt,
     ValuationRateSourceOpt,
     VerboseOpt,
@@ -58,6 +59,7 @@ def concentration(
     statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
     statements_dir: StatementsDirOpt = None,
     statements_recursive: StatementsRecursiveOpt = False,
+    statements_glob: StatementsGlobOpt = None,
     out: Annotated[
         Path | None,
         typer.Option(
@@ -90,7 +92,8 @@ def concentration(
 
     _configure_logging(verbose)
     texts, commodities_map, rates = _load_statement_context(
-        statements, statements_dir, statements_recursive, commodities, rate_source
+        statements, statements_dir, statements_recursive, commodities, rate_source,
+        statements_glob,
     )
     report = concentration_mod.build_report(
         texts, commodities=commodities_map, rate_source=rates,
@@ -126,6 +129,7 @@ def holdings(
     statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
     statements_dir: StatementsDirOpt = None,
     statements_recursive: StatementsRecursiveOpt = False,
+    statements_glob: StatementsGlobOpt = None,
     source: Annotated[
         Path,
         typer.Option(
@@ -192,8 +196,12 @@ def holdings(
         err_console.print("[red]error:[/red] --basis must be 'uk' or 'es'")
         raise typer.Exit(code=2)
 
+    # ``holdings`` reports only the latest snapshot per portfolio, so prune
+    # each discovered directory to its newest statement before opening any PDF
+    # (``latest_only``) — the older monthlies would be parsed and discarded.
     texts, commodities_map, rates = _load_statement_context(
-        statements, statements_dir, statements_recursive, commodities, rate_source
+        statements, statements_dir, statements_recursive, commodities, rate_source,
+        statements_glob, latest_only=True,
     )
     # ISA-wrapped trades are UK-tax-exempt: they have no section 104 basis, so
     # they're excluded from the lens (mirrors the tax choke point). ISA
@@ -277,6 +285,7 @@ def net_worth(
     statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
     statements_dir: StatementsDirOpt = None,
     statements_recursive: StatementsRecursiveOpt = False,
+    statements_glob: StatementsGlobOpt = None,
     out: Annotated[
         Path | None,
         typer.Option(
@@ -318,7 +327,8 @@ def net_worth(
 
     _configure_logging(verbose)
     texts, commodities_map, rates = _load_statement_context(
-        statements, statements_dir, statements_recursive, commodities, rate_source
+        statements, statements_dir, statements_recursive, commodities, rate_source,
+        statements_glob,
     )
     timeline = net_worth_mod.build_timeline(
         texts, commodities=commodities_map, rate_source=rates,
@@ -353,6 +363,7 @@ def allocation(
     statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
     statements_dir: StatementsDirOpt = None,
     statements_recursive: StatementsRecursiveOpt = False,
+    statements_glob: StatementsGlobOpt = None,
     out: Annotated[
         Path | None,
         typer.Option(
@@ -385,7 +396,8 @@ def allocation(
 
     _configure_logging(verbose)
     texts, commodities_map, rates = _load_statement_context(
-        statements, statements_dir, statements_recursive, commodities, rate_source
+        statements, statements_dir, statements_recursive, commodities, rate_source,
+        statements_glob,
     )
     timeline = allocation_mod.build_timeline(
         texts, commodities=commodities_map, rate_source=rates,
@@ -418,6 +430,7 @@ def portfolio_allocation(
     statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
     statements_dir: StatementsDirOpt = None,
     statements_recursive: StatementsRecursiveOpt = False,
+    statements_glob: StatementsGlobOpt = None,
     out: Annotated[
         Path | None,
         typer.Option(
@@ -451,7 +464,8 @@ def portfolio_allocation(
 
     _configure_logging(verbose)
     texts, commodities_map, rates = _load_statement_context(
-        statements, statements_dir, statements_recursive, commodities, rate_source
+        statements, statements_dir, statements_recursive, commodities, rate_source,
+        statements_glob,
     )
     report = portfolio_allocation_mod.build_report(
         texts, commodities=commodities_map, rate_source=rates,
@@ -777,6 +791,7 @@ def mandate_scorecard(
     statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
     statements_dir: StatementsDirOpt = None,
     statements_recursive: StatementsRecursiveOpt = False,
+    statements_glob: StatementsGlobOpt = None,
     out: Annotated[
         Path | None,
         typer.Option(
@@ -803,7 +818,8 @@ def mandate_scorecard(
 
     _configure_logging(verbose)
     texts, commodities_map, rates = _load_statement_context(
-        statements, statements_dir, statements_recursive, commodities, rate_source
+        statements, statements_dir, statements_recursive, commodities, rate_source,
+        statements_glob,
     )
     timeline = net_worth_mod.build_timeline(
         texts, commodities=commodities_map, rate_source=rates,
@@ -844,6 +860,7 @@ def mandate_returns(
     statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
     statements_dir: StatementsDirOpt = None,
     statements_recursive: StatementsRecursiveOpt = False,
+    statements_glob: StatementsGlobOpt = None,
     source: Annotated[
         Path,
         typer.Option(
@@ -882,7 +899,8 @@ def mandate_returns(
 
     _configure_logging(verbose)
     texts, commodities_map, rates = _load_statement_context(
-        statements, statements_dir, statements_recursive, commodities, rate_source
+        statements, statements_dir, statements_recursive, commodities, rate_source,
+        statements_glob,
     )
 
     report = mandate_returns_mod.build_report(
@@ -922,6 +940,7 @@ def benchmark(
     statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
     statements_dir: StatementsDirOpt = None,
     statements_recursive: StatementsRecursiveOpt = False,
+    statements_glob: StatementsGlobOpt = None,
     benchmarks: Annotated[
         Path | None,
         typer.Option(
@@ -975,7 +994,8 @@ def benchmark(
         raise typer.Exit(code=2)
 
     texts, commodities_map, rates = _load_statement_context(
-        statements, statements_dir, statements_recursive, commodities, rate_source
+        statements, statements_dir, statements_recursive, commodities, rate_source,
+        statements_glob,
     )
     periods = mandate_returns_mod.aggregate_period_returns(
         texts, commodities=commodities_map, rate_source=rates,
