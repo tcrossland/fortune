@@ -90,9 +90,17 @@ not tax advice" framing.
   rather than trusted silently.
 - **`reconcile-export` — cross-check the sidecars against the portal
   Transactions export.** Pictet's e-banking "Transactions" report exports as
-  a machine-readable workbook (one row per leg; `Order nr.` is the join key,
+  a machine-readable feed (one row per leg; `Order nr.` is the join key,
   ISIN and per-leg amounts present) covering every trade type across both LU
-  mandates over multi-year windows. Same idea as `completeness` (which diffs
+  mandates over multi-year windows. **Prefer the `.csv` form** (73 columns,
+  same as the `.xlsx`) — stdlib-parseable, no `openpyxl`, same format family
+  as the cash-statement / Holdings CSVs: `;`-delimited, CRLF, `YYYY/MM/DD`,
+  dot-decimal (high precision, no thousands sep), **bare `Account nr.`**
+  (resolve via `lettered_portfolio_map`). **Decode cp1252** — unlike the
+  Holdings CSV, the Transactions CSV *does* carry accented bytes (`°`, `é`,
+  `ó` from Spanish descriptions like `Bonificación` / `Donación`), so a UTF-8
+  read crashes; `parse_cash_statement_csv` is the pattern to mirror. Same idea
+  as `completeness` (which diffs
   only the current-account cash statement) but ID-keyed and covering
   securities, FX, fees, and income. A one-off reconciliation of a full
   five-year export matched every ID-keyed sidecar transaction with the
