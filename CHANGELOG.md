@@ -393,6 +393,25 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Bookkeeping & accounting
 
+- **`reconcile-transactions` — cross-check the sidecars against the portal
+  Transactions export** — the transaction-level counterpart to `completeness`
+  (which covers only the cash ledger). Diffs every trade leg in the portal
+  `Transactions` CSV — both mandates, all trade types — against the sidecars by
+  `Order nr.`, so a securities trade the pipeline failed to ingest (which would
+  corrupt the section 104 pool and CGT) surfaces. One report per mandate:
+  **MISSING** (a booked trade not ingested — fails the rebuild), **UNMATCHED**
+  (an ingested transaction absent from the export — fails under `--strict`),
+  **AMOUNT_MISMATCH** (a matched single-leg securities order whose export cash
+  amount ≠ the sidecar — fails). Forex-forward opens (booked at settlement) and
+  limit extensions (not transactions) are excluded. The CSV is filed keep-latest
+  into `<archive>/transactions/` by the import step (`[import]
+  transactions_globs`), and `[post.reconcile_transactions]` gates each rebuild.
+  Validated on the real export: **0 missing / 0 unmatched / 0 amount-mismatch**
+  both mandates (626 K + 140 P matched, 9 FX-opens excluded). Reuses the
+  cash-statement CSV plumbing (cp1252 parser, `lettered_portfolio_map`,
+  keep-latest filing factored to a shared `_file_keep_latest`); no new dep.
+  (`transactions_export.py`, `cli/{_main,reports,rebuild}.py`, `archive.py`,
+  `batch_config.py`, `config.py`)
 - **`completeness` reads the portal cash-statement CSV; the CSV is archived**
   — the statement-completeness cross-check now accepts the e-banking `Cash
   statements by value date` CSV export as well as the `Financial-statement`

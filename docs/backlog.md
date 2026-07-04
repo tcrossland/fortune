@@ -88,37 +88,10 @@ not tax advice" framing.
   confidence and which rule fired into a queryable index, so the
   lowest-confidence documents in a run can be surfaced for manual review
   rather than trusted silently.
-- **`reconcile-export` — cross-check the sidecars against the portal
-  Transactions export.** Pictet's e-banking "Transactions" report exports as
-  a machine-readable feed (one row per leg; `Order nr.` is the join key,
-  ISIN and per-leg amounts present) covering every trade type across both LU
-  mandates over multi-year windows. **Prefer the `.csv` form** (73 columns,
-  same as the `.xlsx`) — stdlib-parseable, no `openpyxl`, same format family
-  as the cash-statement / Holdings CSVs: `;`-delimited, CRLF, `YYYY/MM/DD`,
-  dot-decimal (high precision, no thousands sep), **bare `Account nr.`**
-  (resolve via `lettered_portfolio_map`). **Decode cp1252** — unlike the
-  Holdings CSV, the Transactions CSV *does* carry accented bytes (`°`, `é`,
-  `ó` from Spanish descriptions like `Bonificación` / `Donación`), so a UTF-8
-  read crashes; `parse_cash_statement_csv` is the pattern to mirror. Same idea
-  as `completeness` (which diffs
-  only the current-account cash statement) but ID-keyed and covering
-  securities, FX, fees, and income. A one-off reconciliation of a full
-  five-year export matched every ID-keyed sidecar transaction with the
-  cash-leg amount agreeing to the cent, and the only unmatched export rows
-  were benign (FX-forward *open* legs, which we book at settlement, and the
-  order-number-less doctypes above) — so this is a low-risk cross-check to
-  formalise. Design notes: the export's GBP columns are **broker-side FX,
-  not HMRC rates** (cross-check only, never feed tax); it splits one logical
-  trade into multiple legs (aggregate by `Order nr.` before comparing); and
-  it's a bulk feed with no per-document provenance, so it's a reconciliation
-  input, not an ingest source. The order-number capture this depends on is
-  **shipped** — every sidecar row now carries `transaction_number` (see the
-  CHANGELOG), so the join is fully ID-based. (`limit_extension` is the one
-  doctype that carries an order number but never appears in this export — a
-  credit-facility event — so it won't cross-check here regardless.)
 - **`reconcile-holdings` — cross-check the pool against the portal Holdings
-  export.** The position-level sibling of `reconcile-export` (which is
-  transaction-level). Pictet's e-banking `Holdings` xlsx is a per-position
+  export.** The position-level sibling of the shipped `reconcile-transactions`
+  (transaction-level) and `completeness` (cash-level) checks. Pictet's
+  e-banking `Holdings` xlsx is a per-position
   snapshot (`Account nr.`, ISIN, quantity, market value, **Net cost (GBP)**,
   and the price-vs-FX-split unrealised columns) across both mandates. Two
   checks fall out, both validated in a one-off run against a 2026-07-03 export:

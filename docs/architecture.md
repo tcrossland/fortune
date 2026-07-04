@@ -514,15 +514,19 @@ usage examples; this is the behavioural reference.
   further globs (e.g. the loose tax-report PDFs) that compose with the
   primary source. Pictet (both locales) is recognised today via
   `archive.FIELD_PARSERS`; a second bank is data-only.
-  A fourth filing path handles the portal **cash-statement CSV** export
-  (`archive.file_cash_statements`), wired into `rebuild`'s import step via
-  `[import] cash_statement_globs` (not the classifier — a CSV isn't a PDF).
-  Each export is a full-history, both-mandate superset, so it files
-  **keep-latest**: named by its max value date (parsed from content) into
-  `<dest>/cash-statements/Cash statement by value date <YYYYMMDD>.csv`, with
-  any older canonical copy moved to `cash-statements/_superseded/` (never
-  deleted, the tax-report supersede convention). A byte-identical re-download
-  is skipped; an export older than one already archived is skipped.
+  A fourth filing path handles the portal **CSV exports** — the
+  cash-statement (`archive.file_cash_statements`) and Transactions
+  (`archive.file_transactions_csv`) reports — wired into `rebuild`'s import
+  step via `[import] cash_statement_globs` / `transactions_globs` (not the
+  classifier — a CSV isn't a PDF). Each export is a full-history, both-mandate
+  superset, so both file **keep-latest** (a shared `archive._file_keep_latest`):
+  named by their max date (parsed from content — value date for the cash
+  statement, trade date for the Transactions export) into
+  `<dest>/cash-statements/Cash statement by value date <YYYYMMDD>.csv` /
+  `<dest>/transactions/Transactions <YYYYMMDD>.csv`, with any older canonical
+  copy moved to the folder's `_superseded/` (never deleted, the tax-report
+  supersede convention). A byte-identical re-download is skipped; an export
+  older than one already archived is skipped.
 - `prune-tax-reports` — retention command for the archived Pictet P&L
   reports. Keeps, per calendar year + kind, the latest report per month plus
   the realised year-final and the unrealised on-or-before-5-April snapshot
@@ -756,9 +760,28 @@ usage examples; this is the behavioural reference.
   (repeatable) and/or `--statements-dir` (scans `Financial-statement-*.pdf`
   and `Cash statement*.csv` recursively). Exits non-zero on any MISSING;
   `--strict` also fails on UNMATCHED.
+- `reconcile-transactions` — the **transaction-level** counterpart to
+  `completeness` (which covers only the cash ledger). Diffs every trade leg in
+  the portal `Transactions` CSV export — both mandates, all trade types —
+  against the sidecars by `Order nr.` (⇄ the sidecar `transaction_number`),
+  so a securities trade the pipeline failed to ingest surfaces (it would
+  corrupt the section 104 pool + CGT). One `summary-<portfolio>-<period-end>`
+  + `findings-…` per mandate under `reconcile_transactions_dir`
+  (`reports/reconcile-transactions`): **MISSING** (an export trade with no
+  ingested transaction), **UNMATCHED** (a sidecar with no export row), and
+  **AMOUNT_MISMATCH** (a matched single-leg securities order whose export cash
+  amount ≠ the sidecar). Forex-forward opens (booked at settlement) and limit
+  extensions (not transactions) are excluded; out-of-window sidecars are
+  tallied, not flagged. Pass exports via `--transactions` / `--transactions-dir`
+  (scans `Transactions*.csv`, skipping `_superseded/`). Exits non-zero on any
+  MISSING or AMOUNT_MISMATCH; `--strict` also on UNMATCHED. Parser + diff live
+  in [`transactions_export.py`](../src/banking_pipeline/transactions_export.py);
+  the letterless CSV `Account nr.` resolves to the lettered sidecar portfolio
+  via `lettered_portfolio_map` (shared with completeness).
 - `rebuild` — end-to-end run driven by `banking-pipeline.toml`. Owns the
   `clean → ingest per source → prices/portfolio/balances → reports →
-  reconcile → completeness → check` sequence. `[post.reports]` (off by
+  reconcile → completeness → reconcile-transactions → check` sequence.
+  `[post.reports]` (off by
   default) regenerates the analytical reports (income / concentration /
   net-worth / allocation / portfolio-allocation, plus opt-in `trial_balance`
   and `holdings` toggles, with per-report toggles) *before* reconcile/check
@@ -781,6 +804,12 @@ usage examples; this is the behavioural reference.
   window **past the latest settlement**, else a near-edge trade settling later
   sits beyond the horizon (correctly ingested, just not yet on the value-date
   ledger — an out-of-window row, not a gap).
+  `[post.reconcile_transactions]` (off by default) runs the transaction-level
+  cross-check after completeness — MISSING and AMOUNT_MISMATCH fail the
+  rebuild, UNMATCHED under `strict`. Its source is filed by `[import]
+  transactions_globs` (e.g. `~/Downloads/Transactions_*.csv`) keep-latest into
+  `<archive>/transactions/`, the same content-filed path as the cash statement
+  (both via `archive._file_keep_latest`).
 
 ### UK tax
 

@@ -26,6 +26,7 @@ from banking_pipeline import (
     bean_check,
     prices_extract,
     statement_completeness,
+    transactions_export,
 )
 from banking_pipeline.batch_config import (
     Source,
@@ -504,5 +505,56 @@ def _completeness_groups(
         return []
     period = statement_completeness.parse_statement_period(text)
     return [(lines[0].portfolio, lines, period)]
+
+
+def _run_reconcile_transactions(
+    export_paths: list[Path], sidecar_dir: Path, out_dir: Path
+) -> tuple[int, int, int, int]:
+    """Diff each portal Transactions CSV against the sidecars by ``Order nr.``.
+
+    Shared by the ``reconcile-transactions`` command and the ``rebuild``
+    post-step. Writes one ``summary-<portfolio>-<period-end>.txt`` +
+    ``findings-<...>.csv`` per mandate. Returns
+    ``(total_missing, total_unmatched, total_mismatch, written)``, leaving the
+    fail-or-not decision to the caller.
+    """
+
+    rows = _load_sidecar_rows(sidecar_dir)
+    lettered = statement_completeness.lettered_portfolio_map(rows)
+    total_missing = total_unmatched = total_mismatch = written = 0
+    for path in export_paths:
+        export_rows = transactions_export.parse_transactions_csv(path)
+        if not export_rows:
+            err_console.print(
+                f"[yellow]{path.name}: no transaction rows found — skipped[/yellow]"
+            )
+            continue
+        for portfolio, grp, period in transactions_export.group_by_portfolio(
+            export_rows
+        ):
+            if not statement_completeness.portfolio_is_known(portfolio, lettered):
+                err_console.print(
+                    f"[yellow]{path.name}: portfolio {portfolio} has no ingested "
+                    f"sidecars — its orders will read MISSING[/yellow]"
+                )
+            portfolio = statement_completeness.resolve_portfolio(portfolio, lettered)
+            report = transactions_export.reconcile(
+                grp, rows, portfolio=portfolio, period=period
+            )
+            key = f"{portfolio}-{period[1] if period is not None else path.stem}"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / f"summary-{key}.txt").write_text(
+                transactions_export.render_summary(path.name, report),
+                encoding="utf-8",
+            )
+            (out_dir / f"findings-{key}.csv").write_text(
+                transactions_export.render_csv(path.name, report),
+                encoding="utf-8",
+            )
+            total_missing += len(report.missing_in_ledger)
+            total_unmatched += len(report.unmatched_in_ledger)
+            total_mismatch += len(report.amount_mismatches)
+            written += 1
+    return total_missing, total_unmatched, total_mismatch, written
 
 

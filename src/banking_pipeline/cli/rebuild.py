@@ -76,6 +76,7 @@ from banking_pipeline.cli._main import (
     _resolve_name_to_isin,
     _run_check_or_exit,
     _run_completeness,
+    _run_reconcile_transactions,
     _statement_text,
     app,
     err_console,
@@ -269,14 +270,19 @@ def _run_import(cfg_import: ImportStep, *, dry_run: bool) -> None:
     for pattern in cfg_import.source_globs:
         sources.extend(archive.expand_source_glob(pattern))
 
-    # Portal cash-statement CSV exports file separately from the PDF sources —
-    # a CSV isn't a PDF, so it bypasses the classifier and files by content
-    # (keep-latest). Independent of the PDF sources: a run may have either.
+    # Portal CSV exports file separately from the PDF sources — a CSV isn't a
+    # PDF, so it bypasses the classifier and files by content (keep-latest).
+    # Independent of the PDF sources: a run may have any combination.
     csv_sources: list[Path] = []
     for pattern in cfg_import.cash_statement_globs:
         csv_sources.extend(archive.expand_source_glob(pattern))
+    transactions_sources: list[Path] = []
+    for pattern in cfg_import.transactions_globs:
+        transactions_sources.extend(archive.expand_source_glob(pattern))
 
-    if archive_dir is None or (not sources and not csv_sources):
+    if archive_dir is None or (
+        not sources and not csv_sources and not transactions_sources
+    ):
         err_console.print(
             "[yellow]import skipped:[/yellow] no source/archive resolved "
             "([import] source_glob / source_dir / archive_dir or the "
@@ -284,9 +290,13 @@ def _run_import(cfg_import: ImportStep, *, dry_run: bool) -> None:
         )
         return
 
+    extra = [
+        (len(csv_sources), "cash CSV(s)"),
+        (len(transactions_sources), "transactions CSV(s)"),
+    ]
     err_console.print(
         f"[bold]import[/bold] {len(sources)} source(s)"
-        + (f" + {len(csv_sources)} cash CSV(s)" if csv_sources else "")
+        + "".join(f" + {n} {label}" for n, label in extra if n)
         + f" → {archive_dir}"
     )
 
@@ -297,6 +307,10 @@ def _run_import(cfg_import: ImportStep, *, dry_run: bool) -> None:
     if csv_sources:
         plans += archive.file_cash_statements(
             csv_sources, archive_dir, dry_run=dry_run
+        )
+    if transactions_sources:
+        plans += archive.file_transactions_csv(
+            transactions_sources, archive_dir, dry_run=dry_run
         )
 
     moved = sum(1 for p in plans if p.status == "move")
@@ -762,6 +776,28 @@ def _do_rebuild(
                 stmt_paths, data_dir, out_dir
             )
             if missing or (comp_strict and unmatched):
+                raise typer.Exit(code=1)
+
+    # --- Step 4c: transaction-level reconciliation -----------------------
+    # Diffs the portal Transactions export against the sidecars by Order nr.
+    # — covers the securities legs completeness excludes. MISSING and
+    # AMOUNT_MISMATCH fail the rebuild; UNMATCHED fails under strict.
+    if cfg.post.reconcile_transactions.enabled:
+        rtx = cfg.post.reconcile_transactions
+        export_paths = _expand_globs(rtx.statements, project_root)
+        rtx_strict = rtx.strict or strict
+        err_console.print(
+            f"[bold]reconcile-transactions[/bold] {len(export_paths)} export(s)"
+            + (" (strict)" if rtx_strict else "")
+        )
+        if not dry_run:
+            out_dir = _resolve_report_dir(
+                settings.reconcile_transactions_dir, project_root
+            )
+            missing, unmatched, mismatch, _written = _run_reconcile_transactions(
+                export_paths, data_dir, out_dir
+            )
+            if missing or mismatch or (rtx_strict and unmatched):
                 raise typer.Exit(code=1)
 
     # --- Step 5: bean-check validation -----------------------------------

@@ -229,6 +229,16 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped: [docs/archive/reconcile-transactions.md](docs/archive/reconcile-transactions.md)
+  — `reconcile-transactions`, the transaction-level counterpart to
+  `completeness`: diffs the portal **Transactions** CSV (every trade leg, both
+  mandates) against the sidecars by `Order nr.`, catching a securities trade the
+  pipeline failed to ingest (which would corrupt the section 104 pool + CGT).
+  MISSING / AMOUNT_MISMATCH fail the rebuild, UNMATCHED under strict; FX-opens +
+  limit extensions excluded. CSV filed keep-latest into `<archive>/transactions/`
+  (`[import] transactions_globs`); `[post.reconcile_transactions]` gates each
+  rebuild. Verified 0/0/0 both mandates. Reuses the cash-statement CSV plumbing
+  (`transactions_export.py`, shared `_file_keep_latest`); no new dep.
 - Last shipped: [docs/archive/csv-completeness-input.md](docs/archive/csv-completeness-input.md)
   — `completeness` now reads the portal **cash-statement CSV** (both mandates,
   all currency sub-accounts, to date) as well as the `Financial-statement` PDF

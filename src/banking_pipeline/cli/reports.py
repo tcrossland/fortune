@@ -33,6 +33,7 @@ from banking_pipeline.cli._main import (
     _load_sidecar_transactions,
     _load_statement_context,
     _run_completeness,
+    _run_reconcile_transactions,
     app,
     err_console,
 )
@@ -1048,6 +1049,20 @@ def _discover_financial_statements(directory: Path) -> list[Path]:
     return sorted(seen)
 
 
+def _discover_transactions_exports(directory: Path) -> list[Path]:
+    """Walk ``directory`` (recursive) for portal ``Transactions*.csv`` exports,
+    skipping keep-latest ``_superseded/`` copies (as
+    :func:`_discover_financial_statements` does)."""
+
+    pattern = "Transactions*.csv"
+    seen: set[Path] = set()
+    for pat in {pattern, pattern.lower(), pattern.upper()}:
+        for candidate in directory.rglob(pat):
+            if candidate.is_file() and "_superseded" not in candidate.parts:
+                seen.add(candidate)
+    return sorted(seen)
+
+
 @app.command()
 def completeness(
     statements: Annotated[
@@ -1147,4 +1162,99 @@ def completeness(
         f"({total_missing} missing, {total_unmatched} unmatched)"
     )
     if total_missing or (strict and total_unmatched):
+        raise typer.Exit(code=1)
+
+
+@app.command("reconcile-transactions")
+def reconcile_transactions(
+    transactions: Annotated[
+        list[Path],
+        typer.Option(
+            "--transactions",
+            "-T",
+            help="A portal ``Transactions*.csv`` export (repeatable). Combine "
+            "with --transactions-dir to scan a tree.",
+        ),
+    ] = [],  # noqa: B006 — list-option default lives here
+    transactions_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--transactions-dir",
+            help="Directory scanned recursively for ``Transactions*.csv``.",
+        ),
+    ] = None,
+    source: Annotated[
+        Path,
+        typer.Option(
+            "--source",
+            help="Directory holding the ``*.transactions.jsonl`` sidecars. "
+            "Defaults to ``data``.",
+        ),
+    ] = Path("data"),
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to the configured "
+            "``reconcile_transactions_dir`` (``reports/reconcile-transactions``).",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            "-s",
+            help="Also exit non-zero on UNMATCHED-in-ledger (a sidecar "
+            "transaction with no export row). MISSING and AMOUNT_MISMATCH "
+            "always fail.",
+        ),
+    ] = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """Reconcile the ingested sidecars against the portal Transactions export.
+
+    The transaction-level counterpart to ``completeness`` (which checks only
+    the cash ledger): diffs every trade leg in the portal ``Transactions``
+    CSV — both mandates, all trade types — against the
+    ``*.transactions.jsonl`` sidecars by ``Order nr.``. One report per mandate:
+    **MISSING** (an export trade with no ingested transaction — the tax-critical
+    case, a trade that never made it into the section 104 pool), **UNMATCHED**
+    (an ingested transaction absent from the export — a phantom / duplicate),
+    and **AMOUNT_MISMATCH** (a matched single-leg securities order whose export
+    cash amount ≠ the sidecar). Forex-forward opens and limit extensions are
+    excluded (they never appear as a sidecar / export transaction). Exits
+    non-zero on any MISSING or AMOUNT_MISMATCH; ``--strict`` also on UNMATCHED.
+    """
+
+    _configure_logging(verbose)
+
+    paths = list(transactions)
+    if transactions_dir is not None:
+        discovered = _discover_transactions_exports(transactions_dir)
+        paths += discovered
+        err_console.print(
+            f"[dim]Discovered {len(discovered)} export(s) under "
+            f"{transactions_dir}[/dim]"
+        )
+    if not paths:
+        err_console.print(
+            "[red]No exports given — pass --transactions or "
+            "--transactions-dir.[/red]"
+        )
+        raise typer.Exit(code=2)
+
+    out_dir = out or settings.reconcile_transactions_dir
+    total_missing, total_unmatched, total_mismatch, written = (
+        _run_reconcile_transactions(paths, source, out_dir)
+    )
+    if written == 0:
+        err_console.print("[yellow]No parseable Transactions exports.[/yellow]")
+        raise typer.Exit(code=0)
+
+    err_console.print(
+        f"Wrote {written} reconciliation report(s) to {out_dir} "
+        f"({total_missing} missing, {total_unmatched} unmatched, "
+        f"{total_mismatch} amount-mismatch)"
+    )
+    if total_missing or total_mismatch or (strict and total_unmatched):
         raise typer.Exit(code=1)

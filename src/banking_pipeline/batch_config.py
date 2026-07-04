@@ -201,6 +201,35 @@ class CompletenessStep(BaseModel):
     strict: bool = False
 
 
+class ReconcileTransactionsStep(BaseModel):
+    """Configuration for the transaction-level reconciliation step.
+
+    Diffs the portal ``Transactions`` CSV export (every trade leg, both
+    mandates) against the ingested sidecars by ``Order nr.`` — the
+    transaction-level counterpart to :class:`CompletenessStep` (which covers
+    only the cash ledger). Catches a securities trade the pipeline failed to
+    ingest, which would corrupt the section 104 pool and CGT. See
+    :mod:`banking_pipeline.transactions_export`.
+
+    Runs alongside reconcile / completeness. A gate: MISSING and
+    AMOUNT_MISMATCH fail the rebuild; UNMATCHED fails under strict. Off by
+    default; needs a glob of archived ``Transactions*.csv`` exports.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Whether to run the reconcile-transactions cross-check at rebuild end.
+    enabled: bool = False
+
+    # Globs selecting the Transactions CSV export(s) to diff (the archived
+    # ``<archive>/transactions/*.csv``). ``~`` is expanded.
+    statements: list[str] = Field(default_factory=list)
+
+    # When true, escalate UNMATCHED (a sidecar with no export row) to a failed
+    # rebuild. MISSING and AMOUNT_MISMATCH always fail once the step is enabled.
+    strict: bool = False
+
+
 class ReportsStep(BaseModel):
     """Configuration for the read-only analytical report post-steps.
 
@@ -354,6 +383,13 @@ class PostSteps(BaseModel):
     # ``check``. Off by default (needs a Financial-statement glob).
     completeness: CompletenessStep = Field(default_factory=CompletenessStep)
 
+    # Transaction-level reconciliation — diffs the portal Transactions export
+    # against the sidecars by ``Order nr.`` (covers the securities legs
+    # completeness excludes). Runs alongside completeness. Off by default.
+    reconcile_transactions: ReconcileTransactionsStep = Field(
+        default_factory=ReconcileTransactionsStep
+    )
+
     # bean-check validation step — runs after every other post-step so
     # it sees the freshly-built ledger. Defaults to enabled; set
     # ``[post.check] enabled = false`` to skip.
@@ -418,6 +454,13 @@ class ImportStep(BaseModel):
     # :func:`banking_pipeline.archive.file_cash_statements`. Empty → no CSV
     # filing. ``~`` is expanded.
     cash_statement_globs: list[str] = Field(default_factory=list)
+
+    # Globs selecting portal Transactions CSV exports (e.g.
+    # ``~/Downloads/Transactions_*.csv``). Filed keep-latest into
+    # ``<archive>/transactions/`` via
+    # :func:`banking_pipeline.archive.file_transactions_csv`, feeding the
+    # ``reconcile-transactions`` step. Empty → no filing. ``~`` is expanded.
+    transactions_globs: list[str] = Field(default_factory=list)
 
 
 class BatchConfig(BaseModel):

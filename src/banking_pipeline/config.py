@@ -126,6 +126,10 @@ class Settings(BaseSettings):
     # here.
     completeness_dir: Path = Path("reports/completeness")
 
+    # Output directory for ``reconcile-transactions`` (portal Transactions
+    # export vs. ingested-sidecar diff by ``Order nr.``).
+    reconcile_transactions_dir: Path = Path("reports/reconcile-transactions")
+
     # Output directory for ``concentration`` (portfolio exposure
     # breakdown): writes ``concentration.md`` and ``holdings.csv`` here.
     concentration_reports_dir: Path = Path("reports/concentration")

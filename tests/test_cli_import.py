@@ -951,3 +951,47 @@ def test_file_cash_statements_older_than_archived_skips(tmp_path: Path) -> None:
     assert (
         root / "cash-statements" / "Cash statement by value date 20990630.csv"
     ).is_file()
+
+
+# --- portal Transactions CSV filing (file_transactions_csv) -----------------
+_TX_HEADER = (
+    "Account nr.;Trade date;Transaction type;Description of transaction;"
+    "Current account currency;Net amount in current account currency;Order nr.\n"
+)
+
+
+def _tx_csv(tmp_path: Path, name: str, end_ymd: str) -> Path:
+    """A minimal Transactions CSV whose max trade date is ``end_ymd``
+    (``YYYY/MM/DD``), cp1252-encoded."""
+
+    body = (
+        f"999999001;{end_ymd};Subscription;Sub;EUR;-400.00;100001\n"
+        "999999001;2099/01/01;Redemption;Red;EUR;1000.00;100002\n"
+    )
+    path = tmp_path / name
+    path.write_bytes((_TX_HEADER + body).encode("cp1252"))
+    return path
+
+
+def test_file_transactions_csv_files_by_max_trade_date(tmp_path: Path) -> None:
+    src = _tx_csv(tmp_path, "download.csv", "2099/03/31")
+    root = tmp_path / "archive"
+    plans = archive.file_transactions_csv([src], root, dry_run=False)
+    assert [p.status for p in plans] == ["move"]
+    dest = root / "transactions" / "Transactions 20990331.csv"
+    assert dest.is_file() and not src.exists()
+
+
+def test_file_transactions_csv_keep_latest_supersedes(tmp_path: Path) -> None:
+    root = tmp_path / "archive"
+    archive.file_transactions_csv(
+        [_tx_csv(tmp_path, "a.csv", "2099/03/31")], root, dry_run=False
+    )
+    archive.file_transactions_csv(
+        [_tx_csv(tmp_path, "b.csv", "2099/06/30")], root, dry_run=False
+    )
+    tx = root / "transactions"
+    assert [p.name for p in tx.glob("*.csv")] == ["Transactions 20990630.csv"]
+    assert [p.name for p in (tx / "_superseded").glob("*.csv")] == [
+        "Transactions 20990331.csv"
+    ]

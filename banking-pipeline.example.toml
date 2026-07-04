@@ -40,6 +40,9 @@ clean_glob = "20*.beancount"
 # # the PDF sources (a CSV isn't a PDF): keep-latest into
 # # <archive>/cash-statements/, feeding the [post.completeness] step below.
 # cash_statement_globs = ["~/Downloads/Cash_statements_by_value_date_*.csv"]
+# # Portal "Transactions" CSV exports. Filed keep-latest into
+# # <archive>/transactions/, feeding [post.reconcile_transactions] below.
+# transactions_globs = ["~/Downloads/Transactions_*.csv"]
 
 
 # --- One [[sources]] entry per ingest call -----------------------------
@@ -178,6 +181,18 @@ strict = false   # set true to fail the rebuild on coverage gaps too
 [post.completeness]
 enabled = false
 # statements = ["~/Dropbox/Finance/Accounts/Pictet/cash-statements/*.csv"]
+strict = false   # set true to fail the rebuild on UNMATCHED too
+
+
+# Transaction-level reconciliation — the counterpart to completeness that
+# covers the securities legs (which the cash-ledger check excludes). Diffs the
+# portal Transactions CSV export against the sidecars by ``Order nr.``. MISSING
+# (a booked trade not ingested) and AMOUNT_MISMATCH fail the rebuild; UNMATCHED
+# fails under strict. Point ``statements`` at the ``transactions/`` folder the
+# [import] transactions_globs above files into.
+[post.reconcile_transactions]
+enabled = false
+# statements = ["~/Dropbox/Finance/Accounts/Pictet/transactions/*.csv"]
 strict = false   # set true to fail the rebuild on UNMATCHED too
 
 
