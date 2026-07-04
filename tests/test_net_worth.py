@@ -15,15 +15,26 @@ from banking_pipeline.net_worth import (
     build_timeline,
     render_markdown,
 )
-from banking_pipeline.valuation import RawHolding, value_holdings
+from banking_pipeline.valuation import (
+    RawHolding,
+    drained_portfolio_snapshot,
+    value_holdings,
+)
 
 D = Decimal
 
 _VANGUARD = Path("tests/fixtures/en/vanguard_uk/vanguard_regular_statement.txt")
+_CLOSURE = Path(
+    "tests/fixtures/en/vanguard_uk/vanguard_regular_statement.closure.txt"
+)
 
 
 def _sec(portfolio: str, on: date, key: str, qty: Decimal, price: Decimal) -> RawHolding:
     return RawHolding(portfolio, on, key, qty, price, "GBP", False)
+
+
+def _cash(portfolio: str, on: date, amount: Decimal) -> RawHolding:
+    return RawHolding(portfolio, on, "GBP", amount, None, "GBP", True)
 
 
 def test_as_of_forward_fill_across_portfolios() -> None:
@@ -50,6 +61,50 @@ def test_as_of_forward_fill_across_portfolios() -> None:
     # A updates to 1200; B forward-filled at 500.
     assert pts[date(2025, 3, 1)].net_worth_gbp == D(1700)
     assert pts[date(2025, 3, 1)].change_gbp == D(200)
+
+
+def test_drained_zero_snapshot_retires_portfolio_in_forward_fill() -> None:
+    """A zero-value snapshot at the drain date retires the portfolio: from
+    then on the as-of fill contributes 0, not the last non-empty value."""
+
+    raws = [
+        _sec("Live", date(2025, 1, 1), "IE00B3VWN518", D(10), D(100)),  # 1000
+        _cash("ISA", date(2025, 1, 1), D(50)),   # ISA holds £50
+        _cash("ISA", date(2025, 3, 1), D(0)),    # ISA drained → £0
+    ]
+    tl = _timeline_from_raw(raws, commodities={}, rate_source=NullSource())
+    pts = {p.on_date: p for p in tl.points}
+    # Jan: Live 1000 + ISA 50.
+    assert pts[date(2025, 1, 1)].net_worth_gbp == D(1050)
+    # Mar: ISA retired to 0; without the zero snapshot the fill would carry
+    # £50 and report 1050.
+    assert pts[date(2025, 3, 1)].net_worth_gbp == D(1000)
+
+
+def test_drained_portfolio_snapshot_from_closure_fixture() -> None:
+    snap = drained_portfolio_snapshot(_CLOSURE.read_text(encoding="utf-8"))
+    assert snap is not None
+    assert snap.portfolio == "Assets:Vgd:ISA:VG0000000"
+    assert snap.on_date == date(2026, 2, 13)  # statement date (12 Feb) + 1
+    assert snap.is_cash and snap.quantity == D(0)
+
+
+def test_build_timeline_retires_isa_after_closure_statement() -> None:
+    # A funded ISA statement then its closure statement: the closure's zero
+    # snapshot supersedes, so the ISA stops contributing its last value.
+    funded = _VANGUARD.read_text(encoding="utf-8")
+    closure = _CLOSURE.read_text(encoding="utf-8")
+    tl = build_timeline(
+        [(funded, "funded.txt"), (closure, "closure.txt")],
+        commodities={},
+        rate_source=NullSource(),
+    )
+    # The ISA is the only portfolio here, so once its closure snapshot
+    # supersedes, the final point's net worth is 0 — the stale funded value
+    # (would otherwise be carried by the forward-fill) is retired.
+    last = tl.points[-1]
+    assert last.on_date == date(2026, 2, 13)
+    assert last.net_worth_gbp == D(0)
 
 
 def test_duplicate_statements_same_date_not_double_counted() -> None:
@@ -246,7 +301,7 @@ def test_render_flags_unclassified_missing_price_and_caveat() -> None:
     assert "IE00UNCLASS1" in md
     assert "Unvaluable holdings (no statement mark)" in md
     assert "IE00NOMARK01" in md
-    assert "wound-down portfolio" in md  # the B6 forward-fill caveat
+    assert "nil statement" in md  # the narrowed B6 forward-fill caveat
 
 
 def test_missing_prices_scoped_to_latest_snapshot() -> None:

@@ -21,6 +21,9 @@ from banking_pipeline.valuation import RawHolding
 D = Decimal
 
 _VANGUARD = Path("tests/fixtures/en/vanguard_uk/vanguard_regular_statement.txt")
+_CLOSURE = Path(
+    "tests/fixtures/en/vanguard_uk/vanguard_regular_statement.closure.txt"
+)
 
 
 def _sec(
@@ -70,6 +73,37 @@ def test_forward_fill_tracks_class_drift() -> None:
     assert pts[date(2025, 2, 1)].portfolios == 2
     # At Mar: equity updates to 2000, bond forward-filled 500.
     assert dict(pts[date(2025, 3, 1)].by_class_gbp) == {"equity-etf": D(2000), "bond": D(500)}
+
+
+def test_drained_zero_snapshot_retires_portfolio() -> None:
+    """A drained portfolio's zero snapshot retires it from the mix, rather
+    than lingering at its last non-empty value."""
+
+    raws = [
+        _sec("EQ", date(2025, 1, 1), _EQUITY, D(10), D(100)),  # equity 1000
+        RawHolding("ISA", date(2025, 1, 1), "GBP", D(50), None, "GBP", True),
+        RawHolding("ISA", date(2025, 3, 1), "GBP", D(0), None, "GBP", True),
+    ]
+    tl = _timeline_from_raw(raws, commodities=_COMMODITIES, rate_source=NullSource())
+    pts = {p.on_date: p for p in tl.points}
+    assert pts[date(2025, 1, 1)].net_cash_gbp == D(50)
+    # Mar: ISA drained → net cash back to 0, only equity remains.
+    assert pts[date(2025, 3, 1)].net_cash_gbp == D(0)
+    assert dict(pts[date(2025, 3, 1)].by_class_gbp) == {"equity-etf": D(1000)}
+
+
+def test_build_timeline_retires_isa_after_closure_statement() -> None:
+    tl = build_timeline(
+        [
+            (_VANGUARD.read_text(encoding="utf-8"), "funded.txt"),
+            (_CLOSURE.read_text(encoding="utf-8"), "closure.txt"),
+        ],
+        commodities={},
+        rate_source=NullSource(),
+    )
+    last = tl.points[-1]
+    assert last.on_date == date(2026, 2, 13)
+    assert last.net_worth_gbp == D(0)
 
 
 def test_unknown_class_sorts_last() -> None:
@@ -157,7 +191,7 @@ def test_render_flags_unclassified_and_caveat() -> None:
     md = render_markdown(tl)
     assert "Unclassified holdings (no metadata)" in md
     assert "IE00UNCLASS1" in md
-    assert "wound-down portfolio" in md  # the B6 forward-fill caveat
+    assert "nil statement" in md  # the narrowed B6 forward-fill caveat
 
 
 _PICTET = Path("tests/fixtures/en/pictet/monthly_statement.txt")

@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from banking_pipeline.balances_extract import extract_balances_from_statement
@@ -27,6 +27,9 @@ from banking_pipeline.fx.gbp_rates import ForwardFillRateSource, GbpRateSource
 from banking_pipeline.prices_extract import extract_prices_from_statement
 from banking_pipeline.property import Property
 from banking_pipeline.tax.uk.currency import RateGap, to_gbp
+from banking_pipeline.vanguard_statement import parse_isa_nil_statement
+from banking_pipeline.writer.format import portfolio_segment
+from banking_pipeline.writer.profile import VANGUARD_PROFILE
 
 _ZERO = Decimal(0)
 _CASH = "cash"
@@ -172,6 +175,31 @@ def raw_from_statement(text: str, source: str) -> list[RawHolding]:
                 RawHolding(portfolio, on_date, key, amount, None, "", False)
             )
     return out
+
+
+def drained_portfolio_snapshot(text: str) -> RawHolding | None:
+    """A zero-value cash :class:`RawHolding` for a recognised statement that
+    reports a **nil** balance — a wound-down account. A *timeline* report
+    (net-worth, allocation) appends this so its as-of forward-fill retires the
+    portfolio at the drain date, instead of carrying the account's last
+    non-empty snapshot forward indefinitely and overstating later points.
+
+    ``None`` unless the text is a drained Vanguard ISA regular statement (see
+    :func:`~banking_pipeline.vanguard_statement.parse_isa_nil_statement` —
+    keyed on the explicit £0.00 current-column total, so a parse failure on a
+    still-funded account is never mistaken for a wind-down). The portfolio
+    string is built exactly as the funded ISA snapshot's, so the forward-fill
+    supersedes it; the date matches the balance convention (statement + 1)."""
+
+    closure = parse_isa_nil_statement(text)
+    if closure is None or closure.account_number is None:
+        return None
+    account = (
+        f"Assets:{VANGUARD_PROFILE.account_prefix}"
+        f":{portfolio_segment(closure.account_number)}:GBP"
+    )
+    on_date = closure.statement_date + timedelta(days=1)
+    return RawHolding(_portfolio_of(account), on_date, "GBP", _ZERO, None, "GBP", True)
 
 
 

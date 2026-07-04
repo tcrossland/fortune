@@ -101,6 +101,22 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **Net-worth / allocation retire a wound-down portfolio on a nil statement**
+  — the timeline reports' as-of forward-fill carries each portfolio's last
+  snapshot forward, which overstated net worth once the Vanguard ISA wound
+  down (an empty statement created no snapshot, so the last non-empty value
+  lingered indefinitely). A recognised nil statement — a Vanguard ISA whose
+  *current-column* `Account total` is £0.00 — now emits a zero-value snapshot
+  (`drained_portfolio_snapshot` / `parse_isa_nil_statement`) that supersedes
+  it, retiring the account at its drain date. Keyed on the statement's explicit
+  nil total, **not** the absence of parsed holdings, so a parse failure on a
+  still-funded account can't be mistaken for a wind-down and phantom-collapse
+  the total. Scoped to the two timeline reports (the latest-snapshot reports
+  don't linger); the residual caveat (a portfolio that stops statementing with
+  no closing nil statement) is narrowed in both outputs. Audit item B6, now
+  behaviourally fixed. Rationale:
+  [design-decisions.md](docs/design-decisions.md#a-recognised-nil-statement-retires-its-portfolio-from-the-timeline).
+  (`valuation.py`, `vanguard_statement.py`, `net_worth.py`, `allocation.py`)
 - **`holdings` drift cross-check classifies timing vs gap** — the
   statement-vs-section-104-pool quantity check no longer blanket-flags every
   disagreement as an ingest gap. A month-end mark is struck on settled

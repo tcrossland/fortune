@@ -62,6 +62,17 @@ _HOLDING_RE = re.compile(
 _CASH_RE = re.compile(r"^Cash account\s+-\s+-\s+£(?P<bal>[\d,]+\.\d{2})\s*$", re.M)
 # Trailing ``(TICKER)`` on a fund name.
 _NAME_TICKER_RE = re.compile(r"\s*\((?P<ticker>[A-Z0-9]{2,6})\)\s*$")
+# The two-column summary a regular statement always prints:
+#   ``Product Value on <prior date> Value on <current date>``
+#   ``Account total £<prior> £<current>``
+# The *current* (rightmost) column is this statement's balance.
+_PERIOD_RE = re.compile(
+    r"Value on\s+\d{1,2}\s+\w+\s+\d{4}\s+Value on\s+(?P<current>\d{1,2}\s+\w+\s+\d{4})",
+    re.I,
+)
+_ACCOUNT_TOTAL_RE = re.compile(
+    r"Account total\s+£[\d,]+\.\d{2}\s+£(?P<current>[\d,]+\.\d{2})", re.I
+)
 
 
 @dataclass(frozen=True)
@@ -79,8 +90,43 @@ class IsaValuation:
     cash_balance: Decimal | None  # GBP, or None when no cash row is printed
 
 
+@dataclass(frozen=True)
+class IsaClosure:
+    """A *wound-down* ISA: the regular statement's current-column account
+    total is nil. Carries the statement date and account so a timeline can
+    retire the portfolio at the drain date rather than carry its last
+    non-empty snapshot forward indefinitely."""
+
+    statement_date: date
+    account_number: str | None
+
+
 def _money(s: str) -> Decimal:
     return Decimal(s.replace(",", ""))
+
+
+def parse_isa_nil_statement(text: str) -> IsaClosure | None:
+    """Recognise a *drained* Vanguard ISA regular statement — one whose
+    current-column ``Account total`` is £0.00 — and return its closure
+    marker, else ``None``.
+
+    Keyed on the statement's own explicit nil total, **not** the absence of
+    a parsed valuation table: a still-funded account always prints a non-zero
+    current total, so a parser miss on a live statement can never be mistaken
+    for a wind-down (which would phantom-collapse net worth). The two markers
+    (period line + account-total line) must both be present, so a non-Vanguard
+    or non-regular-statement document returns ``None``."""
+
+    period = _PERIOD_RE.search(text)
+    total = _ACCOUNT_TOTAL_RE.search(text)
+    if period is None or total is None:
+        return None
+    if _money(total.group("current")) != 0:
+        return None
+    return IsaClosure(
+        statement_date=parse_long_date(period.group("current")),
+        account_number=find_account_number(text),
+    )
 
 
 def parse_isa_valuation(text: str) -> IsaValuation | None:

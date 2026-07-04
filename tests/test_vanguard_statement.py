@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
 from banking_pipeline import balances_extract, prices_extract
 from banking_pipeline.models import DocumentType
-from banking_pipeline.vanguard_statement import parse_isa_valuation
+from banking_pipeline.vanguard_statement import (
+    IsaClosure,
+    parse_isa_nil_statement,
+    parse_isa_valuation,
+)
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "en" / "vanguard_uk"
 _OPENING = (_FIXTURES / "vanguard_regular_statement.txt").read_text(encoding="utf-8")
@@ -66,6 +71,37 @@ def test_closure_statement_has_no_valuation_rows() -> None:
 
 def test_no_valuation_section_returns_none() -> None:
     assert parse_isa_valuation("Some unrelated document text.") is None
+
+
+# --- parse_isa_nil_statement (drained wind-down detection) ------------------
+
+
+def test_nil_statement_detected_on_zero_current_account_total() -> None:
+    # The closure fixture's current-column ``Account total`` is £0.00.
+    assert parse_isa_nil_statement(_CLOSURE) == IsaClosure(
+        statement_date=date(2026, 2, 12), account_number="VG0000000"
+    )
+
+
+def test_nil_statement_none_when_current_total_nonzero() -> None:
+    # The funded opening statement must not read as a wind-down — its
+    # current-column total is non-zero, so a live account is never zeroed.
+    assert parse_isa_nil_statement(_OPENING) is None
+
+
+def test_nil_statement_none_on_unrelated_document() -> None:
+    assert parse_isa_nil_statement("Some unrelated document text.") is None
+
+
+def test_nil_statement_none_when_only_prior_column_is_zero() -> None:
+    # Prior column £0.00 but current £5.00 → funded, not a wind-down. Guards
+    # against matching the wrong (left) column.
+    text = (
+        "Account number: VG0000000\n"
+        "Product Value on 13 November 2025 Value on 12 February 2026\n"
+        "Account total £0.00 £5.00\n"
+    )
+    assert parse_isa_nil_statement(text) is None
 
 
 # --- balances_extract ------------------------------------------------------

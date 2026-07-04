@@ -615,10 +615,14 @@ usage examples; this is the behavioural reference.
   resamples onto a first-of-month grid instead of one row per raw statement
   date, dropping the mid-month rows where only the Vanguard ISA or a
   property valuation refreshed (the rebuild step's `net_worth_monthly`
-  toggle does the same).
+  toggle does the same). A recognised nil statement (a Vanguard ISA whose
+  current-column account total is £0.00) emits a zero-value snapshot via
+  `drained_portfolio_snapshot`, so a wound-down account is retired from the
+  forward-fill at its drain date rather than lingering at its last value.
 - `allocation` — asset-allocation-over-time. At each timeline date reports
   the asset-class mix as a share of gross long, with net cash shown
-  separately. Writes `allocation.md` + `allocation.csv`.
+  separately. Writes `allocation.md` + `allocation.csv`. Retires a
+  wound-down portfolio on a recognised nil statement, as `net-worth` does.
 - `portfolio-allocation` — per-portfolio allocation of the *latest*
   valuation (cross-portfolio summary + per-portfolio asset-class + holdings;
   cash netted within a portfolio). Writes `portfolio-allocation.md` + `.csv`.

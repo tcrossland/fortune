@@ -80,6 +80,42 @@ Trade-off accepted: within the 12-month window a real (2–11 month) hole is
 filled silently with a stale rate and isn't flagged — acceptable because
 the only recurring gap is the single unpublished current month.
 
+## A recognised nil statement retires its portfolio from the timeline
+
+The net-worth and allocation timelines combine portfolios statemented on
+different cadences with an as-of forward-fill: each date sums every
+portfolio's latest snapshot on or before it, so a portfolio between statements
+keeps contributing its last value. Correct for a dormant account — wrong for a
+**closed** one. An empty statement parses to no holdings, so it never creates a
+snapshot, so the forward-fill carries the account's last non-empty value
+forward indefinitely, overstating every later point. This went live when the
+Vanguard ISA wound down.
+
+The naive fix — emit a zero snapshot whenever a statement parses to zero
+holdings — is unsafe, because an empty parse is **ambiguous**: a genuinely
+closed account and a *parse failure on a still-funded account* look identical,
+and zeroing the latter produces a phantom net-worth collapse (the very failure
+the GBP forward-fill decision above was written to avoid). The two errors
+aren't symmetric: carrying a stale value overstates by a bounded, known amount;
+zeroing a live account understates by an alarming, wrong one.
+
+So `drained_portfolio_snapshot` keys the retirement on the statement's **own
+explicit nil total** — a Vanguard ISA regular statement whose *current-column*
+`Account total` is £0.00 (`parse_isa_nil_statement`) — not on the absence of
+parsed holdings. A still-funded account always prints a non-zero current total,
+so a parser miss on a live statement can never be mistaken for a wind-down. On
+that signal the builder emits a zero-value cash snapshot with the portfolio
+string and date built exactly as the funded snapshot's, so the forward-fill
+supersedes the last non-empty value and the account retires at its drain date.
+
+Scope is the two **timeline** reports (net-worth, allocation) — the
+latest-snapshot reports (concentration, portfolio-allocation) don't have the
+lingering bug, since a drained account simply isn't in the current snapshot.
+The residual caveat, now narrowed in both reports' output: a portfolio that
+*stops statementing entirely* — with no closing nil statement — still lingers,
+because there is no nil total to key on. (Audit item B6, previously closed as a
+documented caveat, now behaviourally fixed.)
+
 ## Reconcile delegates its verdict to `bean-check`
 
 `reconcile` compares statement-asserted balances against

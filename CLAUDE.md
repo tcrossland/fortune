@@ -229,6 +229,15 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped (fix, no plan): net-worth / allocation **retire a wound-down
+  portfolio on a recognised nil statement**. The as-of forward-fill lingered a
+  closed account's last non-empty snapshot (overstating net worth once the ISA
+  wound down); `drained_portfolio_snapshot` / `parse_isa_nil_statement` now
+  emit a zero-value snapshot when a Vanguard ISA's *current-column* `Account
+  total` is £0.00 — keyed on the explicit nil total, not an empty parse, so a
+  parse failure on a funded account can't phantom-collapse the total. Scoped to
+  the two timeline reports; audit B6 now behaviourally fixed. Rationale:
+  [design-decisions.md](docs/design-decisions.md#a-recognised-nil-statement-retires-its-portfolio-from-the-timeline).
 - Last shipped (fix, no plan): the `holdings` drift cross-check classifies
   each statement-vs-pool disagreement **timing vs gap** instead of blanket-
   flagging every one as an ingest gap. A month-end mark is settlement-basis, so

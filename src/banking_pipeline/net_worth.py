@@ -11,11 +11,12 @@ each portfolio's latest snapshot **on or before** that date (an as-of
 forward-fill). A point therefore appears at every statement date, and the
 net worth steps as each new statement arrives.
 
-Caveat: a wound-down portfolio keeps contributing its last *parsed*
-snapshot until a newer one supersedes it — an empty valuation table parses
-to no holdings and so doesn't refresh the forward-fill. For this single
-user that only affects the small Vanguard ISA, but it means a closed
-account can linger until its next (empty) statement is replaced by data.
+A recognised **nil** statement (a Vanguard ISA whose current-column account
+total is £0.00) retires its portfolio at the drain date, via a zero-value
+snapshot (:func:`~banking_pipeline.valuation.drained_portfolio_snapshot`), so
+a wound-down account doesn't linger at its last non-empty value. Residual
+caveat: a portfolio that simply *stops* statementing — with no closing nil
+statement — still keeps contributing its last snapshot until superseded.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.valuation import (
     RawHolding,
     as_of,
+    drained_portfolio_snapshot,
     property_raws,
     raw_from_statement,
     value_holdings,
@@ -95,6 +97,9 @@ def build_timeline(
     raws: list[RawHolding] = []
     for text, source in statements:
         raws.extend(raw_from_statement(text, source))
+        drained = drained_portfolio_snapshot(text)
+        if drained is not None:
+            raws.append(drained)
     raws.extend(property_raws(properties or []))
     return _timeline_from_raw(
         raws, commodities=commodities, rate_source=rate_source, monthly=monthly
@@ -246,10 +251,10 @@ def render_markdown(timeline: NetWorthTimeline) -> str:
         )
     lines.append("")
     lines += [
-        "> Caveat: a wound-down portfolio keeps contributing its last "
-        "non-empty snapshot until a newer statement supersedes it (an empty "
-        "valuation doesn't refresh the as-of fill), so a closed account can "
-        "linger and overstate a later point.",
+        "> Caveat: a recognised nil statement (£0.00 account total) retires "
+        "its portfolio at the drain date. A portfolio that simply stops "
+        "statementing — with no closing nil statement — still keeps "
+        "contributing its last snapshot until superseded.",
         "",
     ]
 

@@ -43,6 +43,7 @@ from banking_pipeline.tax.uk.currency import RateGap
 from banking_pipeline.valuation import (
     RawHolding,
     as_of,
+    drained_portfolio_snapshot,
     property_raws,
     raw_from_statement,
     value_holdings,
@@ -116,6 +117,9 @@ def build_timeline(
     raws: list[RawHolding] = []
     for text, source in statements:
         raws.extend(raw_from_statement(text, source))
+        drained = drained_portfolio_snapshot(text)
+        if drained is not None:
+            raws.append(drained)
     raws.extend(property_raws(properties or []))
     return _timeline_from_raw(raws, commodities=commodities, rate_source=rate_source)
 
@@ -253,10 +257,10 @@ def render_markdown(timeline: AllocationTimeline) -> str:
     )
     lines.append("")
     lines += [
-        "> Caveat: a wound-down portfolio keeps contributing its last "
-        "non-empty snapshot until a newer statement supersedes it (an empty "
-        "valuation doesn't refresh the as-of fill), so a closed account can "
-        "linger in the mix.",
+        "> Caveat: a recognised nil statement (£0.00 account total) retires "
+        "its portfolio at the drain date. A portfolio that simply stops "
+        "statementing — with no closing nil statement — still keeps "
+        "contributing its last snapshot to the mix until superseded.",
         "",
     ]
 
