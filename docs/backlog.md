@@ -130,15 +130,27 @@ not tax advice" framing.
   source for the **shipped** `completeness` command, which today parses the
   current-account cash ledger out of a `Financial-statement` PDF and *recovers
   each movement's sign from the running-balance delta*. The e-banking `Cash
-  statements` xlsx gives the same ledger structured across both mandates and all
-  currency sub-accounts, with a **signed `Net amount`**, a **running `Balance`
-  per sub-account** (`prev + net == balance` holds exactly — a free integrity
-  self-check, no sign-recovery needed), and an `Order nr.` on every row
+  statements` export gives the same ledger structured across both mandates and
+  all currency sub-accounts, with a **signed `Net amount`**, a **running
+  `Balance` per sub-account** (`prev + net == balance` holds exactly — a free
+  integrity self-check, no sign-recovery needed), and an `Order nr.` on every row
   (ID-joinable to the sidecar `transaction_number`). Validated by an `Order nr.`
-  join over 2021→2026: **0 missing** (every cash movement ingested) and every
-  ingested transaction absent from the ledger legitimately cash-neutral
-  (fund→fund switches, limit extensions, in-specie receipts) or settlement-timing
-  (see rule 3).
+  join over 2021→2026 (both the `.xlsx` and `.csv` forms — identical result):
+  **0 missing** (every cash movement ingested) and every ingested transaction
+  absent from the ledger legitimately cash-neutral (fund→fund switches, limit
+  extensions, in-specie receipts) or settlement-timing (see rule 3).
+
+  **Prefer the `.csv` export over the `.xlsx`.** Same 22 columns and the same
+  `Order nr.` key, but `.csv` is stdlib-parseable (`csv` module — no `openpyxl`
+  dependency, so it stays clear of the licence-hygiene surface too) and
+  plain-text. Its format needs three things right, one of them a real gotcha:
+  - **Encoding is Windows-1252 (cp1252), *not* UTF-8** — the `°` in `N° de
+    transacción` / `Gastos … 3° trimestre` is byte `0xb0`, so a naive UTF-8
+    read *crashes*. Decode `cp1252` (or `latin-1`).
+  - **Delimiter is `;`** (semicolon), line endings **CRLF** (read with
+    `newline=''`).
+  - Dates are `YYYY/MM/DD` strings; numbers are dot-decimal with no thousands
+    separator (clean `Decimal`).
 
   **Export it *by value date*, not booking date.** `completeness` keys each cash
   line on its `settlement_date`, which *is* the statement's value date
