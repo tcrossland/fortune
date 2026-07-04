@@ -9,6 +9,7 @@ left to the statement mark, so :attr:`HoldingBasis.market_value` is ``None``.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import ClassVar
 
 from banking_pipeline.basis_lens import HoldingBasis
@@ -48,6 +49,23 @@ class UkSection104Lens:
             opening_positions=self.opening_positions,
             cost_adjustments=self.cost_adjustments,
         )
+        # Decompose the ERI base-cost uplift: the same pool built *without* the
+        # dated cost adjustments, diffed against the adjusted cost, is exactly
+        # the ERI portion left in each residual pool — subsequent disposals
+        # remove it proportionally at the pool average, so it can't be read off
+        # the raw ERI figures. Only run the second pass when there are
+        # adjustments to decompose.
+        base_pools = (
+            match_history(
+                self.transactions,
+                commodities=self.commodities,
+                source=self.source,
+                opening_positions=self.opening_positions,
+                cost_adjustments=None,
+            ).residual_pools
+            if self.cost_adjustments
+            else {}
+        )
         return {
             isin: HoldingBasis(
                 isin=isin,
@@ -55,6 +73,11 @@ class UkSection104Lens:
                 cost_amount=pool.cost_gbp,
                 currency="GBP",
                 market_value=None,
+                cost_adjustment=(
+                    pool.cost_gbp - base_pools[isin].cost_gbp
+                    if isin in base_pools
+                    else Decimal("0")
+                ),
             )
             for isin, pool in history.residual_pools.items()
             if pool.qty > 0

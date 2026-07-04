@@ -618,7 +618,13 @@ usage examples; this is the behavioural reference.
   lens (tax-exempt, no section 104 basis); ISA holdings still show from the
   statement side with a blank cost. ERI base-cost uplift is folded in across
   the whole history (`cumulative_base_cost_adjustments`), so a reporting fund's
-  cost matches the section 104 pool. `--source` (default
+  cost matches the section 104 pool — and the report **decomposes it**: an
+  `of which ERI` column (`eri_uplift_gbp`) shows the ERI portion inside each
+  cost, the main reason the section 104 cost differs from a broker's book cost.
+  The lens computes it by building the pool a second time *without* the cost
+  adjustments and diffing (`HoldingBasis.cost_adjustment`) — the ERI *remaining*
+  in the residual pool after disposals remove it proportionally, not the raw
+  ERI figure. `--source` (default
   `data`) points at the sidecars; `--strict` exits non-zero on any valuation
   gap. Securities-only (no cash / property). Seam: `basis_lens.py` (neutral
   `BasisLens` / `HoldingBasis`) + `tax/uk/basis.py` (`UkSection104Lens`).

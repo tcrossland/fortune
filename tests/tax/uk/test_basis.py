@@ -106,9 +106,34 @@ def test_lens_applies_eri_cost_adjustment() -> None:
         transactions=txs, commodities=commodities,
         cost_adjustments={isin: [PoolCostAdjustment(date(2024, 6, 1), Decimal("50"))]},
     ).basis_for()
-    # The ERI base-cost uplift raises the pooled cost by £50.
+    # The ERI base-cost uplift raises the pooled cost by £50, and the lens
+    # decomposes that portion into ``cost_adjustment``.
     assert plain[isin].cost_amount == Decimal("1000")
+    assert plain[isin].cost_adjustment == Decimal("0")
     assert lifted[isin].cost_amount == Decimal("1050")
+    assert lifted[isin].cost_adjustment == Decimal("50")
+
+
+def test_lens_eri_uplift_reduced_proportionally_by_later_disposal() -> None:
+    from banking_pipeline.tax.uk.section_104 import PoolCostAdjustment
+
+    isin = "IE00B3VWN518"
+    txs = [
+        _tx(doc_type=DocumentType.BUY_ETF, isin=isin, qty=Decimal("100"),
+            amount=Decimal("-1000"), on=date(2024, 5, 1)),  # avg 10
+        _tx(doc_type=DocumentType.SELL_ETF, isin=isin, qty=Decimal("-50"),
+            amount=Decimal("700"), on=date(2025, 6, 1)),  # after the uplift
+    ]
+    # ERI +£50 on 2024-06-01 lifts cost to 1050 (avg 10.50); the later sale of
+    # 50 units removes 525, so half the ERI leaves with it. The decomposition
+    # must be the ERI *remaining* in the residual pool (25), not the raw £50 —
+    # this is the mechanism behind the real PICTET-EM figures.
+    lifted = UkSection104Lens(
+        transactions=txs, commodities={isin: _reporting(isin)},
+        cost_adjustments={isin: [PoolCostAdjustment(date(2024, 6, 1), Decimal("50"))]},
+    ).basis_for()
+    assert lifted[isin].cost_amount == Decimal("525.00")
+    assert lifted[isin].cost_adjustment == Decimal("25.00")
 
 
 def test_lens_includes_deeply_discounted_holding() -> None:

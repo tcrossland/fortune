@@ -274,11 +274,12 @@ def test_render_csv_blank_cells_for_unmatched_basis() -> None:
     rows = render_csv_rows(join_holdings(valuation, {held: _basis(held, D("60"), D("600"))}))
     assert rows[0] == [
         "key", "name", "currency", "quantity", "market_value_gbp",
-        "cost_basis_gbp", "unrealised_gbp", "pool_qty",
+        "cost_basis_gbp", "eri_uplift_gbp", "unrealised_gbp", "pool_qty",
     ]
     by_key = {r[0]: r for r in rows[1:]}
-    assert by_key[held][5:8] == ["600.00", "600.00", "60.00"]
-    assert by_key[isa][5:8] == ["", "", ""]  # no matched basis
+    # cost, eri (0 — the stub basis has no adjustment), unrealised, pool.
+    assert by_key[held][5:9] == ["600.00", "0.00", "600.00", "60.00"]
+    assert by_key[isa][5:9] == ["", "", "", ""]  # no matched basis
 
 
 def test_build_report_end_to_end_wires_statements_and_lens() -> None:

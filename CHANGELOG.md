@@ -393,6 +393,17 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Bookkeeping & accounting
 
+- **`holdings` decomposes the ERI base-cost uplift** — a new `of which ERI`
+  column (`eri_uplift_gbp`) splits out the excess-reportable-income portion
+  inside each section 104 cost, the main reason the UK basis differs from a
+  broker's book cost on a reporting fund. The lens computes it by building the
+  pool a second time without the cost adjustments and diffing, so it's the ERI
+  *remaining* in the residual pool (disposals remove it proportionally at the
+  pool average), not the raw ERI figure — the proportional case is unit-tested.
+  Verified against the real holdings (the per-fund ERI matches a hand-computed
+  decomposition). A neutral `HoldingBasis.cost_adjustment` field carries it, so
+  a future non-UK lens can populate it too. (`holdings.py`, `basis_lens.py`,
+  `tax/uk/basis.py`)
 - **`reconcile-transactions` — cross-check the sidecars against the portal
   Transactions export** — the transaction-level counterpart to `completeness`
   (which covers only the cash ledger). Diffs every trade leg in the portal

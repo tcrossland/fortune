@@ -29,6 +29,12 @@ class HoldingBasis:
     case, e.g. a GBP lens against GBP statement marks); a non-GBP lens
     supplies its own market value, because statement-date FX differs between
     jurisdictions.
+
+    ``cost_adjustment`` is the portion of ``cost_amount`` contributed by dated
+    base-cost adjustments rather than the raw acquisition cost — for the UK
+    lens, the ERI (excess reportable income) uplift a reporting fund adds to
+    the section 104 pool. It's what separates the lens's cost from a broker's
+    book cost, so the report can show it. ``0`` when the lens has none.
     """
 
     isin: str
@@ -36,6 +42,7 @@ class HoldingBasis:
     cost_amount: Decimal
     currency: str
     market_value: Decimal | None = None
+    cost_adjustment: Decimal = Decimal("0")
 
 
 class BasisLens(Protocol):

@@ -82,6 +82,10 @@ class HoldingRow:
     cost_basis_gbp: Decimal | None
     unrealised_gbp: Decimal | None
     basis_qty: Decimal | None  # the lens's quantity, for the cross-check
+    # The ERI (base-cost adjustment) portion of ``cost_basis_gbp`` — what makes
+    # the section 104 cost differ from a broker's book cost on a reporting
+    # fund. ``None`` when the lens has no entry; ``0`` when it has no ERI.
+    eri_uplift_gbp: Decimal | None
 
 
 @dataclass(frozen=True)
@@ -110,6 +114,7 @@ class HoldingsReport:
     total_market_gbp: Decimal  # every holding
     total_cost_gbp: Decimal  # holdings with a matched basis only
     total_unrealised_gbp: Decimal  # holdings with a matched basis only
+    total_eri_gbp: Decimal  # ERI portion of total_cost_gbp (base-cost uplift)
     # Statement quantity vs section 104 pool quantity disagreements.
     qty_drifts: tuple[QtyDrift, ...]
     # ISINs the lens still holds (qty > 0) that no current statement marks.
@@ -204,6 +209,7 @@ def join_holdings(
             cost: Decimal | None = hb.cost_amount
             unrealised: Decimal | None = market - hb.cost_amount
             basis_qty: Decimal | None = hb.held_qty
+            eri_uplift: Decimal | None = hb.cost_adjustment
             if abs(agg.quantity - hb.held_qty) > _QTY_TOL:
                 mv = movement.get(key, _ZERO)
                 drifts.append(
@@ -214,7 +220,7 @@ def join_holdings(
                 )
         else:
             market = agg.value_gbp
-            cost = unrealised = basis_qty = None
+            cost = unrealised = basis_qty = eri_uplift = None
         rows.append(
             HoldingRow(
                 key=key,
@@ -225,6 +231,7 @@ def join_holdings(
                 cost_basis_gbp=cost,
                 unrealised_gbp=unrealised,
                 basis_qty=basis_qty,
+                eri_uplift_gbp=eri_uplift,
             )
         )
 
@@ -234,6 +241,9 @@ def join_holdings(
     )
     total_unrealised = sum(
         (r.unrealised_gbp for r in rows if r.unrealised_gbp is not None), _ZERO
+    )
+    total_eri = sum(
+        (r.eri_uplift_gbp for r in rows if r.eri_uplift_gbp is not None), _ZERO
     )
     unmatched = tuple(sorted(k for k in basis if k not in matched))
     # An unmatched holding: the pool holds it (qty > 0), no statement marks it
@@ -248,6 +258,7 @@ def join_holdings(
         total_market_gbp=total_market,
         total_cost_gbp=total_cost,
         total_unrealised_gbp=total_unrealised,
+        total_eri_gbp=total_eri,
         qty_drifts=tuple(drifts),
         unmatched_basis=unmatched,
         unmatched_kind=unmatched_kind,
@@ -354,25 +365,30 @@ def render_markdown(report: HoldingsReport) -> str:
         "",
         f"As at **{as_of}**. Cost basis is **UK section 104 (GBP)** — a UK-tax "
         "lens, not Pictet's EUR/Spanish figures and not equal to them. Market "
-        "value is the statement mark converted to GBP. ISA holdings appear but "
-        "are UK-tax-exempt (a Spanish-resident lens would tax them) and, keyed "
-        "by ticker not ISIN, carry no section 104 cost basis here. Reporting "
-        "aid, not advice.",
+        "value is the statement mark converted to GBP. The **ERI** column is "
+        "the excess-reportable-income uplift already inside the cost basis "
+        "(what a reporting fund adds to the pool, and the main reason the "
+        "section 104 cost differs from a broker's book cost). ISA holdings "
+        "appear but are UK-tax-exempt (a Spanish-resident lens would tax them) "
+        "and, keyed by ticker not ISIN, carry no section 104 cost basis here. "
+        "Reporting aid, not advice.",
         "",
-        "| Holding | Qty | Market (GBP) | Cost (GBP) | Unrealised (GBP) |",
-        "| --- | ---: | ---: | ---: | ---: |",
+        "| Holding | Qty | Market (GBP) | Cost (GBP) | of which ERI | "
+        "Unrealised (GBP) |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
     ]
     for r in report.rows:
         lines.append(
             f"| {r.name} ({r.key}) | {money(r.quantity)} | "
             f"{gbp(r.market_value_gbp)} | {_amount(r.cost_basis_gbp)} | "
-            f"{_amount(r.unrealised_gbp)} |"
+            f"{_amount(r.eri_uplift_gbp)} | {_amount(r.unrealised_gbp)} |"
         )
     lines += [
         f"| **Total** | | {gbp(report.total_market_gbp)} | "
-        f"{gbp(report.total_cost_gbp)} | {gbp(report.total_unrealised_gbp)} |",
+        f"{gbp(report.total_cost_gbp)} | {gbp(report.total_eri_gbp)} | "
+        f"{gbp(report.total_unrealised_gbp)} |",
         "",
-        "Cost and unrealised totals cover only holdings with a matched "
+        "Cost, ERI and unrealised totals cover only holdings with a matched "
         "section 104 basis; the market-value total covers every holding.",
         "",
     ]
@@ -443,13 +459,14 @@ def render_csv_rows(report: HoldingsReport) -> list[list[str]]:
 
     rows = [[
         "key", "name", "currency", "quantity", "market_value_gbp",
-        "cost_basis_gbp", "unrealised_gbp", "pool_qty",
+        "cost_basis_gbp", "eri_uplift_gbp", "unrealised_gbp", "pool_qty",
     ]]
     for r in report.rows:
         rows.append([
             r.key, r.name, r.currency, money(r.quantity),
             money(r.market_value_gbp),
             money(r.cost_basis_gbp) if r.cost_basis_gbp is not None else "",
+            money(r.eri_uplift_gbp) if r.eri_uplift_gbp is not None else "",
             money(r.unrealised_gbp) if r.unrealised_gbp is not None else "",
             money(r.basis_qty) if r.basis_qty is not None else "",
         ])
