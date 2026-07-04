@@ -39,3 +39,4 @@ def test_limit_extension_extracts_zero_amount_event() -> None:
     assert "C/a limit GBP" in tx.narration
     assert "26.02.2025-26.02.2026" in tx.narration
     assert tx.account_number == "P-999999.999"
+    assert tx.transaction_number == "1168719651"

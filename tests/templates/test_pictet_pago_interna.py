@@ -58,3 +58,4 @@ def test_pago_interna_extracts_single_transaction() -> None:
     # producing the ``Revolut`` segment that the writer routes the
     # source-leg debit to.
     assert tx.counter_account == "Revolut"
+    assert tx.transaction_number == "999999999"

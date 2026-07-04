@@ -376,6 +376,19 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Bookkeeping & accounting
 
+- **Order number captured on three previously-unkeyed doctypes** — the
+  `pago_interna`, `final_redemption`, and `limit_extension` templates now
+  populate `Transaction.transaction_number` from the document header
+  (`N° de transacción:` / `Transaction no.:`) via the shared
+  `find_transaction_number` helper their siblings already used, so **every**
+  Pictet sidecar row is now keyed to Pictet's per-document order number
+  (previously 8 rows carried `transaction_number: null`). That number is the
+  join key for reconciling the sidecars against Pictet's portal Transactions
+  export and strengthens exact-match dedup for re-ingests of these doctypes.
+  Rendered ledger is unchanged except a `no:` trailer on the `pago_interna`
+  entry; sidecars serialize the field regardless of the builder. Enables the
+  `reconcile-export` backlog item. (`templates/pictet/{pago_interna,
+  final_redemption,limit_extension}.py`)
 - **Revolut self-to-self contra-leg → `Equity:Transfers`** — the
   Pictet↔Revolut transfer counter-leg now books to
   `Equity:Transfers:Revolut:<ccy>` instead of `Assets:Revolut:<ccy>`.

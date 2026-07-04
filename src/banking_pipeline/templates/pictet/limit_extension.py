@@ -27,6 +27,7 @@ from banking_pipeline.models import RawDocument, Transaction
 from banking_pipeline.templates.pictet._common import (
     find_amount_field,
     find_field,
+    find_transaction_number,
     parse_pictet_date,
     resolve_account_number,
 )
@@ -73,6 +74,7 @@ class PictetLimitExtensionTemplate:
             quantity=None,
             price=None,
             account_number=resolve_account_number(text),
+            transaction_number=find_transaction_number(text),
             source_path=doc.path,
         )
         return [tx]

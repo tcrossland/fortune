@@ -229,6 +229,15 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped (fix, no plan): **order number now captured on the three
+  previously-unkeyed doctypes**. `pago_interna` / `final_redemption` /
+  `limit_extension` templates now call the shared `find_transaction_number`
+  helper (their siblings already did), so **every** Pictet sidecar row carries
+  `transaction_number` (was 8 rows at `null`) — the join key for reconciling
+  against Pictet's portal Transactions export and for exact-match dedup.
+  Verified against the export: all sidecar transactions present, cash-leg
+  amounts agree to the cent. Regenerated the sidecars via `rebuild`
+  (`bean-check` clean). Enables the `reconcile-export` backlog item.
 - Last shipped (fix, no plan): `mandate-returns` now **counts distributing-fund
   income as return, not an inferred flow**. The price-only holdings gain
   stripped a distributing fund's cash payout into the flow residual,

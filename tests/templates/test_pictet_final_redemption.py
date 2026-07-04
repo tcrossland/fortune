@@ -42,6 +42,7 @@ def test_final_redemption_extracts_single_transaction() -> None:
     assert tx.isin == "ZZ00AB97OD0"
     assert "PWM LG VOL BALANC" in tx.narration
     assert tx.account_number == "P-999999.999"
+    assert tx.transaction_number == "1178982635"
 
 
 def test_final_redemption_rejects_fund_redemption() -> None:

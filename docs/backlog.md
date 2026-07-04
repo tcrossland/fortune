@@ -88,6 +88,26 @@ not tax advice" framing.
   confidence and which rule fired into a queryable index, so the
   lowest-confidence documents in a run can be surfaced for manual review
   rather than trusted silently.
+- **`reconcile-export` — cross-check the sidecars against the portal
+  Transactions export.** Pictet's e-banking "Transactions" report exports as
+  a machine-readable workbook (one row per leg; `Order nr.` is the join key,
+  ISIN and per-leg amounts present) covering every trade type across both LU
+  mandates over multi-year windows. Same idea as `completeness` (which diffs
+  only the current-account cash statement) but ID-keyed and covering
+  securities, FX, fees, and income. A one-off reconciliation of a full
+  five-year export matched every ID-keyed sidecar transaction with the
+  cash-leg amount agreeing to the cent, and the only unmatched export rows
+  were benign (FX-forward *open* legs, which we book at settlement, and the
+  order-number-less doctypes above) — so this is a low-risk cross-check to
+  formalise. Design notes: the export's GBP columns are **broker-side FX,
+  not HMRC rates** (cross-check only, never feed tax); it splits one logical
+  trade into multiple legs (aggregate by `Order nr.` before comparing); and
+  it's a bulk feed with no per-document provenance, so it's a reconciliation
+  input, not an ingest source. The order-number capture this depends on is
+  **shipped** — every sidecar row now carries `transaction_number` (see the
+  CHANGELOG), so the join is fully ID-based. (`limit_extension` is the one
+  doctype that carries an order number but never appears in this export — a
+  credit-facility event — so it won't cross-check here regardless.)
 - **`prune-tax-reports` differing-twin convergence.** A non-retained daily
   P&L report whose same-named `_superseded/` twin *differs* in content can't
   be superseded (move-aside no-ops on the name collision) and warns on every

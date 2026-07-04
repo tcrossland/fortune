@@ -41,6 +41,7 @@ from banking_pipeline.templates.pictet._common import (
     find_amount_field,
     find_comment_line,
     find_field,
+    find_transaction_number,
     parse_pictet_date,
     resolve_account_number,
 )
@@ -126,6 +127,7 @@ class PictetPagoInternaTemplate:
             price=None,
             counter_account=counter_account,
             account_number=resolve_account_number(text, ES_LABELS),
+            transaction_number=find_transaction_number(text, ES_LABELS),
             source_path=doc.path,
         )
         return [tx]

@@ -26,6 +26,7 @@ from banking_pipeline.templates.pictet._common import (
     find_amount_field,
     find_field,
     find_subject_line,
+    find_transaction_number,
     parse_pictet_amount,
     parse_pictet_date,
     resolve_account_number,
@@ -78,6 +79,7 @@ class PictetFinalRedemptionTemplate:
             quantity=parse_pictet_amount(quantity_raw) if quantity_raw else None,
             price=price_match[1],
             account_number=resolve_account_number(text),
+            transaction_number=find_transaction_number(text),
             source_path=doc.path,
         )
         return [tx]
