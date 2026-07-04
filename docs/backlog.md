@@ -125,6 +125,26 @@ not tax advice" framing.
   Pictet book cost (a third basis), spot (not month-end) valuation date — a
   management-view cross-check, never a tax feed. Overlaps the deferred
   balance-sheet phase-4 cost-basis overlay.
+- **Portal `Cash statements` export as a `completeness` input.** The
+  cash-ledger sibling of `reconcile-export`/`reconcile-holdings`, and a cleaner
+  source for the **shipped** `completeness` command, which today parses the
+  current-account cash ledger out of a `Financial-statement` PDF and *recovers
+  each movement's sign from the running-balance delta*. The e-banking `Cash
+  statements by booking date` xlsx gives the same ledger structured across both
+  mandates and all currency sub-accounts, with a **signed `Net amount`**, a
+  **running `Balance` per sub-account** (`prev + net == balance` holds exactly —
+  a free integrity self-check, no sign-recovery needed), and an `Order nr.` on
+  every row (ID-joinable to the sidecar `transaction_number`). Validated in a
+  one-off `Order nr.` join over 2021→2026: **0 missing** (every cash movement
+  ingested) and every ingested transaction absent from the ledger legitimately
+  cash-neutral (fund→fund switches, limit extensions, in-specie receipts). Two
+  caveats for whoever formalises it: (a) **export all currency sub-accounts** —
+  a first download silently omitted the HKD sub-account, and the ID-keyed diff
+  is what caught it (8 HKD trades/income flagged as ledger-only until the
+  re-pull); (b) it's *by booking date* — the export also offers *by value date*,
+  and it carries trade/booking/value dates, so a reader picks the date the
+  check keys on. A bulk feed with no per-document provenance, so a reconciliation
+  input, not an ingest source.
 - **`prune-tax-reports` differing-twin convergence.** A non-retained daily
   P&L report whose same-named `_superseded/` twin *differs* in content can't
   be superseded (move-aside no-ops on the name collision) and warns on every
