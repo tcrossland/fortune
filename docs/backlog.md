@@ -146,6 +146,24 @@ not tax advice" framing.
     fix already flagged: whether **relieved-year ERI** should uplift a UK base
     cost at all (a rebasing question); the lens applies ERI uplift
     unconditionally, so it inherits whatever the pipeline settles.
+- **`mandate-returns` distributing-fund income leak (lower priority).** The
+  holdings-based return is a *price* return: `market gain = qty × Δprice`, and
+  the per-period leftover (`ΔValue − market gain`) is treated as an inferred
+  external flow and excluded from performance. A **distributing** fund's cash
+  payout lands in that leftover, so it is stripped out as a "flow" — the return
+  understates by the distributed yield of any income-paying holding (an
+  accumulating fund retains income into its price, so it's unaffected). Both
+  TWR and MWR are contaminated even when the distribution sits below the
+  `_FLOW_REPORT_THRESHOLD` and isn't surfaced. Fix: net the known distribution
+  income for the portfolio/period back into return instead of the flow, reusing
+  `income.py`'s existing distribution identifier (`DIVIDEND_TYPES` +
+  `distributions_as_interest`) — a shared helper. `income.py` itself is *not*
+  wrong (it records distributions as income correctly); it's only the source of
+  the recognition logic. Contained to `mandate_returns.py` + a golden update.
+  Bounded impact — most of the book is accumulating funds, so the aggregate
+  drag is small; matters only if the TWR/MWR figures drive a mandate judgement
+  and income-distributing holdings are material. Sits **behind** the FIG
+  holdings-split enhancement above.
 - **Unrealised-P&L source options (decide before the EUR lens / `pnl` report).**
   Three ways to get a non-UK / management-view cost basis + unrealised P&L,
   weighed:
