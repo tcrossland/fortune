@@ -1,11 +1,14 @@
 """Reconcile ingested transactions against the portal Transactions export.
 
-The e-banking "Transactions" CSV lists every trade leg Pictet booked — across
-both mandates, every trade type — keyed by ``Order nr.`` (the same id captured
-in each sidecar's ``transaction_number``). ``completeness`` checks only the cash
-subset (current-account movements); this checks the *whole* transaction feed, so
-a securities trade the pipeline failed to ingest — which would corrupt the
-section 104 pool and CGT — surfaces here.
+The e-banking "Transactions" CSV lists **every** transaction Pictet booked —
+across both mandates, every type: securities trades *and* the cash events
+(dividends, interest, fees, payments, deposits) — each keyed by ``Order nr.``
+(the same id captured in each sidecar's ``transaction_number``). That
+comprehensiveness is load-bearing (see ``_NON_TRANSACTION_DOCTYPES``).
+``completeness`` checks only the cash subset (current-account movements); this
+checks the *whole* transaction feed, so a securities trade the pipeline failed
+to ingest — which would corrupt the section 104 pool and CGT — surfaces here,
+as does a stray in any other transaction type.
 
 ID-keyed (exact ``Order nr.`` match, no date tolerance):
 
