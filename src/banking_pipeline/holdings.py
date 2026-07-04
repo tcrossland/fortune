@@ -13,6 +13,14 @@ Two by-products beyond the headline table:
 - an **unmatched-basis** list — securities the lens still holds that no current
   statement marks (a disposal not yet ingested, or a stale statement).
 
+Both cross-checks are **classified** timing vs gap. A Pictet month-end
+statement is struck on a settled-position basis, so a trade settling *after*
+the statement date is not yet reflected on it while the section 104 pool —
+keyed by trade date — has already moved. Such a drift is a **timing** lead
+that clears when the next statement lands, not an ingest gap. A drift whose
+magnitude is *not* explained by post-statement settlements is a **gap** — a
+missing trade confirmation or a stale statement to investigate.
+
 Cost basis is a UK-tax lens: it is **not** Pictet's EUR/Spanish figures and
 will not equal them. A reporting aid, not tax advice.
 """
@@ -26,6 +34,7 @@ from decimal import Decimal
 from banking_pipeline.basis_lens import BasisLens, HoldingBasis
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import GbpRateSource
+from banking_pipeline.models import Transaction
 from banking_pipeline.report_format import (
     gbp,
     missing_price_lines,
@@ -40,6 +49,14 @@ from banking_pipeline.valuation import (
     raw_from_statement,
     value_holdings,
 )
+from banking_pipeline.writer.builders.security_trade import (
+    SECURITY_BUY_TYPES,
+    SECURITY_TRADE_TYPES,
+)
+
+# Drift classification labels.
+_TIMING = "timing"  # explained by post-statement settlements; self-corrects
+_GAP = "gap"  # unexplained — a missing confirmation or stale statement
 
 _ZERO = Decimal(0)
 # Symmetric quantity-agreement tolerance for the statement-vs-pool cross-check
@@ -70,12 +87,20 @@ class HoldingRow:
 @dataclass(frozen=True)
 class QtyDrift:
     """A holding whose statement quantity and lens (section 104 pool)
-    quantity disagree beyond tolerance."""
+    quantity disagree beyond tolerance.
+
+    ``movement`` is the net signed quantity (buys +, sells −) of ingested
+    trades that settle *after* the statement date, so are not yet on the
+    mark. ``kind`` is :data:`_TIMING` when that movement fully explains the
+    drift (``pool − statement ≈ movement``) — a settlement lead that clears
+    with the next statement — else :data:`_GAP` (investigate)."""
 
     key: str
     name: str
     statement_qty: Decimal
     pool_qty: Decimal
+    movement: Decimal
+    kind: str
 
 
 @dataclass(frozen=True)
@@ -89,6 +114,8 @@ class HoldingsReport:
     qty_drifts: tuple[QtyDrift, ...]
     # ISINs the lens still holds (qty > 0) that no current statement marks.
     unmatched_basis: tuple[str, ...]
+    # Per unmatched-basis key: _TIMING (a post-statement acquisition) or _GAP.
+    unmatched_kind: dict[str, str]
     # Pass-through valuation warnings.
     missing_prices: tuple[str, ...]
     rate_gaps: tuple[RateGap, ...]
@@ -135,14 +162,30 @@ def _aggregate_by_key(securities: tuple[Holding, ...]) -> dict[str, _AggHolding]
     return agg
 
 
+def _classify(delta: Decimal, movement: Decimal) -> str:
+    """Timing when the post-statement trade movement explains the whole drift
+    (``pool − statement ≈ movement``), else a gap to investigate."""
+
+    return _TIMING if abs(delta - movement) <= _QTY_TOL else _GAP
+
+
 def join_holdings(
-    valuation: ValuationResult, basis: dict[str, HoldingBasis]
+    valuation: ValuationResult,
+    basis: dict[str, HoldingBasis],
+    *,
+    movement: dict[str, Decimal] | None = None,
 ) -> HoldingsReport:
     """Join valued securities with per-ISIN cost basis into the report (the
     testable core). Securities are consolidated by key first (see
     :func:`_aggregate_by_key`), then rows are ordered by market value desc.
-    Cash and property are ignored — cost basis is a securities concept."""
+    Cash and property are ignored — cost basis is a securities concept.
 
+    ``movement`` maps ISIN → net signed quantity of ingested trades settling
+    after that ISIN's statement date (see :func:`_post_statement_movement`);
+    it classifies each quantity drift / unmatched-basis holding timing vs gap.
+    Omitted (``None``) → every disagreement is a gap (nothing to explain it)."""
+
+    movement = movement or {}
     aggregated = _aggregate_by_key(valuation.securities)
     keys = sorted(aggregated, key=lambda k: aggregated[k].value_gbp, reverse=True)
 
@@ -162,8 +205,12 @@ def join_holdings(
             unrealised: Decimal | None = market - hb.cost_amount
             basis_qty: Decimal | None = hb.held_qty
             if abs(agg.quantity - hb.held_qty) > _QTY_TOL:
+                mv = movement.get(key, _ZERO)
                 drifts.append(
-                    QtyDrift(key, agg.name, agg.quantity, hb.held_qty)
+                    QtyDrift(
+                        key, agg.name, agg.quantity, hb.held_qty, mv,
+                        _classify(hb.held_qty - agg.quantity, mv),
+                    )
                 )
         else:
             market = agg.value_gbp
@@ -189,6 +236,12 @@ def join_holdings(
         (r.unrealised_gbp for r in rows if r.unrealised_gbp is not None), _ZERO
     )
     unmatched = tuple(sorted(k for k in basis if k not in matched))
+    # An unmatched holding: the pool holds it (qty > 0), no statement marks it
+    # (statement qty 0), so the drift is the whole pool qty. Timing when a
+    # post-statement acquisition accounts for it.
+    unmatched_kind = {
+        k: _classify(basis[k].held_qty, movement.get(k, _ZERO)) for k in unmatched
+    }
     return HoldingsReport(
         as_of=valuation.as_of,
         rows=tuple(rows),
@@ -197,9 +250,45 @@ def join_holdings(
         total_unrealised_gbp=total_unrealised,
         qty_drifts=tuple(drifts),
         unmatched_basis=unmatched,
+        unmatched_kind=unmatched_kind,
         missing_prices=valuation.missing_prices,
         rate_gaps=valuation.rate_gaps,
     )
+
+
+def _post_statement_movement(
+    transactions: list[Transaction], statement_date: dict[str, date], fallback: date | None
+) -> dict[str, Decimal]:
+    """Net signed trade quantity (buys +, sells −) per ISIN for trades that
+    settle *after* the statement date, so are not yet on the mark. The cutoff
+    is the ISIN's own statement date, or ``fallback`` (the latest statement
+    date overall) for an ISIN no statement marks. Settlement date is used, not
+    trade date: a Pictet month-end mark is struck on settled positions, and its
+    label date can run a day ahead of the true valuation, so a late-month sale
+    dated on the label date would be misjudged on trade date."""
+
+    if fallback is None:  # no dated statements → nothing to compare against
+        return {}
+    movement: dict[str, Decimal] = {}
+    for tx in transactions:
+        if tx.isin is None or tx.quantity is None:
+            continue
+        # SECURITY_TRADE_TYPES is exactly the set the section 104 pool ingests
+        # (``match_history`` filters on the same ``SECURITY_BUY_TYPES |
+        # SECURITY_SELL_TYPES``). Keeping the two in lock-step is what makes
+        # movement comparable to ``pool − statement``: a doctype that can't move
+        # the pool can't create a drift, so it must not enter movement either.
+        if tx.document_type not in SECURITY_TRADE_TYPES:
+            continue
+        cutoff = statement_date.get(tx.isin, fallback)
+        effective = tx.settlement_date or tx.trade_date
+        if effective <= cutoff:
+            continue
+        signed = abs(tx.quantity)
+        if tx.document_type not in SECURITY_BUY_TYPES:
+            signed = -signed
+        movement[tx.isin] = movement.get(tx.isin, _ZERO) + signed
+    return movement
 
 
 def build_report(
@@ -208,11 +297,13 @@ def build_report(
     commodities: dict[str, CommodityMetadata],
     rate_source: GbpRateSource,
     basis: BasisLens,
+    transactions: list[Transaction] | None = None,
 ) -> HoldingsReport:
     """Build the holdings report from ``(text, source-name)`` statement pairs
     and a cost-basis lens. Only the latest statement per portfolio contributes
     (older snapshots are superseded), so a whole directory yields the current
-    position."""
+    position. ``transactions`` (the sidecar rows behind the lens) classify each
+    quantity drift timing vs gap; omitted → every drift reads as a gap."""
 
     # The renderer and totals are GBP-only. A non-GBP lens (the reserved ES /
     # EUR-Spanish one) supplies its own market value + cost in its currency;
@@ -227,12 +318,26 @@ def build_report(
     raws: list[RawHolding] = []
     for text, source in statements:
         raws.extend(raw_from_statement(text, source))
+    latest = _latest_per_portfolio(raws)
     valuation = value_holdings(
-        _latest_per_portfolio(raws),
+        latest,
         commodities=commodities,
         rate_source=rate_source,
     )
-    return join_holdings(valuation, basis.basis_for())
+    # The statement date per ISIN (latest across the mandates holding it) is the
+    # timing cutoff; the overall latest dates an unmatched-basis ISIN. When one
+    # ISIN is marked by two mandates on different dates, the max cutoff is the
+    # most restrictive — it undercounts movement, so a drift errs toward *gap*,
+    # never toward a false *timing*.
+    statement_date: dict[str, date] = {}
+    latest_date: date | None = None
+    for r in latest:
+        if not r.is_cash:
+            prior = statement_date.get(r.key)
+            statement_date[r.key] = r.on_date if prior is None else max(prior, r.on_date)
+        latest_date = r.on_date if latest_date is None else max(latest_date, r.on_date)
+    movement = _post_statement_movement(transactions or [], statement_date, latest_date)
+    return join_holdings(valuation, basis.basis_for(), movement=movement)
 
 
 # --- rendering --------------------------------------------------------------
@@ -273,31 +378,49 @@ def render_markdown(report: HoldingsReport) -> str:
     ]
 
     if report.qty_drifts:
+        gaps = [d for d in report.qty_drifts if d.kind == _GAP]
+        has_timing = any(d.kind == _TIMING for d in report.qty_drifts)
         lines += [
             "## ⚠️ Quantity drift — statement vs section 104 pool",
             "",
             "The statement quantity and the ledger's section 104 pool "
-            "disagree — a missing trade confirmation or an ingest gap:",
+            "disagree. **timing** = fully explained by ingested trades that "
+            "settle after the statement date (the pool leads a stale mark; "
+            "clears with the next statement). **gap** = unexplained — a "
+            "missing trade confirmation or stale statement to investigate"
+            + (f" (**{len(gaps)}** to investigate)." if gaps else "."),
             "",
-            "| Holding | Statement qty | Pool qty |",
-            "| --- | ---: | ---: |",
+            "| Holding | Statement qty | Pool qty | Post-stmt trades | Status |",
+            "| --- | ---: | ---: | ---: | :--- |",
         ]
-        for d in report.qty_drifts:
+        for d in sorted(report.qty_drifts, key=lambda x: (x.kind != _GAP, x.key)):
             lines.append(
                 f"| {d.name} ({d.key}) | {money(d.statement_qty)} | "
-                f"{money(d.pool_qty)} |"
+                f"{money(d.pool_qty)} | {money(d.movement)} | {d.kind} |"
             )
         lines.append("")
+        if has_timing:
+            lines += [
+                "A timing row's unrealised P&L in the table above mixes bases "
+                "— market value at the pre-trade statement quantity, cost at "
+                "the post-trade pool — so read it as provisional; it reconciles "
+                "when the next statement marks the settled position.",
+                "",
+            ]
 
     if report.unmatched_basis:
         lines += [
             "## ⚠️ Held per ledger, not on the latest statement",
             "",
             "The section 104 pool still holds these ISINs but no current "
-            "statement marks them — a disposal not yet ingested, or a stale "
-            "statement:",
+            "statement marks them. **timing** = acquired after the latest "
+            "statement (not yet marked); **gap** = a disposal not yet ingested "
+            "or a stale statement:",
             "",
-            *[f"- `{k}`" for k in report.unmatched_basis],
+            *[
+                f"- `{k}` — {report.unmatched_kind.get(k, _GAP)}"
+                for k in report.unmatched_basis
+            ],
             "",
         ]
 

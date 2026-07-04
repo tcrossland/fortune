@@ -223,7 +223,8 @@ def holdings(
         opening_positions=opening, cost_adjustments=adjustments,
     )
     report = holdings_mod.build_report(
-        texts, commodities=commodities_map, rate_source=rates, basis=lens
+        texts, commodities=commodities_map, rate_source=rates, basis=lens,
+        transactions=txns,
     )
     if eri_gaps:
         err_console.print(
@@ -245,14 +246,21 @@ def holdings(
         f"£{report.total_unrealised_gbp:,.2f})"
     )
     if report.qty_drifts:
+        n_gap = sum(1 for d in report.qty_drifts if d.kind == "gap")
+        n_timing = len(report.qty_drifts) - n_gap
         err_console.print(
             f"[yellow]{len(report.qty_drifts)} holding(s) with statement/pool "
-            "quantity drift — see the report.[/yellow]"
+            f"quantity drift ({n_timing} timing, {n_gap} gap) — see the "
+            "report.[/yellow]"
         )
     if report.unmatched_basis:
+        n_gap = sum(1 for k in report.unmatched_basis
+                    if report.unmatched_kind.get(k) == "gap")
+        n_timing = len(report.unmatched_basis) - n_gap
         err_console.print(
             f"[yellow]{len(report.unmatched_basis)} holding(s) held per ledger "
-            "but not on the latest statement — see the report.[/yellow]"
+            f"but not on the latest statement ({n_timing} timing, {n_gap} gap) "
+            "— see the report.[/yellow]"
         )
     gap_n = len(report.missing_prices) + len(report.rate_gaps)
     if gap_n:

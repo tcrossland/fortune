@@ -591,8 +591,15 @@ usage examples; this is the behavioural reference.
   basis from a `BasisLens` (`--basis uk`, the UK section 104 pool from the
   sidecars; `es`/EUR-Spanish reserved, not yet built), writes `holdings.md` +
   `holdings.csv`. Reports per-holding unrealised gain/loss and cross-checks
-  the statement quantity against the pool quantity (a missing-trade / ingest
-  drift signal). Cost basis reads the JSONL sidecars via `match_history` —
+  the statement quantity against the pool quantity, **classifying** each
+  disagreement *timing* vs *gap*: a month-end mark is struck on settled
+  positions, so an ingested trade that settles after the statement date is not
+  yet on it while the trade-dated pool has already moved — such a drift is a
+  settlement lead that clears with the next statement, not an ingest gap. The
+  cutoff is `settlement_date` (fallback `trade_date`), and the net signed
+  post-statement movement must equal `pool − statement` for a *timing* verdict;
+  anything else is a *gap* to investigate (a missing trade confirmation or a
+  stale statement). Cost basis reads the JSONL sidecars via `match_history` —
   never the ledger — and is a UK-tax lens: **not** Pictet's EUR/Spanish
   figures and never fed to the tax pipeline. ISA trades are excluded from the
   lens (tax-exempt, no section 104 basis); ISA holdings still show from the

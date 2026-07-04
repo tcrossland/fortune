@@ -101,6 +101,20 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`holdings` drift cross-check classifies timing vs gap** — the
+  statement-vs-section-104-pool quantity check no longer blanket-flags every
+  disagreement as an ingest gap. A month-end mark is struck on settled
+  positions, so an ingested trade settling *after* the statement date isn't on
+  it while the trade-dated pool has already moved — a **timing** lead that
+  clears with the next statement, distinct from a **gap** (a missing trade
+  confirmation or stale statement). Classification nets the signed
+  post-statement trade movement per ISIN (cutoff = `settlement_date`, fallback
+  `trade_date`); *timing* iff `pool − statement == movement`. The
+  held-not-on-statement list is classified the same way, and a timing row's
+  unrealised P&L is flagged provisional (market at the pre-trade statement
+  quantity, cost at the post-trade pool). Rationale:
+  [design-decisions.md](docs/design-decisions.md#the-holdings-drift-cross-check-classifies-timing-vs-gap-by-settlement-date).
+  (`holdings.py`, `cli/reports.py`)
 - **`holdings` — cost basis + unrealised P&L** — joins the latest statement
   market value per portfolio with a pluggable per-jurisdiction cost basis and
   reports per-holding unrealised gain/loss, cross-checking the statement

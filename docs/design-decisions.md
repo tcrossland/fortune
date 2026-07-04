@@ -344,6 +344,37 @@ tax year the `eri` table spans and merges the adjustments. This matters because
 cost basis needs every year's uplift. Plan + staged history:
 [archive/holdings-cost-basis-report.md](archive/holdings-cost-basis-report.md).
 
+## The holdings drift cross-check classifies timing vs gap, by settlement date
+
+The `holdings` report cross-checks each statement quantity against the section
+104 pool quantity. Any disagreement used to read as "a missing trade
+confirmation or an ingest gap" — but at every month-end that fires a batch of
+false positives. A Pictet month-end valuation is struck on **settled**
+positions, so a trade executed at the end of the month but settling a few days
+later (T+2/3, into the next month) is *not* on the mark, while the section 104
+pool — keyed by trade date — has already moved. The statement lags the pool by
+one settlement cycle, and the drift is a **timing** lead that clears when the
+next statement lands, not a gap.
+
+So the report classifies each drift: it sums the net signed quantity (buys +,
+sells −) of ingested trades whose **settlement date** falls after the
+statement date, and if that movement equals `pool − statement` the drift is
+*timing*; otherwise it is a *gap* to investigate. A genuinely missing trade is
+never in the sidecars, so it can't appear in the movement and stays a gap — the
+classifier can only *downgrade* a drift that the ledger already fully explains.
+
+The cutoff is **settlement date, not trade date**, for two reasons: the mark is
+settlement-basis, and the statement's own label date can run a day ahead of its
+true valuation (the effective-date filing dates a month-end report to the 1st),
+so a late-month sale dated on the label date would be wrongly judged already-on
+the mark. Settlement date sidesteps both — the explaining trades settle in the
+following month regardless. The held-not-on-statement list is classified the
+same way (a post-statement acquisition is *timing*; a stale statement or
+un-ingested disposal is a *gap*). Because market value comes from the pre-trade
+statement quantity while cost comes from the post-trade pool, a timing row's
+unrealised P&L momentarily mixes bases — flagged as provisional; it reconciles
+at the next statement.
+
 ## The tax pipeline feeds cumulative ERI base-cost uplift to the pool
 
 `compute_eri(…, year)` scopes to a single tax year by design (income is

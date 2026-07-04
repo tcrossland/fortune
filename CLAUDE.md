@@ -229,6 +229,18 @@ advice — verify against HMRC guidance.
 
 **Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped (fix, no plan): the `holdings` drift cross-check classifies
+  each statement-vs-pool disagreement **timing vs gap** instead of blanket-
+  flagging every one as an ingest gap. A month-end mark is settlement-basis, so
+  an ingested trade settling after the statement date isn't on it while the
+  trade-dated section 104 pool has moved — a timing lead that clears next
+  statement. `_post_statement_movement` (cutoff = `settlement_date`, fallback
+  `trade_date`) nets signed trades per ISIN; a *timing* verdict needs
+  `pool − statement == movement`, else *gap*. Same classification on the
+  held-not-on-statement list; a timing row's unrealised P&L is flagged
+  provisional (market at pre-trade qty, cost at post-trade pool). Live: today's
+  5 drifts + 1 unmatched all read *timing, 0 gap*. Rationale:
+  [design-decisions.md](docs/design-decisions.md#the-holdings-drift-cross-check-classifies-timing-vs-gap-by-settlement-date).
 - Last shipped: [docs/archive/eri-cumulative-basis-fix.md](docs/archive/eri-cumulative-basis-fix.md)
   — the tax pipeline now feeds **cumulative** ERI section 104 base-cost
   adjustments to the pool (`_compute_tax_year` in `cli/tax.py` uses
