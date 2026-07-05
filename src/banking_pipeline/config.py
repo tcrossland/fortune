@@ -92,11 +92,15 @@ class Settings(BaseSettings):
     # UK CGT GBP cost-basis sourcing. ``"null"`` (the default) leaves
     # ``Transaction.gbp_rate`` unset so downstream builders behave
     # exactly as before. ``"hmrc-monthly"`` enriches each transaction
-    # from HMRC's monthly average rates, read from ``hmrc_rate_path``
-    # (or ``data/fx/hmrc-monthly-average.csv`` when unset). See
-    # :mod:`banking_pipeline.fx.gbp_rates`.
-    gbp_rate_source: Literal["null", "hmrc-monthly"] = "null"
+    # from HMRC's monthly average rates (``hmrc_rate_path`` or
+    # ``data/fx/hmrc-monthly-average.csv``); ``"ecb-daily"`` from the ECB
+    # daily reference rates (``ecb_rate_path`` or ``data/fx/ecb-daily.csv``)
+    # — a daily spot proxy, closer to trade-date spot than the monthly
+    # average. Use ONE consistently across the whole section 104 history.
+    # See :mod:`banking_pipeline.fx.gbp_rates`.
+    gbp_rate_source: Literal["null", "hmrc-monthly", "ecb-daily"] = "null"
     hmrc_rate_path: Path | None = None
+    ecb_rate_path: Path | None = None
 
     # Hand-curated UK-tax commodity metadata (ISIN → domicile,
     # reporting status, asset class). Consumed by ``portfolio`` /

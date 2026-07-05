@@ -361,8 +361,12 @@ The tax pipeline reads the JSONL sidecars, never the ledger.
   matching happens in `tax/uk/section_104.py` from the sidecar — beancount's
   booking methods do not implement UK matching rules.
 - Rate sources are pluggable via the `GbpRateSource` protocol:
-  `HmrcMonthlyAverageSource` (`data/fx/hmrc-monthly-average.csv`) and
-  `NullSource` (default). When an amount can't be converted to GBP it is
+  `HmrcMonthlyAverageSource` (`data/fx/hmrc-monthly-average.csv`, monthly
+  average), `EcbDailyRateSource` (`data/fx/ecb-daily.csv`, a daily spot proxy
+  triangulated to GBP by `scripts/fetch_ecb_rates.py`), and `NullSource`
+  (default). The per-transaction stamped `gbp_rate` wins over any source, so
+  switching source for a whole ledger means re-ingesting, not just
+  `--rate-source` at report time. When an amount can't be converted to GBP it is
   *excluded* and recorded as a `RateGap` on each report's `missing_rates`;
   `tax-report` / `tax-forecast` surface these and `--strict` makes any gap a
   non-zero exit.
@@ -886,8 +890,9 @@ schemas don't collide.
 
 **UK tax** (all optional, default to no-op)
 
-- `gbp_rate_source` (`"null"` | `"hmrc-monthly"`), `hmrc_rate_path`
-  (default `data/fx/hmrc-monthly-average.csv`).
+- `gbp_rate_source` (`"null"` | `"hmrc-monthly"` | `"ecb-daily"`),
+  `hmrc_rate_path` (default `data/fx/hmrc-monthly-average.csv`),
+  `ecb_rate_path` (default `data/fx/ecb-daily.csv`).
 - `commodities_metadata_path` (default `data/commodities.toml`),
   `opening_positions_path` (`data/opening-positions.toml`), `eri_path`
   (`data/eri.toml`), `cgt_losses_path` (`data/cgt-losses.toml`).

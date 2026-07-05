@@ -779,7 +779,7 @@ def tax_report(
         typer.Option(
             "--rate-source",
             help="GBP rate source for transactions not enriched at ingest "
-            "(``null`` | ``hmrc-monthly``). Defaults to the configured "
+            "(``null`` | ``hmrc-monthly`` | ``ecb-daily``). Defaults to the configured "
             "source.",
         ),
     ] = None,

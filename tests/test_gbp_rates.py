@@ -9,9 +9,11 @@ from pathlib import Path
 from banking_pipeline.config import Settings
 from banking_pipeline.fields.hybrid import HybridExtractor
 from banking_pipeline.fx.gbp_rates import (
+    EcbDailyRateSource,
     ForwardFillRateSource,
     HmrcMonthlyAverageSource,
     NullSource,
+    build_rate_source,
 )
 from banking_pipeline.models import (
     BankClassification,
@@ -161,3 +163,62 @@ def test_settings_default_disables_gbp_sourcing() -> None:
     # Assert the declared default, not the live singleton — the latter
     # picks up BANKPIPE_GBP_RATE_SOURCE from the environment / .env.
     assert Settings.model_fields["gbp_rate_source"].default == "null"
+
+
+# --- ECB daily source ------------------------------------------------------
+
+# GBP-per-1-unit, as the fetcher triangulates it. 1 Nov 2024 is a Friday.
+_ECB_CSV = """date,currency,rate
+2024-11-01,EUR,0.8300
+2024-11-01,USD,0.7700
+2024-11-04,EUR,0.8320
+"""
+
+
+def test_ecb_source_exact_dates_and_gbp_unit() -> None:
+    s = EcbDailyRateSource.from_text(_ECB_CSV)
+    assert s.get_rate(date(2024, 11, 1), "EUR") == Decimal("0.8300")
+    assert s.get_rate(date(2024, 11, 4), "EUR") == Decimal("0.8320")
+    assert s.get_rate(date(2024, 11, 1), "usd") == Decimal("0.7700")  # case-fold
+    assert s.get_rate(date(2024, 11, 1), "GBP") == Decimal("1")
+
+
+def test_ecb_source_weekend_walks_back_to_prior_publication() -> None:
+    # Sunday 3 Nov 2024 has no fixing → the latest on/before it is Fri 1 Nov,
+    # NOT the later Mon 4 Nov.
+    s = EcbDailyRateSource.from_text(_ECB_CSV)
+    assert s.get_rate(date(2024, 11, 3), "EUR") == Decimal("0.8300")
+
+
+def test_ecb_source_unknown_currency_is_none() -> None:
+    s = EcbDailyRateSource.from_text(_ECB_CSV)
+    assert s.get_rate(date(2024, 11, 1), "JPY") is None
+
+
+def test_ecb_source_gap_beyond_lookback_is_none() -> None:
+    # USD exists only on 1 Nov; 20 Nov is far past the 7-day walk-back, so the
+    # hole surfaces rather than silently reusing a stale rate.
+    s = EcbDailyRateSource.from_text(_ECB_CSV)
+    assert s.get_rate(date(2024, 11, 20), "USD") is None
+
+
+def test_ecb_source_from_path(tmp_path: Path) -> None:
+    p = tmp_path / "ecb.csv"
+    p.write_text(_ECB_CSV, encoding="utf-8")
+    s = EcbDailyRateSource.from_path(p)
+    assert s.get_rate(date(2024, 11, 4), "EUR") == Decimal("0.8320")
+
+
+def test_build_rate_source_selects_ecb(tmp_path: Path) -> None:
+    p = tmp_path / "ecb.csv"
+    p.write_text(_ECB_CSV, encoding="utf-8")
+    s = build_rate_source(Settings(gbp_rate_source="ecb-daily", ecb_rate_path=p))
+    assert isinstance(s, EcbDailyRateSource)
+    assert s.get_rate(date(2024, 11, 1), "EUR") == Decimal("0.8300")
+
+
+def test_build_rate_source_ecb_missing_file_degrades_to_null(tmp_path: Path) -> None:
+    s = build_rate_source(
+        Settings(gbp_rate_source="ecb-daily", ecb_rate_path=tmp_path / "nope.csv")
+    )
+    assert isinstance(s, NullSource)

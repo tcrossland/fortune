@@ -75,8 +75,8 @@ ValuationRateSourceOpt = Annotated[
     typer.Option(
         "--rate-source",
         help="GBP rate source for non-GBP valuations (``null`` | "
-        "``hmrc-monthly``). Defaults to the configured source; holdings "
-        "with no rate are excluded and flagged.",
+        "``hmrc-monthly`` | ``ecb-daily``). Defaults to the configured "
+        "source; holdings with no rate are excluded and flagged.",
     ),
 ]
 

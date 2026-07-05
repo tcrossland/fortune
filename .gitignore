@@ -53,6 +53,15 @@ reports/*.html
 !reports/*_template.html
 reports/*.json
 
+# Reports dashboard (prototype): the staged docs tree and the built site
+# inline real figures — only mkdocs.yml / README.md / the generator are kept.
+dashboard/docs/
+dashboard/site/
+
+# ECB daily FX history (~49k rows, regenerable via scripts/fetch_ecb_rates.py)
+# — unlike the small, curated HMRC monthly CSV, this is a bulk auto-download.
+data/fx/ecb-daily.csv
+
 # macOS
 .DS_Store
 

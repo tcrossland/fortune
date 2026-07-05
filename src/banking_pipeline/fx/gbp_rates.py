@@ -82,6 +82,78 @@ class HmrcMonthlyAverageSource:
         return self._rates.get((f"{on_date:%Y-%m}", currency.upper()))
 
 
+def _parse_ecb_rates(text: str) -> dict[tuple[str, str], Decimal]:
+    """Parse the ECB daily CSV into a ``(YYYY-MM-DD, ccy) -> rate`` map.
+
+    Columns: ``date`` (``YYYY-MM-DD``), ``currency`` (ISO-4217), ``rate``
+    (GBP per 1 unit of ``currency``, already triangulated from the ECB
+    EUR-reference set by ``scripts/fetch_ecb_rates.py``).
+    """
+
+    rates: dict[tuple[str, str], Decimal] = {}
+    reader = csv.DictReader(io.StringIO(text))
+    for row in reader:
+        day = (row.get("date") or "").strip()
+        currency = (row.get("currency") or "").strip().upper()
+        raw_rate = (row.get("rate") or "").strip()
+        if not day or not currency or not raw_rate:
+            continue
+        rates[(day, currency)] = Decimal(raw_rate)
+    return rates
+
+
+class EcbDailyRateSource:
+    """GBP rates from the ECB daily euro foreign-exchange reference rates.
+
+    Backed by a user-maintained CSV (default ``data/fx/ecb-daily.csv``) with
+    ``date`` (``YYYY-MM-DD``), ``currency`` and ``rate`` columns — the rate is
+    GBP per 1 unit of the currency, triangulated from ECB's EUR-reference set
+    by the fetcher (``GBP-per-X = (GBP per EUR) / (X per EUR)``, both from the
+    same publication day). ``GBP`` resolves to ``1``.
+
+    The ECB publishes one fixing per working day (~16:00 CET), so a trade on a
+    weekend or a TARGET holiday has no rate of its own; the date is resolved to
+    the **latest publication on or before it** via a bounded day-by-day
+    walk-back. A gap beyond the walk-back yields ``None`` — a genuine hole (a
+    stale CSV at the leading edge) surfaces as a :class:`RateGap` rather than
+    silently marking at an old rate.
+
+    These are ECB *reference* rates — a mid-market fixing the ECB itself
+    flags as "for information, not transaction, purposes" — so this is a
+    consistent **spot proxy** for UK CGT, not a broker's dealt rate. It will
+    not equal a custodian's booked GBP (which carries a dealer spread); use a
+    per-transaction ``gbp_rate`` for that.
+    """
+
+    # ECB skips only weekends + TARGET holidays; the longest run (an Easter or
+    # Christmas cluster) is ~4 days, so 7 covers every real gap while a
+    # genuinely stale leading edge still surfaces as no rate.
+    _MAX_LOOKBACK_DAYS = 7
+
+    def __init__(self, rates: dict[tuple[str, str], Decimal]) -> None:
+        self._rates = rates
+
+    @classmethod
+    def from_path(cls, path: Path) -> Self:
+        return cls(_parse_ecb_rates(path.read_text(encoding="utf-8")))
+
+    @classmethod
+    def from_text(cls, text: str) -> Self:
+        return cls(_parse_ecb_rates(text))
+
+    def get_rate(self, on_date: date, currency: str) -> Decimal | None:
+        ccy = currency.upper()
+        if ccy == "GBP":
+            return Decimal(1)
+        day = on_date
+        for _ in range(self._MAX_LOOKBACK_DAYS + 1):
+            rate = self._rates.get((day.isoformat(), ccy))
+            if rate is not None:
+                return rate
+            day -= timedelta(days=1)
+        return None
+
+
 class NullSource:
     """A source that has no rates — always returns ``None``."""
 
@@ -130,21 +202,28 @@ class ForwardFillRateSource:
 
 
 _DEFAULT_HMRC_PATH = Path("data/fx/hmrc-monthly-average.csv")
+_DEFAULT_ECB_PATH = Path("data/fx/ecb-daily.csv")
 
 
 def build_rate_source(settings: Settings) -> GbpRateSource:
     """Construct the configured GBP rate source.
 
     ``gbp_rate_source == "hmrc-monthly"`` loads the CSV at
-    ``settings.hmrc_rate_path`` (or the default path); a missing file
-    degrades to :class:`NullSource` rather than failing, in keeping with
-    the "never fail extraction on a missing rate" contract. Anything
-    else returns :class:`NullSource`.
+    ``settings.hmrc_rate_path``; ``"ecb-daily"`` loads
+    ``settings.ecb_rate_path`` (each with its default path). A missing file
+    degrades to :class:`NullSource` rather than failing, in keeping with the
+    "never fail extraction on a missing rate" contract. Anything else (incl.
+    ``"null"``) returns :class:`NullSource`.
     """
 
     if settings.gbp_rate_source == "hmrc-monthly":
         path = settings.hmrc_rate_path or _DEFAULT_HMRC_PATH
         if path.is_file():
             return HmrcMonthlyAverageSource.from_path(path)
+        return NullSource()
+    if settings.gbp_rate_source == "ecb-daily":
+        path = settings.ecb_rate_path or _DEFAULT_ECB_PATH
+        if path.is_file():
+            return EcbDailyRateSource.from_path(path)
         return NullSource()
     return NullSource()

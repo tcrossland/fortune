@@ -315,18 +315,31 @@ interest the user pays, booked to `Expenses`.
 ### GBP rates
 
 GBP figures use each transaction's trade-date `gbp_rate` stamped during
-`ingest` (when `BANKPIPE_GBP_RATE_SOURCE` is set), with `--rate-source
-hmrc-monthly` available as a fallback for older sidecars whose `gbp_rate` is
-unset.
+`ingest` (when `BANKPIPE_GBP_RATE_SOURCE` is set), with a rate source as the
+fallback for older sidecars whose `gbp_rate` is unset. **The stamp wins** — to
+switch a whole ledger to a different source you re-ingest / `rebuild` with that
+source set, not just pass `--rate-source` at report time (that only fills
+un-stamped rows).
 
-The HMRC monthly-average source reads a user-maintained CSV at
-`data/fx/hmrc-monthly-average.csv` (override with `BANKPIPE_HMRC_RATE_PATH`).
-Columns: `month` (`YYYY-MM`), `currency` (ISO-4217), `rate` (GBP per 1 unit
-of `currency`). HMRC publishes the rates in their "Exchange rates from HMRC
-in CSV and XML format" tables on GOV.UK; populate the CSV from whichever
-months and currencies you trade in. Per-date / daily rates can be plugged in
-by adding a new implementation of the `GbpRateSource` protocol in
-`banking_pipeline.fx.gbp_rates`; no daily source ships today.
+Two sources ship, both implementing the `GbpRateSource` protocol in
+`banking_pipeline.fx.gbp_rates` (add another by implementing `get_rate`):
+
+- **`hmrc-monthly`** — HMRC's monthly-average rates, from a user-maintained
+  CSV at `data/fx/hmrc-monthly-average.csv` (`BANKPIPE_HMRC_RATE_PATH`).
+  Columns `month` (`YYYY-MM`), `currency`, `rate` (GBP per 1 unit). Populate
+  it from HMRC's GOV.UK tables, or run `scripts/fetch_hmrc_rates.py`.
+- **`ecb-daily`** — the ECB daily euro reference rates, a **daily spot proxy**
+  closer to trade-date spot than the monthly average. `scripts/fetch_ecb_rates.py`
+  downloads the full history and triangulates it to GBP-per-unit at
+  `data/fx/ecb-daily.csv` (`BANKPIPE_ECB_RATE_PATH`). These are ECB *reference*
+  (mid-market) rates — a consistent CGT basis, **not** a broker's dealt rate,
+  so they won't equal a custodian's booked GBP (which carries a spread); for
+  that, stamp the per-transaction rate from the trade advice.
+
+Pick **one** source and use it consistently across the whole section 104
+history — mixing them across acquisitions corrupts the pooled cost. Whichever
+you choose, an amount that can't be converted is excluded (a coverage gap),
+never guessed.
 
 An amount that can't be converted (no per-transaction `gbp_rate` and no
 source rate) is **excluded** from the figures rather than guessed — so a gap

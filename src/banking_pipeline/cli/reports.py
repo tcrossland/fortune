@@ -818,7 +818,7 @@ def income(
         typer.Option(
             "--rate-source",
             help="GBP rate source for non-GBP income "
-            "(``null`` | ``hmrc-monthly``). Defaults to the configured source.",
+            "(``null`` | ``hmrc-monthly`` | ``ecb-daily``). Defaults to the configured source.",
         ),
     ] = None,
     out: Annotated[

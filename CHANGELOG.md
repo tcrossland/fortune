@@ -8,6 +8,19 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## UK tax
 
+- **ECB daily FX rate source** — a second `GbpRateSource` (`gbp_rate_source =
+  "ecb-daily"`, `--rate-source ecb-daily`) reading the ECB daily euro reference
+  rates, a **daily spot proxy** closer to trade-date spot than the HMRC monthly
+  average. `scripts/fetch_ecb_rates.py` downloads the full history and
+  triangulates it to GBP-per-unit (`GBP-per-X = (GBP per EUR)/(X per EUR)`,
+  same-day) at `data/fx/ecb-daily.csv`; the source resolves a weekend/holiday
+  trade date to the latest fixing on/before it (bounded walk-back). Mid-market
+  reference rates — a consistent CGT basis, **not** a broker's dealt rate. The
+  per-transaction stamped `gbp_rate` still wins, so switching a whole ledger
+  means re-ingesting, not just `--rate-source`. Motivation: re-costing 2024-25
+  disposals on ECB closed most of a CGT gap vs a filed return that FX convention
+  (HMRC-monthly vs the custodian's spot) had opened. (`fx/gbp_rates.py`,
+  `scripts/fetch_ecb_rates.py`, `config.py`)
 - **FIG-relieved ERI gives no base-cost uplift (correction)** — ERI relieved
   under a 4-year FIG claim was never charged to income tax, so under reg 99 of
   the Offshore Funds (Tax) Regulations 2009 it must not uplift the section 104

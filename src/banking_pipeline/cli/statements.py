@@ -187,7 +187,7 @@ def property(  # noqa: A001 — command name, not the builtin
         typer.Option(
             "--rate-source",
             help="GBP rate source for the GBP price mark on non-GBP "
-            "properties (``null`` | ``hmrc-monthly``). Defaults to the "
+            "properties (``null`` | ``hmrc-monthly`` | ``ecb-daily``). Defaults to the "
             "configured source.",
         ),
     ] = None,
