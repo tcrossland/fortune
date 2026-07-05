@@ -1,15 +1,26 @@
 # banking-pipeline
 
-Ingest banking PDFs (account statements, trade confirmations, dividend
-notices, fee invoices, FX advices, wire confirmations, etc.), classify them
-in three layered stages, extract the fields that matter for accounting
-(trade date, currency, amount, ISIN, account number), and emit
-[beancount](https://beancount.github.io/) entries — plus a structured
-sidecar that drives UK self-assessment tax reporting.
+A single-user **UK wealth & tax toolkit** built on a banking-document
+ingestion pipeline. The front end ingests banking PDFs (account statements,
+trade confirmations, dividend notices, fee invoices, FX advices, wire
+confirmations, etc.), classifies them in three layered stages, extracts the
+accounting-relevant fields (trade date, currency, amount, ISIN, account
+number), and emits [beancount](https://beancount.github.io/) entries plus a
+structured JSONL sidecar. On top of that sidecar substrate it then produces:
+
+- **UK self-assessment tax reports** — SA108 / SA106, section 104 matching,
+  excess reportable income, the 4-year Foreign Income & Gains regime;
+- **tax forecasting & planning** — `tax-forecast`, `fig-advice`,
+  `fig-projection` (crystallise-vs-defer across the FIG window);
+- **wealth / valuation reports** — net worth over time, holdings cost basis &
+  unrealised P&L, allocation, an interactive balance sheet, mandate returns;
+- **completeness & reconciliation** checks against the ledger and the bank's
+  own exports.
 
 Single-user, built around Pictet's Luxembourg and Madrid templates (English
 and Spanish) plus a Vanguard UK Stocks & Shares ISA. Adding a new bank is a
-data-only change.
+data-only change. (The CLI and Python package are named `banking-pipeline`
+after that ingestion front end; the repository is `fortune`.)
 
 ## How it works
 
@@ -479,6 +490,31 @@ Because the drift verdict is `bean-check`'s own, `reconcile` agrees with a
 ledger load by construction — no separate tolerance to keep in sync. It exits
 nonzero on any drift (CI-friendly, like `check`); `--strict` also fails on
 coverage gaps.
+
+### Completeness & transaction cross-checks
+
+Where `reconcile` compares *balances*, two further checks compare
+*transactions* against the bank's own records — catching a document you never
+ingested (which no balance assertion would reveal if a later statement still
+reconciles):
+
+```bash
+uv run banking-pipeline completeness              # cash-ledger vs sidecars
+uv run banking-pipeline reconcile-transactions    # portal trades vs sidecars
+```
+
+- `completeness` cross-checks the Pictet current-account cash ledger — both
+  the monthly `Financial-statement` PDFs and the portal "cash statement by
+  value date" CSV export — against the sidecars, transaction by transaction,
+  and reports any statement line with no matching ingested row.
+- `reconcile-transactions` cross-checks the portal **Transactions** CSV export
+  (every trade leg, both mandates) against the sidecars by `Order nr.`,
+  catching a securities trade the pipeline failed to ingest — which would
+  corrupt the section 104 pool and the CGT figures.
+
+Both write per-source Markdown + CSV findings and exit nonzero on a real gap
+(a missing / amount-mismatched row), so a rebuild fails loudly; they're wired
+into `rebuild` via `[post.completeness]` and `[post.reconcile_transactions]`.
 
 ### Duplicate audit
 

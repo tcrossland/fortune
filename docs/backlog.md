@@ -9,12 +9,11 @@ paradigm. Shipped features are recorded in
 
 A handful of these ideas have graduated from a one-line menu entry to a
 full implementation brief in [plans/](plans/) — designed but not yet
-built. **No active brief right now.** The recent FIG-direction work has all
-**shipped** — the situs-split, the FIG-aware ERI base-cost correction, and the
-FIG-window projection (see the [CHANGELOG](../CHANGELOG.md) and `archive/`).
-Next candidate: the FIG-reframed disposal / rebasing advisor (below), now that
-the projection can show whether the gap is material. When a plan ships, its
-line moves to the CHANGELOG and the plan moves to `archive/`.
+built. **No active brief right now**, and no open `plans/` file — the recent
+FIG-direction work has all shipped (situs-split, FIG-aware ERI base-cost
+correction, FIG-window projection; see the [CHANGELOG](../CHANGELOG.md) and
+`archive/`). Pick the next from the menu below. When a plan ships, its line
+moves to the CHANGELOG and the plan moves to `archive/`.
 
 For the *correctness and robustness* gaps in the reporting subsystems
 (both tax reporting-status and the analytical reports) — as distinct from
@@ -84,12 +83,6 @@ the **FIG-window projection** (`fig-projection`).)
   report already flags as a caveat. A static execution checklist, not a
   command. Revisit only if the profile changes (a UK-situs sleeve appears, or a
   non-claim year returns).
-- **`fig-projection` post-reset base-cost line (small enhancement).** The one
-  forward thing the projection doesn't yet show: after crystallising, each
-  holding's base cost resets to today's market, so only *future* growth is
-  taxable post-window. Surface the post-reset base cost (= current market) and
-  the residual post-window CGT exposure it implies, so the crystallise decision
-  shows both sides. A few lines on the existing report, not a new command.
 - **`tax-forecast` "what-if" delta calculator.** Given a hypothetical action
   — sell £X of holding Y, take £W of dividends — recompute the forecast and
   report the *marginal* tax delta. A thin layer over the existing forecast
@@ -159,49 +152,31 @@ the **FIG-window projection** (`fig-projection`).)
 
 ## Financial reporting
 
-- **Interactive balance sheet (`balance-sheet`) — MVP shipped.** A single
-  self-contained, offline HTML artifact with a client-side as-of date
-  scrubber: recompute every account's value, the Assets / Liabilities /
-  net-worth totals, the account tree and allocation donut for any date.
-  Reads the ledger via `bean-query` (a ledger construct, like the trial
-  balance, not statement marks). Phases 1–3 (dataset → artifact → CLI +
-  rebuild wiring) shipped — see
-  [archive/interactive-balance-sheet.md](archive/interactive-balance-sheet.md).
-  Still open (phase 4, deferred as non-goals): a **cost-basis / unrealised
-  P&L column** (needs per-date FIFO booking) and the **statement-assertion
-  drift overlay** (the dataset already carries the assertions; rendering
-  overlaps `reconcile`). *The cost-basis half is available from the shipped*
-  [holdings cost-basis report](archive/holdings-cost-basis-report.md) *— its
-  residual section-104 pool per holding is the same substrate this column
-  needs.*
-- **Holdings cost basis + unrealised P&L (`holdings`) — shipped (UK).** Joins
-  the latest statement market value with a UK section-104 GBP cost basis (from
-  the sidecars, ERI-adjusted) and reports per-holding unrealised P&L, with a
-  statement-qty ↔ pool-qty cross-check. Pluggable per-jurisdiction basis lens
-  (`basis_lens.py`); the reserved **EUR/Spanish lens** (`--basis es`) is the
-  open slot — for a possible UK→Spain residence change, where the ISA is no
-  longer tax-exempt and Spanish FIFO/EUR rules apply. **Before building that
-  lens, settle the cost-basis source** (see the next item) — a bare stub was
-  deliberately not built.
-  - *Optional: cross-check qty against the portal Holdings export.* A standalone
-    `reconcile-holdings` command was considered and **dropped as overkill** —
-    the position check is already bracketed by `reconcile-transactions` (verifies
-    every trade *input*) and this report's statement-qty ↔ pool-qty drift check
-    (verifies *positions* vs the broker), and the cost-basis gap vs Pictet's Net
-    cost is now *explained* by the `of which ERI` column (ERI is its structural
-    driver; the residual is a small, expected FX/averaging convention difference,
-    not a bug signal). The one sliver with residual value: the drift check
-    compares against the settlement-lagged *statement*, so it carries expected
-    "timing" noise — the live Holdings **CSV** export matches the pool *exactly*
-    (verified), so `holdings` could optionally take it as a cleaner, timing-free
-    qty cross-check source. A few lines here (parse the Holdings CSV — same
-    `parse_cash_statement_csv` pattern, cp1252, bare `Account nr.` →
-    `lettered_portfolio_map`), not a new command.
-  - *FIG-awareness (foreign vs UK-situs split) and the relieved-year ERI
-    correction — both ✅ shipped* (see the [CHANGELOG](../CHANGELOG.md) and
-    `archive/`). The report now labels each row foreign / UK-situs /
-    unclassified and splits the unrealised total; the section 104 pool no longer
-    uplifts base cost for FIG-relieved ERI.
+- **Interactive balance sheet — phase 4 (deferred non-goals).** The
+  `balance-sheet` command shipped (offline HTML with a client-side as-of
+  scrubber over `bean-query`; see the CHANGELOG /
+  [archive/interactive-balance-sheet.md](archive/interactive-balance-sheet.md)).
+  Still open: a **cost-basis / unrealised P&L column** (needs per-date FIFO
+  booking) and the **statement-assertion drift overlay** (the dataset already
+  carries the assertions; rendering overlaps `reconcile`). The cost-basis half
+  is available from the shipped
+  [holdings report](archive/holdings-cost-basis-report.md) — its residual
+  section-104 pool per holding is the same substrate.
+- **Holdings — EUR/Spanish cost-basis lens (`--basis es`).** The `holdings`
+  report shipped for UK (section-104 GBP basis, ERI-adjusted, situs-split; see
+  the CHANGELOG). The reserved **EUR/Spanish lens** is the open slot — for a
+  possible UK→Spain residence change, where the ISA is no longer tax-exempt and
+  Spanish FIFO/EUR rules apply. **Before building it, settle the cost-basis
+  source** (next item) — a bare stub was deliberately not built.
+  - *Optional: timing-free qty cross-check from the portal Holdings CSV.* The
+    report's statement-qty ↔ pool-qty drift check compares against the
+    settlement-lagged *statement*, so it carries expected "timing" noise; the
+    live Holdings **CSV** export matches the pool *exactly* (verified), so
+    `holdings` could optionally take it as a cleaner source (parse the CSV —
+    same `parse_cash_statement_csv` pattern, cp1252, bare `Account nr.` →
+    `lettered_portfolio_map`). A few lines, not a new command. (A standalone
+    `reconcile-holdings` command was considered and dropped as overkill — see
+    [design-decisions.md](design-decisions.md#reconcile-holdings-is-overkill-the-portal-reconciliation-is-complete-without-it).)
 - **Unrealised-P&L source options (decide before the EUR lens / `pnl` report).**
   Three ways to get a non-UK / management-view cost basis + unrealised P&L,
   weighed:
@@ -249,11 +224,9 @@ the **FIG-window projection** (`fig-projection`).)
   security** (siding with the pool, not the stale month-end statement) — an
   independent confirmation of the pool's live accuracy and the drift-classifier's
   *timing* verdicts.
-- **Period reports beyond beancount/Fava.** Net-worth-over-time
-  (`net-worth`), income-by-source (`income`, by tax or calendar year),
-  asset-allocation-over-time (`allocation`), and per-portfolio allocation
-  (`portfolio-allocation`) shipped; still open: realised/unrealised P&L
-  summaries (Markdown/CSV).
+- **Realised / unrealised P&L summaries (Markdown/CSV).** The other period
+  reports shipped (`net-worth`, `income`, `allocation`, `portfolio-allocation`);
+  a realised/unrealised P&L summary is the remaining gap here.
 - **Realised / unrealised P&L by parsing Pictet's tax reports.** Pictet
   issues Spanish-locale IRPF reports ("Informe fiscal personas físicas")
   in two flavours — realised ("Ganancias y pérdidas patrimoniales") and
@@ -293,15 +266,10 @@ the **FIG-window projection** (`fig-projection`).)
   raw lot facts (dates, quantities, proceeds, cost), not Pictet's gain
   method, and never feed any of it to the UK tax pipeline. Wants plan-mode
   first (touches the balance-sheet plan and the reconcile grain).
-  *Filing prerequisite (shared first stage, also needed by the parsing
-  item above) — ✅ shipped* in
-  [docs/archive/pictet-pnl-tax-archive.md](archive/pictet-pnl-tax-archive.md):
-  `TAX_REALISED_PL` / `TAX_UNREALISED_PL` doctypes + an `archive.py` filing
-  branch now self-file these into `<year>/tax/<Realised|Unrealised> PL
-  <YYYYMMDD>.pdf` (keyed on the report's numeric as-of date), and
-  `prune-tax-reports` trims the daily volume to month-end + year-end / 5-Apr
-  anchors. So a parse or reconcile reader can now glob
-  `<year>/tax/{Realised,Unrealised}*.pdf` for a clean, canonically-named,
+  *Filing prerequisite (shared with the parsing item above) is already done*
+  (see [archive/pictet-pnl-tax-archive.md](archive/pictet-pnl-tax-archive.md)):
+  the reports self-file into `<year>/tax/{Realised,Unrealised} PL <YYYYMMDD>.pdf`
+  and `prune-tax-reports` trims the daily volume, so a reader can glob a clean,
   deduplicated set.
   *Caveat — no portfolio dimension, and both mandates hold securities:*
   the reports are consolidated at the **taxpayer (NIF) level**, not per
@@ -344,11 +312,5 @@ cautiously.
 - **Income/expense run-rate** from historical sidecars: trailing-12
   cashflow by category, projected forward. Low effort, reuses existing
   data.
-- **Multi-year liability & cashflow projection — promoted to
-  [FIG-relevant].** Extend `tax-forecast` forward across several years, tied
-  to the FIG window expiry so the cost of deferring vs. crystallising is
-  visible. Now tracked as **FIG-window multi-year projection** under Tax
-  planning & advice above (the profile makes it strategic, not a
-  weak-fit budgeting aside).
 - **Full budgeting** (envelopes, targets) is deprioritised — a different
   product, and the substrate isn't built for it.

@@ -587,6 +587,10 @@ usage examples; this is the behavioural reference.
   output under `data/`. `prices` / `balances` also parse statement PDFs
   passed via `--statement` / discovered by glob; both handle Pictet monthly
   statements and the Vanguard ISA regular statement (parsers self-select).
+- `portfolio-split` — write one independently-loadable ledger per bank
+  account (each `Assets:<prefix>:<portfolio>` root), so a single mandate can
+  be loaded / checked in isolation. A generation utility beside `portfolio`;
+  reads the same ingest output.
 - `property` — generate the residential-property ledger from
   `data/property.toml`. Each property becomes a commodity held at cost
   revalued by `price` directives, funded against `Equity:Property:<label>`.
