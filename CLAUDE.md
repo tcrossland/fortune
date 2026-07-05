@@ -227,11 +227,21 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-**Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
-Natural next in the FIG direction: the FIG-reframed disposal/rebasing advisor
-(now that `fig-projection` can show whether the deferral-vs-crystallise gap is
-material).
+**Active:** [Pictet UK Tax Report parser](docs/plans/pictet-uk-cgt-report.md)
+— scoping. Parse Pictet's own GBP, Section-104 "Income and capital gains UK"
+report and cross-check it (tolerance-based) against the computed SA108/SA106.
+Plan drafted; awaiting approval + three decisions (tolerance model, per-account
+vs NIF, green/zero-cost handling).
 
+- Last shipped: **ECB daily FX rate source** — a second `GbpRateSource`
+  (`gbp_rate_source = "ecb-daily"`) reading the ECB daily reference rates as a
+  spot proxy for CGT, closer to trade-date spot than HMRC monthly average.
+  `scripts/fetch_ecb_rates.py` triangulates EUR→GBP. Motivation: re-costing
+  2024-25 disposals on ECB closed ~77% of a CGT gap vs a filed return. The
+  Transactions-export "stamp Pictet's booked GBP" alternative was investigated
+  and dropped (multi-currency mandates → ~97% of trades never cross GBP);
+  rationale in [design-decisions.md](docs/design-decisions.md#the-gbp-cost-basis-is-a-consistent-spot-source-not-the-custodians-booked-rate).
+  (`fx/gbp_rates.py`, `scripts/fetch_ecb_rates.py`, `config.py`)
 - Last shipped: **`fig-projection`** — the forward companion to `fig-advice`:
   prices deferring vs. crystallising foreign unrealised gains across the
   remaining FIG window (consumes the situs-split's foreign unrealised), tied to

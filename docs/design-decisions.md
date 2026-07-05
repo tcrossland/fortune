@@ -80,6 +80,36 @@ Trade-off accepted: within the 12-month window a real (2–11 month) hole is
 filled silently with a stale rate and isn't flagged — acceptable because
 the only recurring gap is the single unpublished current month.
 
+## The GBP cost basis is a consistent spot source, not the custodian's booked rate
+
+UK CGT wants each acquisition/disposal in GBP at the trade-date spot rate. Two
+sources of that rate were weighed; the pipeline uses a **consistent public
+spot curve** (`HmrcMonthlyAverageSource` monthly average, or the closer
+`EcbDailyRateSource` daily reference — see `fx/gbp_rates.py`), *not* the
+custodian's own booked GBP.
+
+Stamping Pictet's booked GBP per trade (from the portal Transactions export,
+keyed on `Order nr.`) was investigated and **rejected**, for a structural
+reason, not a plumbing one: the mandates are **multi-currency** (the Lombard
+mandate is EUR-based; settlement sub-accounts span EUR/USD/JPY/DKK/HKD/SEK), so
+the overwhelming majority of trades — a EUR mandate buying a EUR fund out of
+EUR cash — **never cross GBP at all**. On a real export only ~3% of security
+legs settled into a GBP account and only ~22% carried a GBP reference amount.
+For the other ~97% there is *no booked GBP rate to stamp* — the GBP figure is a
+**notional** conversion, which is precisely what a spot curve supplies. A
+partial stamp (the ~22%) mixed with a curve fallback for the rest would also
+violate the one-rule-that-must-hold: **use one source consistently across the
+whole section 104 pool**, or the pooled cost is corrupt.
+
+Corollary: reconciling to a filed return is best done against Pictet's own
+**"Income and capital gains UK"** report (a GBP, Section-104 statement it
+issues annually — the likely source an adviser uses), *parsed as a
+tolerance cross-check*, not by reconstructing per-trade rates from the
+transactions export. Empirically, re-costing on the ECB daily spot source
+already closes ~77% of a real 2024-25 CGT gap; the residual is out-of-scope
+crypto plus the adviser's exact spot feed — not something the custodian's
+booked rate would fix.
+
 ## `mandate-returns` counts distribution income as return
 
 The mandate return is computed from statement holdings: a period's market gain

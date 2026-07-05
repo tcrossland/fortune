@@ -9,11 +9,11 @@ paradigm. Shipped features are recorded in
 
 A handful of these ideas have graduated from a one-line menu entry to a
 full implementation brief in [plans/](plans/) — designed but not yet
-built. **No active brief right now**, and no open `plans/` file — the recent
-FIG-direction work has all shipped (situs-split, FIG-aware ERI base-cost
-correction, FIG-window projection; see the [CHANGELOG](../CHANGELOG.md) and
-`archive/`). Pick the next from the menu below. When a plan ships, its line
-moves to the CHANGELOG and the plan moves to `archive/`.
+built. **Active brief: parse Pictet's
+[UK Tax Report](plans/pictet-uk-cgt-report.md)** as a CGT/income tolerance
+cross-check (Pictet's own GBP, Section-104 UK computation — the reconciliation
+target the manual 2024-25 comparison reached for by hand). When a plan ships,
+its line moves to the CHANGELOG and the plan moves to `archive/`.
 
 For the *correctness and robustness* gaps in the reporting subsystems
 (both tax reporting-status and the analytical reports) — as distinct from
@@ -249,8 +249,24 @@ the **FIG-window projection** (`fig-projection`).)
   structure confirmed viable. A second, full-detail pair (as-of
   2026-06-30) was inspected 2026-07-02 — same layout, so nothing new to
   design.
-- **Pictet tax reports as a reconciliation target (not a parsed report).**
-  Distinct from the parsing item above: rather than surface Pictet's
+- **Pictet's UK Tax Report as a reconciliation target — active brief
+  ([plans/pictet-uk-cgt-report.md](plans/pictet-uk-cgt-report.md)).** The
+  strongest reconciliation target is Pictet's own **"Income and capital gains
+  UK"** report (`INCOME_CAPITAL_GAINS_UK`, archived per year): a GBP,
+  Section-104, UK-basis computation of capital gains + overseas income — the
+  same substrate an adviser files from. Parse it and cross-check against the
+  computed SA108/SA106 (tolerance-based; Pictet uses an average FX + per-account
+  pooling, so figures won't tie exactly). This supersedes the Spanish-reports
+  reconciliation idea *below* for UK purposes.
+  - *FX aside (settled):* stamping Pictet's booked GBP per trade from the
+    Transactions export was investigated and **dropped** — the mandates are
+    multi-currency, so ~97% of trades never cross GBP and have no booked rate to
+    stamp; the correct basis is a consistent spot curve. The **ECB daily source**
+    now ships for that (see CHANGELOG); rationale in
+    [design-decisions.md](design-decisions.md#the-gbp-cost-basis-is-a-consistent-spot-source-not-the-custodians-booked-rate).
+- **Pictet *Spanish* IRPF reports as a reconciliation target (EUR/FIFO).**
+  Distinct from the parsing item above and weaker than the UK report above:
+  rather than surface Pictet's
   numbers as our own `pnl` report, use them to *cross-check* what the
   pipeline already derives — the same idea as `completeness`, aimed at
   cost basis and disposals. Two checks fall out of the two reports:
