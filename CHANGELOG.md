@@ -118,6 +118,20 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`fig-projection` — crystallise vs. defer across the FIG window.** The
+  forward companion to `fig-advice` (which optimises *which realised years to
+  claim*): it takes the **foreign** unrealised gains from the holdings report
+  (situs-split) and prices the CGT you'd avoid by crystallising them in a
+  claimed window year (relieved to nil, base cost reset) versus deferring to a
+  taxable post-window disposal — surfacing the saving and the **act-by date**
+  (the window's close). Priced by stacking the gain above `--income`
+  (`compute_liability` reuse); an upper bound (ignores the AEA and post-death
+  CGT uplift), flagging the 30-day bed-and-breakfast mechanic without picking
+  lots. Only the winners are crystallisable (a FIG-relieved loss is disallowed).
+  Pure core in `tax/uk/fig_projection.py`; writes `fig-projection.md` + `.csv`.
+  Not a rebuild step (needs a per-run `--income`). Plan:
+  [docs/archive/fig-window-projection.md](docs/archive/fig-window-projection.md).
+  (`tax/uk/fig_projection.py`, `cli/reports.py`)
 - **`holdings` splits the report by FIG situs** — each holding is marked
   **foreign** (a gain relievable under a FIG claim), **UK-situs** (always
   taxable), or **unclassified** (no commodity metadata — shown `—`, split out

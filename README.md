@@ -420,6 +420,16 @@ evaluates every claim combination across the eligible window jointly
 `fig-advice.txt`. It uses year-to-date actuals, so a recommendation touching
 the current year is provisional.
 
+Where `fig-advice` optimises the *realised* facts, `fig-projection --income
+<gbp>` is the forward companion: it takes the **foreign** unrealised gains from
+the holdings report and prices the CGT you'd avoid by **crystallising** them in
+a claimed window year (relieved to nil, resetting the base cost) versus
+**deferring** to a taxable post-window disposal — surfacing the saving and the
+**act-by date** (the window's close). An upper bound (the saving is only real
+if you eventually dispose; CGT is uplifted on death), priced by stacking the
+gain above `--income`; it flags the 30-day bed-and-breakfast mechanic but does
+not pick lots. Writes `fig-projection.md` + `.csv`. Planning aid, not advice.
+
 This is a filing aid with documented simplifications (the
 10-prior-non-resident eligibility test, temporary non-residence clawback, and
 former-remittance-basis rebasing are not modelled) — the full list and

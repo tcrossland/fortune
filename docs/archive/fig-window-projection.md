@@ -1,7 +1,14 @@
 # Plan: FIG-window multi-year projection
 
-**Status:** Ready — the three modelling decisions are settled (see below); no
-code yet. Buildable on approval.
+**Status:** ✅ Shipped and committed. `fig-projection` command
+(`tax/uk/fig_projection.py` pure core + `cli/reports.py` command/render);
+`ruff` / `mypy` / `pytest` (1105) green, `code-reviewer` clean (both optional
+suggestions applied — negative-`--income` guard, window/row-filter helpers
+extracted and unit-tested), live-verified against the real archive (correct
+remaining window + act-by, material saving). The default-off rebuild toggle was
+**dropped** — the command needs a per-run `--income`, so it's an on-demand
+planning query, not a routine rebuild artifact. See the
+[CHANGELOG](../../CHANGELOG.md).
 
 Quantify the **cost of deferring vs. crystallising foreign unrealised gains**
 across the remaining Foreign Income & Gains (FIG) window, tied to the

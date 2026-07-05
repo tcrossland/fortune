@@ -227,14 +227,19 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-**Active:** [FIG-window multi-year projection](docs/plans/fig-window-projection.md)
-— scoping. Quantify deferring vs. crystallising foreign unrealised gains across
-the remaining FIG window (consumes the situs-split's
-`total_unrealised_foreign_gbp`), tied to the window-expiry deadline. Plan
-scoped, **modelling decisions settled** (--income band stacking; upper-bound +
-flag disposal model; growth-free MVP) — ready to build on approval. Next after:
-the FIG-reframed disposal/rebasing advisor (gated on this proving the gap
+**Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
+Natural next in the FIG direction: the FIG-reframed disposal/rebasing advisor
+(now that `fig-projection` can show whether the deferral-vs-crystallise gap is
 material).
+
+- Last shipped: **`fig-projection`** — the forward companion to `fig-advice`:
+  prices deferring vs. crystallising foreign unrealised gains across the
+  remaining FIG window (consumes the situs-split's foreign unrealised), tied to
+  the window-expiry act-by date. Pure core in `tax/uk/fig_projection.py`;
+  `--income` band-stacked, upper-bound framing, flags bed-and-breakfast. On-
+  demand query (no rebuild toggle). Plan:
+  [docs/archive/fig-window-projection.md](docs/archive/fig-window-projection.md).
+  (`tax/uk/fig_projection.py`, `cli/reports.py`)
 
 - Last shipped: **FIG-aware ERI base-cost correction** (core) — the section 104
   ERI base-cost uplift is suppressed for ERI relieved under a FIG claim (never

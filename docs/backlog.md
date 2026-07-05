@@ -9,12 +9,12 @@ paradigm. Shipped features are recorded in
 
 A handful of these ideas have graduated from a one-line menu entry to a
 full implementation brief in [plans/](plans/) — designed but not yet
-built. **Active brief: the [FIG-window multi-year
-projection](plans/fig-window-projection.md)** (scoped, modelling decisions
-settled — ready to build on approval). The two before it (the FIG situs-split and the FIG-aware
-ERI base-cost correction) have both **shipped** (see the
-[CHANGELOG](../CHANGELOG.md) and `archive/`). When a plan ships, its line moves
-to the CHANGELOG and the plan moves to `archive/`.
+built. **No active brief right now.** The recent FIG-direction work has all
+**shipped** — the situs-split, the FIG-aware ERI base-cost correction, and the
+FIG-window projection (see the [CHANGELOG](../CHANGELOG.md) and `archive/`).
+Next candidate: the FIG-reframed disposal / rebasing advisor (below), now that
+the projection can show whether the gap is material. When a plan ships, its
+line moves to the CHANGELOG and the plan moves to `archive/`.
 
 For the *correctness and robustness* gaps in the reporting subsystems
 (both tax reporting-status and the analytical reports) — as distinct from
@@ -63,18 +63,9 @@ not tax advice" framing. Ordered FIG-first (see the profile note above).
 ### FIG-relevant (the active direction)
 
 (Shipped this direction — see the [CHANGELOG](../CHANGELOG.md) / `archive/`:
-the **FIG situs-split** and the **FIG-aware ERI base-cost correction** core.)
+the **FIG situs-split**, the **FIG-aware ERI base-cost correction** core, and
+the **FIG-window projection** (`fig-projection`).)
 
-- **FIG-window multi-year projection — active brief
-  ([plans/fig-window-projection.md](plans/fig-window-projection.md)).** Quantify
-  the **cost of deferring vs. crystallising** foreign unrealised gains across the
-  remaining FIG window, tied to the window-expiry deadline. `fig-advice` already
-  optimises *which years to claim* on realised actuals; this is the forward
-  layer — it takes the **foreign** unrealised gain the situs-split now surfaces
-  (`total_unrealised_foreign_gbp`) and prices "realise it in a claimed window
-  year (relieved to nil) vs. let it be taxed on a later post-window disposal",
-  surfacing the saving and the act-by date. Builds on `fig-advice` +
-  `tax-forecast` + the holdings situs data.
 - **FIG-reframed disposal / rebasing advisor.** The tactical follow-on to the
   projection: *which foreign lots* to crystallise-and-rebase during the window,
   with the 30-day bed-and-breakfast check. Only worth building once the

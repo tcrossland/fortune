@@ -99,7 +99,8 @@ src/banking_pipeline/
 │   ├── inspect.py        classify | scan | extract-text
 │   ├── statements.py     prices | balances | portfolio | property
 │   ├── reports.py        concentration | net-worth | allocation |
-│   │                       portfolio-allocation | income
+│   │                       portfolio-allocation | income | holdings |
+│   │                       fig-projection
 │   ├── rebuild.py        rebuild | check | reconcile
 │   └── tax.py            tax-report | tax-forecast | tax-pack | fig-advice
 ├── cli_options.py      Reusable Annotated Typer option aliases shared
@@ -279,9 +280,12 @@ src/banking_pipeline/
 │       │                    dividends → CGT, with PA taper + FTCR)
 │       ├── tax_pack.py    Pure Markdown renderer tying the computed figures
 │       │                    to HMRC form boxes (the `tax-pack` filing aid)
-│       └── fig_advice.py  Multi-year FIG claim optimiser: brute-forces the
-│                            2^k claim subsets over the eligible window,
-│                            loss-chain-aware, ranks by total window liability
+│       ├── fig_advice.py  Multi-year FIG claim optimiser: brute-forces the
+│       │                    2^k claim subsets over the eligible window,
+│       │                    loss-chain-aware, ranks by total window liability
+│       └── fig_projection.py  FIG-window projection: prices deferring vs.
+│                            crystallising foreign unrealised gains before the
+│                            window closes (crystallise-now saving + act-by)
 ├── templates/
 │   ├── __init__.py       TEMPLATE_REGISTRY (populated at import)
 │   ├── pictet/           ~40 per-doctype templates (EN + ES locales)
@@ -843,6 +847,16 @@ usage examples; this is the behavioural reference.
   optimised jointly across the eligible window (brute-forces the 2^k claim
   subsets, k ≤ 4, threading the loss chain per subset). Writes
   `fig-advice.txt`. A planning aid, not tax advice.
+- `fig-projection --income <gbp>` — the forward companion to `fig-advice`:
+  prices deferring vs. **crystallising** the **foreign** unrealised gains
+  (from the holdings report's situs-split) during the remaining FIG window.
+  The CGT that deferring would cost (the crystallisable gain stacked above
+  `--income` at the `--year` rates, reusing `compute_liability`) is the
+  crystallise-now saving; the act-by date is the window's close. An
+  upper-bound estimate (ignores the AEA and post-death CGT uplift; flags the
+  30-day bed-and-breakfast mechanic but doesn't pick lots). Pure core in
+  `tax/uk/fig_projection.py`; writes `fig-projection.md` + `.csv`. Not a
+  rebuild step (needs a per-run `--income`) — an on-demand planning query.
 
 ## Configuration reference
 

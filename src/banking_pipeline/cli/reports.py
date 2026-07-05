@@ -10,7 +10,9 @@ live in :mod:`banking_pipeline.cli._main`.
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterable
 from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, cast
 
@@ -51,8 +53,12 @@ from banking_pipeline.commodities_metadata import load_commodities
 from banking_pipeline.config import settings
 from banking_pipeline.fx.gbp_rates import build_rate_source
 from banking_pipeline.opening_positions import load_opening_positions
+from banking_pipeline.report_format import gbp
+from banking_pipeline.tax.uk import fig_projection as fig_projection_mod
 from banking_pipeline.tax.uk.basis import UkSection104Lens
 from banking_pipeline.tax.uk.eri import cumulative_base_cost_adjustments, load_eri
+from banking_pipeline.tax.uk.residence import fig_eligible_years
+from banking_pipeline.tax.uk.tax_year import date_to_tax_year, tax_year_bounds
 
 
 @app.command()
@@ -123,6 +129,70 @@ def concentration(
         )
         if strict:
             raise typer.Exit(code=1)
+
+
+def _build_holdings_report(
+    *,
+    statements: list[Path],
+    statements_dir: Path | None,
+    statements_recursive: bool,
+    statements_glob: str | None,
+    source: Path,
+    commodities: Path | None,
+    rate_source: str | None,
+    opening_positions: Path | None,
+) -> holdings_mod.HoldingsReport:
+    """Build the holdings cost-basis report — shared by ``holdings`` and
+    ``fig-projection``.
+
+    Loads the latest statement per portfolio and the UK section 104 lens
+    (ERI-adjusted, with the FIG-relieved uplift suppressed, ISA trades
+    excluded), and joins them. Prints the ERI-rate-gap warning as a side
+    effect, as the ``holdings`` command always did.
+    """
+
+    # Only the latest snapshot per portfolio is reported, so prune each
+    # discovered directory to its newest statement before opening any PDF.
+    texts, commodities_map, rates = _load_statement_context(
+        statements, statements_dir, statements_recursive, commodities, rate_source,
+        statements_glob, latest_only=True,
+    )
+    # ISA-wrapped trades are UK-tax-exempt: no section 104 basis, so excluded
+    # from the lens (mirrors the tax choke point). ``rates`` is the exact-month
+    # source; ``value_holdings`` forward-fills it for the mark.
+    txns = [tx for tx in _load_sidecar_transactions(source) if not tx.is_tax_exempt]
+    opening_path = opening_positions or settings.opening_positions_path
+    opening = (
+        load_opening_positions(opening_path)
+        if opening_path is not None and opening_path.is_file()
+        else {}
+    )
+    # ERI base-cost uplift raises the section 104 pool cost, accumulated across
+    # the whole history (the pool is cumulative). ERI relieved under a FIG claim
+    # was never charged, so its uplift is suppressed (mirrors the tax pipeline).
+    eri_path = settings.eri_path
+    eri_entries = (
+        load_eri(eri_path) if eri_path is not None and eri_path.is_file() else {}
+    )
+    adjustments, eri_gaps = cumulative_base_cost_adjustments(
+        txns, eri_entries=eri_entries, commodities=commodities_map,
+        source=rates, opening_positions=opening,
+        fig_claim_years=settings.fig_claim_years,
+    )
+    lens = UkSection104Lens(
+        transactions=txns, commodities=commodities_map, source=rates,
+        opening_positions=opening, cost_adjustments=adjustments,
+    )
+    report = holdings_mod.build_report(
+        texts, commodities=commodities_map, rate_source=rates, basis=lens,
+        transactions=txns,
+    )
+    if eri_gaps:
+        err_console.print(
+            f"[yellow]{len(eri_gaps)} ERI entry/entries had no GBP rate — the "
+            "cost basis for those holdings omits that uplift.[/yellow]"
+        )
+    return report
 
 
 @app.command()
@@ -197,52 +267,12 @@ def holdings(
         err_console.print("[red]error:[/red] --basis must be 'uk' or 'es'")
         raise typer.Exit(code=2)
 
-    # ``holdings`` reports only the latest snapshot per portfolio, so prune
-    # each discovered directory to its newest statement before opening any PDF
-    # (``latest_only``) — the older monthlies would be parsed and discarded.
-    texts, commodities_map, rates = _load_statement_context(
-        statements, statements_dir, statements_recursive, commodities, rate_source,
-        statements_glob, latest_only=True,
+    report = _build_holdings_report(
+        statements=statements, statements_dir=statements_dir,
+        statements_recursive=statements_recursive, statements_glob=statements_glob,
+        source=source, commodities=commodities, rate_source=rate_source,
+        opening_positions=opening_positions,
     )
-    # ISA-wrapped trades are UK-tax-exempt: they have no section 104 basis, so
-    # they're excluded from the lens (mirrors the tax choke point). ISA
-    # holdings still appear in the report from the statement side, with a
-    # blank cost. ``rates`` is the exact-month source the tax pipeline uses
-    # for cost conversion; ``value_holdings`` forward-fills it for the mark.
-    txns = [tx for tx in _load_sidecar_transactions(source) if not tx.is_tax_exempt]
-    opening_path = opening_positions or settings.opening_positions_path
-    opening = (
-        load_opening_positions(opening_path)
-        if opening_path is not None and opening_path.is_file()
-        else {}
-    )
-    # ERI base-cost uplift (excess reportable income already taxed) raises the
-    # section 104 pool cost — accumulated across the whole history, since the
-    # pool is cumulative and this is a current cost basis. ERI relieved under a
-    # FIG claim was never charged, so its uplift is suppressed (mirrors the tax
-    # pipeline; see design-decisions).
-    eri_path = settings.eri_path
-    eri_entries = (
-        load_eri(eri_path) if eri_path is not None and eri_path.is_file() else {}
-    )
-    adjustments, eri_gaps = cumulative_base_cost_adjustments(
-        txns, eri_entries=eri_entries, commodities=commodities_map,
-        source=rates, opening_positions=opening,
-        fig_claim_years=settings.fig_claim_years,
-    )
-    lens = UkSection104Lens(
-        transactions=txns, commodities=commodities_map, source=rates,
-        opening_positions=opening, cost_adjustments=adjustments,
-    )
-    report = holdings_mod.build_report(
-        texts, commodities=commodities_map, rate_source=rates, basis=lens,
-        transactions=txns,
-    )
-    if eri_gaps:
-        err_console.print(
-            f"[yellow]{len(eri_gaps)} ERI entry/entries had no GBP rate — the "
-            "cost basis for those holdings omits that uplift.[/yellow]"
-        )
 
     out_dir = out or settings.holdings_reports_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -282,6 +312,234 @@ def holdings(
         )
         if strict:
             raise typer.Exit(code=1)
+
+
+def _remaining_fig_window(
+    arrival: date, today: date
+) -> tuple[list[str], date | None]:
+    """The still-claimable FIG window years (eligible and not yet ended,
+    ascending) and the act-by date — 5 April of the last one, or ``None`` when
+    the window has closed. A year whose end is exactly ``today`` still counts."""
+
+    window = sorted(
+        y for y in fig_eligible_years(arrival) if tax_year_bounds(y)[1] >= today
+    )
+    act_by = tax_year_bounds(window[-1])[1] if window else None
+    return window, act_by
+
+
+def _foreign_holdings(
+    rows: Iterable[holdings_mod.HoldingRow],
+) -> list[fig_projection_mod.FigProjectionHolding]:
+    """The crystallisation candidates: foreign holdings with a matched basis.
+
+    Excludes UK-situs (``uk_situs`` ``True``) and unclassified (``None`` — we
+    don't advise crystallising an unconfirmed situs), and rows with no
+    unrealised figure (no matched section 104 basis — avoids a ``None``
+    comparison downstream)."""
+
+    return [
+        fig_projection_mod.FigProjectionHolding(r.key, r.name, r.unrealised_gbp)
+        for r in rows
+        if r.uk_situs is False and r.unrealised_gbp is not None
+    ]
+
+
+def _render_fig_projection_md(
+    projection: fig_projection_mod.FigProjection, *, as_of: date | None
+) -> str:
+    """Render the FIG-window projection to Markdown."""
+
+    p = projection
+    as_of_s = as_of.isoformat() if as_of else "—"
+    lines = [
+        "# FIG-window projection — crystallise vs. defer",
+        "",
+        f"Foreign holdings as at **{as_of_s}**. **Planning aid, not tax advice.**",
+        "",
+    ]
+    if not p.window:
+        lines += [
+            "The 4-year FIG window has **closed** — no claimable years remain, so "
+            "crystallising a foreign gain no longer relieves it. Nothing to act on.",
+            "",
+        ]
+    else:
+        act = p.act_by.isoformat() if p.act_by else "—"
+        lines += [
+            f"**Crystallisable foreign gains: {gbp(p.crystallisable_gain_gbp)}** — "
+            "the winners you could realise in a claimed window year, relieved to "
+            "nil. Deferring them to a taxable post-window disposal would cost an "
+            f"estimated **{gbp(p.deferred_cgt_gbp)}** in CGT (stacked above assumed "
+            f"income {gbp(p.income_gbp)} at {p.rate_year} rates), so crystallising "
+            f"in the window saves **up to {gbp(p.deferred_cgt_gbp)}**.",
+            "",
+            f"**Act by {act}** — the last claimable window year ({p.window[-1]}) "
+            f"ends then. Claimable years: {', '.join(p.window)}.",
+            "",
+            "Net foreign unrealised P&L (winners and losers): "
+            f"{gbp(p.net_foreign_unrealised_gbp)}.",
+            "",
+        ]
+    if p.holdings:
+        lines += [
+            "## Foreign holdings",
+            "",
+            "| Holding | Unrealised (GBP) |",
+            "| --- | ---: |",
+            *[f"| {h.name} ({h.key}) | {gbp(h.unrealised_gbp)} |" for h in p.holdings],
+            "",
+        ]
+    lines += [
+        "## Caveats",
+        "",
+        "- **Upper bound.** The saving is only real if you actually dispose of the "
+        "holding in your lifetime — CGT is uplifted to market on death, so a "
+        "hold-to-death position has no deferred CGT to save.",
+        "- **A base-cost reset needs a real disposal + reacquisition.** A "
+        "repurchase within 30 days is matched back under the bed-and-breakfast "
+        "rule and undoes the reset; a longer gap carries market risk. *Which* lots "
+        "and how is a separate question (the FIG-reframed disposal advisor).",
+        "- **The AEA is ignored** (upper-bound framing) — a post-window year's "
+        "annual exempt amount would trim the saving slightly. Claiming a window "
+        "year also forfeits that year's personal allowance and AEA.",
+        "- **Foreign losses are disallowed** under a claim, so only winners are "
+        "crystallisable; the net above includes losers for context.",
+        "",
+    ]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _fig_projection_csv_rows(
+    projection: fig_projection_mod.FigProjection,
+) -> list[list[str]]:
+    rows = [["key", "name", "unrealised_gbp"]]
+    for h in projection.holdings:
+        rows.append([h.key, h.name, f"{h.unrealised_gbp:.2f}"])
+    return rows
+
+
+@app.command("fig-projection")
+def fig_projection(
+    income: Annotated[
+        str,
+        typer.Option(
+            "--income",
+            help="Expected non-savings, non-dividend taxable income (salary + "
+            "rent) before the personal allowance — sets the marginal band the "
+            "deferred gain stacks on, as for tax-forecast.",
+        ),
+    ],
+    statements: StatementOpt = [],  # noqa: B006 — list-option default lives here
+    statements_dir: StatementsDirOpt = None,
+    statements_recursive: StatementsRecursiveOpt = False,
+    statements_glob: StatementsGlobOpt = None,
+    source: Annotated[
+        Path,
+        typer.Option(
+            "--source",
+            help="Directory walked recursively for *.transactions.jsonl "
+            "sidecars (the cost-basis substrate). Defaults to ``data``.",
+        ),
+    ] = Path("data"),
+    year: Annotated[
+        str | None,
+        typer.Option(
+            "--year",
+            help="Tax year whose bands/rates price the deferred gain (a proxy "
+            "for the eventual post-window disposal year). Defaults to the "
+            "current tax year.",
+        ),
+    ] = None,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to ``reports/fig-projection``.",
+        ),
+    ] = None,
+    commodities: CommoditiesOpt = None,
+    rate_source: ValuationRateSourceOpt = None,
+    opening_positions: Annotated[
+        Path | None,
+        typer.Option("--opening-positions", help="Opening-positions TOML."),
+    ] = None,
+    verbose: VerboseOpt = False,
+) -> None:
+    """Project the cost of deferring vs. crystallising foreign gains.
+
+    While inside the 4-year FIG window, realising a foreign holding's gain in a
+    claimed year relieves it to nil and resets the base cost, so the embedded
+    gain escapes CGT on any eventual post-window disposal — an opportunity that
+    expires when the window closes. This prices that: it takes the **foreign**
+    unrealised gains from the holdings report (situs-split) and estimates the
+    CGT that deferring them would cost (stacked above ``--income``), which is
+    the saving from crystallising in-window, and surfaces the act-by date.
+    Writes ``fig-projection.md`` + ``.csv``. A planning aid, not tax advice.
+    """
+
+    _configure_logging(verbose)
+    try:
+        income_gbp = Decimal(income)
+    except (ArithmeticError, ValueError):
+        err_console.print(f"--income must be a number, got {income!r}.")
+        raise typer.Exit(code=1) from None
+    if income_gbp < 0:
+        err_console.print(f"--income must not be negative, got {income!r}.")
+        raise typer.Exit(code=1)
+
+    arrival = settings.uk_residence_start_date
+    if arrival is None:
+        err_console.print(
+            "No uk_residence_start_date configured — the FIG window is "
+            "undefined; nothing to project."
+        )
+        raise typer.Exit(code=1)
+
+    today = date.today()
+    rate_year = year or date_to_tax_year(today)
+    bands = settings.income_tax_bands.get(rate_year)
+    cgt_rates = settings.cgt_forecast_rates.get(rate_year)
+    if bands is None or cgt_rates is None:
+        err_console.print(
+            f"No income-tax bands / CGT rates configured for {rate_year}; add it "
+            "to income_tax_bands / cgt_forecast_rates (see tax/uk/rates.py)."
+        )
+        raise typer.Exit(code=1)
+
+    window, act_by = _remaining_fig_window(arrival, today)
+
+    report = _build_holdings_report(
+        statements=statements, statements_dir=statements_dir,
+        statements_recursive=statements_recursive, statements_glob=statements_glob,
+        source=source, commodities=commodities, rate_source=rate_source,
+        opening_positions=opening_positions,
+    )
+    foreign = _foreign_holdings(report.rows)
+    projection = fig_projection_mod.project_fig_window(
+        window=window, act_by=act_by, holdings=foreign, income=income_gbp,
+        rate_year=rate_year, bands=bands, cgt_rates=cgt_rates,
+    )
+
+    out_dir = out or Path("reports/fig-projection")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "fig-projection.md").write_text(
+        _render_fig_projection_md(projection, as_of=report.as_of), encoding="utf-8"
+    )
+    with (out_dir / "fig-projection.csv").open("w", newline="", encoding="utf-8") as fh:
+        csv.writer(fh).writerows(_fig_projection_csv_rows(projection))
+
+    if not window:
+        err_console.print(
+            f"Wrote FIG-window projection to {out_dir} — the window has closed, "
+            "no claimable years remain."
+        )
+    else:
+        err_console.print(
+            f"Wrote FIG-window projection to {out_dir} (crystallisable "
+            f"£{projection.crystallisable_gain_gbp:,.2f}, est. CGT saving "
+            f"£{projection.deferred_cgt_gbp:,.2f}, act by {act_by})."
+        )
 
 
 @app.command("net-worth")
