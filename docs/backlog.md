@@ -9,11 +9,11 @@ paradigm. Shipped features are recorded in
 
 A handful of these ideas have graduated from a one-line menu entry to a
 full implementation brief in [plans/](plans/) — designed but not yet
-built. **Active brief: parse Pictet's
-[UK Tax Report](plans/pictet-uk-cgt-report.md)** as a CGT/income tolerance
-cross-check (Pictet's own GBP, Section-104 UK computation — the reconciliation
-target the manual 2024-25 comparison reached for by hand). When a plan ships,
-its line moves to the CHANGELOG and the plan moves to `archive/`.
+built. **No active brief right now** — the Pictet UK Tax Report cross-check
+(`reconcile-uk-tax`) has shipped (see the [CHANGELOG](../CHANGELOG.md) /
+[archive/pictet-uk-cgt-report.md](archive/pictet-uk-cgt-report.md)). Pick the
+next from the menu below. When a plan ships, its line moves to the CHANGELOG and
+the plan moves to `archive/`.
 
 For the *correctness and robustness* gaps in the reporting subsystems
 (both tax reporting-status and the analytical reports) — as distinct from
@@ -249,15 +249,16 @@ the **FIG-window projection** (`fig-projection`).)
   structure confirmed viable. A second, full-detail pair (as-of
   2026-06-30) was inspected 2026-07-02 — same layout, so nothing new to
   design.
-- **Pictet's UK Tax Report as a reconciliation target — active brief
-  ([plans/pictet-uk-cgt-report.md](plans/pictet-uk-cgt-report.md)).** The
-  strongest reconciliation target is Pictet's own **"Income and capital gains
-  UK"** report (`INCOME_CAPITAL_GAINS_UK`, archived per year): a GBP,
-  Section-104, UK-basis computation of capital gains + overseas income — the
-  same substrate an adviser files from. Parse it and cross-check against the
-  computed SA108/SA106 (tolerance-based; Pictet uses an average FX + per-account
-  pooling, so figures won't tie exactly). This supersedes the Spanish-reports
-  reconciliation idea *below* for UK purposes.
+- **Pictet's UK Tax Report as a reconciliation target — ✅ shipped**
+  (`reconcile-uk-tax`; see the [CHANGELOG](../CHANGELOG.md) /
+  [archive/pictet-uk-cgt-report.md](archive/pictet-uk-cgt-report.md)). Parses
+  Pictet's own GBP, Section-104 "Income and capital gains UK" report and
+  cross-checks it against the computed SA108/SA106 (aggregate tolerance + exact
+  per-security presence; only a missing disposal gates). Superseded the
+  Spanish-reports reconciliation idea *below* for UK purposes. *Open extensions:*
+  the per-mandate split (currently aggregate-across-mandates vs the NIF pool) and
+  parsing the report's underlying **Transactions** section for per-lot
+  drill-down.
   - *FX aside (settled):* stamping Pictet's booked GBP per trade from the
     Transactions export was investigated and **dropped** — the mandates are
     multi-currency, so ~97% of trades never cross GBP and have no booked rate to

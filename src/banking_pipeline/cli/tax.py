@@ -30,8 +30,16 @@ from banking_pipeline.cli_options import (
 )
 from banking_pipeline.commodities_metadata import load_commodities
 from banking_pipeline.config import settings
+from banking_pipeline.extractors.pdf_text import load_pdf
 from banking_pipeline.fx.gbp_rates import build_rate_source
 from banking_pipeline.opening_positions import load_opening_positions
+from banking_pipeline.pictet_uk_tax_extract import (
+    Finding,
+    PipelineFigures,
+    has_material_finding,
+    parse_uk_tax_report,
+    reconcile_uk_tax,
+)
 from banking_pipeline.tax.uk.cgt_allowance import (
     CGT_STATUSES,
     CgtAllowanceResult,
@@ -1626,6 +1634,193 @@ def fig_advice(
             + "; ".join(blockers)
             + ". See fig-advice.txt; resolve or rerun without --strict."
         )
+        raise typer.Exit(code=1)
+
+
+# --- reconcile-uk-tax -------------------------------------------------------
+
+_UK_STATUS = {
+    "match": "match",
+    "mismatch": "⚠️ MISMATCH",
+    "pictet_only": "⚠️ PICTET-ONLY",
+    "pipeline_only": "pipeline-only",
+}
+
+
+def _render_uk_reconcile(findings: list[Finding], year: str, n_securities: int) -> str:
+    lines = [
+        f"# UK tax reconciliation — {year}",
+        "",
+        "Pictet's own **UK Tax Report** (GBP, Section 104) cross-checked against "
+        "the pipeline's computed SA108 / SA106. Aggregates are **tolerance**-matched "
+        "(Pictet uses an average FX + per-account pooling, so they won't tie to the "
+        "penny); each security's **presence** is exact. A **PICTET-ONLY** security "
+        "is the tax-critical signal — a disposal Pictet booked that the pipeline is "
+        "missing. A **pipeline-only** one is likely the other mandate (Pictet reports "
+        "per account). Reporting aid, not tax advice.",
+        "",
+        f"Pictet report: {n_securities} securities.",
+        "",
+        "## Aggregates",
+        "",
+        "| Category | Figure | Pictet (GBP) | Pipeline (GBP) | Status |",
+        "| --- | --- | ---: | ---: | :--- |",
+    ]
+    for f in findings:
+        if f.category == "presence":
+            continue
+        p = _money(f.pictet) if f.pictet is not None else "—"
+        q = _money(f.pipeline) if f.pipeline is not None else "—"
+        lines.append(f"| {f.category} | {f.label} | {p} | {q} | {_UK_STATUS[f.status]} |")
+
+    presence = [f for f in findings if f.category == "presence"]
+    lines += ["", "## Security presence", ""]
+    if presence:
+        lines += [f"- `{f.label}` — {_UK_STATUS[f.status]}" for f in presence]
+    else:
+        lines.append(
+            "Every Pictet security is present in the pipeline's disposals, and "
+            "vice versa."
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _uk_reconcile_csv_rows(findings: list[Finding]) -> list[list[str]]:
+    rows = [["category", "label", "pictet_gbp", "pipeline_gbp", "status"]]
+    for f in findings:
+        rows.append([
+            f.category, f.label,
+            _money(f.pictet) if f.pictet is not None else "",
+            _money(f.pipeline) if f.pipeline is not None else "",
+            f.status,
+        ])
+    return rows
+
+
+@app.command("reconcile-uk-tax")
+def reconcile_uk_tax_cmd(
+    year: Annotated[
+        str, typer.Option("--year", help="UK tax year, e.g. 2024-25.")
+    ],
+    report: Annotated[
+        Path,
+        typer.Option(
+            "--report",
+            help="Pictet 'Income and capital gains UK' report PDF for the year.",
+        ),
+    ],
+    source: Annotated[
+        Path,
+        typer.Option(
+            "--source",
+            help="Directory walked (recursively) for *.transactions.jsonl "
+            "sidecars. Defaults to ``data``.",
+        ),
+    ] = Path("data"),
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Findings output directory. Defaults to "
+            "``<tax_reports_dir>/<year>``.",
+        ),
+    ] = None,
+    commodities: Annotated[
+        Path | None, typer.Option("--commodities", help="Commodity-metadata TOML.")
+    ] = None,
+    rate_source: Annotated[
+        str | None, typer.Option("--rate-source", help="GBP rate source override.")
+    ] = None,
+    opening_positions: Annotated[
+        Path | None,
+        typer.Option("--opening-positions", help="Opening-positions TOML."),
+    ] = None,
+    eri: Annotated[
+        Path | None, typer.Option("--eri", help="Excess reportable income TOML.")
+    ] = None,
+    verbose: VerboseOpt = False,
+) -> None:
+    """Cross-check Pictet's UK Tax Report against the computed SA108 / SA106.
+
+    Parses Pictet's own GBP, Section-104 "Income and capital gains UK" report
+    and diffs it against the pipeline's computed capital gains + foreign income
+    for the year — the machine version of an adviser-schedule comparison.
+    Aggregates are tolerance-matched; each security's presence is exact.
+    Writes ``uk-tax-reconcile.md`` + ``.csv`` and exits non-zero **only** on a
+    material finding — a disposal Pictet booked that the pipeline lacks
+    (``pictet_only``). Aggregate mismatches are indicative (Pictet's average FX
+    makes them diverge), not gating. A cross-check only — never fed to the tax
+    pipeline. Not tax advice.
+    """
+
+    _configure_logging(verbose)
+    tax_year_bounds(year)  # validate the label early
+    if not report.is_file():
+        err_console.print(f"report PDF not found: {report}")
+        raise typer.Exit(code=1)
+
+    comp = _compute_tax_year(
+        year=year, source=source, commodities=commodities,
+        rate_source=rate_source, opening_positions=opening_positions, eri=eri,
+    )
+    parsed = parse_uk_tax_report(load_pdf(report).text)
+    if parsed.overview is None and not parsed.securities:
+        err_console.print(
+            f"parsed no capital-gains data from {report} — is it a Pictet UK "
+            "Tax Report? (expected 'Capital gain tax detail' / Section 104)"
+        )
+        raise typer.Exit(code=1)
+
+    # Build the pipeline side. Pictet folds reporting-fund income (ERI) into its
+    # overseas interest / dividend totals, so add the ERI income back to SA106
+    # (the pipeline keeps them separate) before comparing.
+    z = Decimal(0)
+    cgt = [r for r in comp.sa108.rows if r.reporting_status in CGT_STATUSES]
+    eri_int = sum(
+        (r.gross_gbp for r in comp.eri_result.rows if r.income_type == "interest"), z
+    )
+    eri_div = sum(
+        (r.gross_gbp for r in comp.eri_result.rows if r.income_type == "dividend"), z
+    )
+    pipeline = PipelineFigures(
+        chargeable_gains=sum((r.gain_gbp for r in cgt if r.gain_gbp > 0), z),
+        allowable_loss=sum((r.gain_gbp for r in cgt if r.gain_gbp < 0), z),
+        # Positive gains only — Pictet's "Total offshore gains taxed to income"
+        # is a gains line (non-reporting losses are a separate income-loss box),
+        # so match that, as chargeable_gains does above.
+        offshore_income_gain=sum(
+            (r.gain_gbp for r in comp.sa108.rows
+             if r.reporting_status == "non-reporting" and r.gain_gbp > 0), z
+        ),
+        interest_gross=sum((r.gross_gbp for r in comp.sa106.interest), z) + eri_int,
+        dividend_gross=sum((r.gross_gbp for r in comp.sa106.dividends), z) + eri_div,
+        disposal_isins=frozenset(
+            {r.isin for r in comp.sa108.rows}
+            | {r.isin for r in comp.sa108.dds_disposals}
+        ),
+    )
+    findings = reconcile_uk_tax(parsed, pipeline)
+
+    out_dir = out if out is not None else settings.tax_reports_dir / year
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "uk-tax-reconcile.md").write_text(
+        _render_uk_reconcile(findings, year, len(parsed.securities)),
+        encoding="utf-8",
+    )
+    with (out_dir / "uk-tax-reconcile.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as fh:
+        csv.writer(fh).writerows(_uk_reconcile_csv_rows(findings))
+
+    n_missing = sum(1 for f in findings if f.status == "pictet_only")
+    n_mismatch = sum(1 for f in findings if f.status == "mismatch")
+    err_console.print(
+        f"Wrote UK-tax reconciliation for {year} to {out_dir} "
+        f"({len(parsed.securities)} Pictet securities; {n_missing} missing "
+        f"disposal(s), {n_mismatch} aggregate mismatch(es) — indicative, FX)"
+    )
+    if has_material_finding(findings):
         raise typer.Exit(code=1)
 
 

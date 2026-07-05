@@ -227,12 +227,17 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-**Active:** [Pictet UK Tax Report parser](docs/plans/pictet-uk-cgt-report.md)
-— scoping. Parse Pictet's own GBP, Section-104 "Income and capital gains UK"
-report and cross-check it (tolerance-based) against the computed SA108/SA106.
-Plan drafted; awaiting approval + three decisions (tolerance model, per-account
-vs NIF, green/zero-cost handling).
+**Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
 
+- Last shipped: **`reconcile-uk-tax`** — parse Pictet's own GBP, Section-104
+  "Income and capital gains UK" report (`pictet_uk_tax_extract.py`) and
+  cross-check it against the computed SA108/SA106. Aggregate tolerance + exact
+  per-security presence; ERI income folded into the pipeline totals to match
+  Pictet's overseas totals; only a *missing disposal* (`pictet_only`) gates the
+  build (aggregate divergence is expected FX noise). Read-only — never fed to the
+  tax pipeline. Plan:
+  [docs/archive/pictet-uk-cgt-report.md](docs/archive/pictet-uk-cgt-report.md).
+  (`pictet_uk_tax_extract.py`, `cli/tax.py`)
 - Last shipped: **ECB daily FX rate source** — a second `GbpRateSource`
   (`gbp_rate_source = "ecb-daily"`) reading the ECB daily reference rates as a
   spot proxy for CGT, closer to trade-date spot than HMRC monthly average.

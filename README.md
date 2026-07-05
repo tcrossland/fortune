@@ -529,6 +529,28 @@ Both write per-source Markdown + CSV findings and exit nonzero on a real gap
 (a missing / amount-mismatched row), so a rebuild fails loudly; they're wired
 into `rebuild` via `[post.completeness]` and `[post.reconcile_transactions]`.
 
+### UK tax reconciliation
+
+Where the two above check the raw trade/cash legs, `reconcile-uk-tax` checks the
+**computed tax figures** against Pictet's own **UK Tax Report** — the GBP,
+Section-104 "Income and capital gains UK" report Pictet issues annually (the
+same substrate an adviser files from):
+
+```bash
+uv run banking-pipeline reconcile-uk-tax --year 2024-25 \
+    --report "<archive>/2025/tax/Income and capital gains UK 20250405.pdf"
+```
+
+It parses Pictet's capital-gain overview + per-security detail + overseas income
+totals, and diffs them against the computed SA108 / SA106. Aggregates are
+**tolerance**-matched (Pictet uses an average FX + per-account pooling, so they
+won't tie to the penny — an allowable-loss or offshore total can swing tens of
+percent on FX alone); each security's **presence** is exact. Only a
+**missing disposal** (a security Pictet booked that the pipeline lacks) is
+material and exits non-zero — that's the FX-independent bug signal; aggregate
+mismatches are shown for review but expected. A cross-check only — never fed to
+the tax pipeline.
+
 ### Duplicate audit
 
 Where `reconcile` catches *missing* or drifted entries, `dedup-check` catches

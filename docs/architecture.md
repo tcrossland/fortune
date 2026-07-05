@@ -102,7 +102,8 @@ src/banking_pipeline/
 │   │                       portfolio-allocation | income | holdings |
 │   │                       fig-projection
 │   ├── rebuild.py        rebuild | check | reconcile
-│   └── tax.py            tax-report | tax-forecast | tax-pack | fig-advice
+│   └── tax.py            tax-report | tax-forecast | tax-pack | fig-advice |
+│                           reconcile-uk-tax
 ├── cli_options.py      Reusable Annotated Typer option aliases shared
 │                         across commands (VerboseOpt + the statement-
 │                         valuation report option set) — single definition
@@ -134,6 +135,9 @@ src/banking_pipeline/
 ├── reconcile.py        Statement-balance reconciliation: parses bean-check
 │                         assertion failures into a drift report (drift rows +
 │                         earliest-drift + coverage gaps)
+├── pictet_uk_tax_extract.py  Parse Pictet's GBP "Income and capital gains UK"
+│                         report + cross-check it against the computed
+│                         SA108/SA106 (`reconcile-uk-tax`) — read-only
 ├── statement_completeness.py  Statement-completeness cross-check: parses the
 │                         current-account cash ledger and diffs it against the
 │                         sidecars by transaction (missing / unmatched)

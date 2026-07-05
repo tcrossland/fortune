@@ -1,7 +1,14 @@
 # Plan: parse Pictet's "UK Tax Report" as a CGT/income cross-check
 
-**Status:** Approved — building. The three decisions below are settled to their
-recommended defaults.
+**Status:** ✅ Shipped (parser + cross-check + `reconcile-uk-tax` CLI).
+Validated against the real FY24-25 report: 21 securities parsed, presence clean
+(0 missing disposals), income + chargeable gains match after folding ERI into
+the pipeline income totals; allowable-loss / offshore mismatches surfaced as
+indicative (FX). `ruff` / `mypy` / `pytest` (1127) green, `code-reviewer` clean
+(one docstring Warning fixed). Refinement made in build: aggregate mismatches
+are *indicative*, not build-material — only a missing Pictet disposal
+(`pictet_only`) gates the build, since Pictet's average FX makes the aggregates
+diverge every year. See the [CHANGELOG](../../CHANGELOG.md).
 
 Parse Pictet's annual **"Income and capital gains UK"** report (its own
 `INCOME_CAPITAL_GAINS_UK` doctype, filed to `<year>/tax/`) and use it as a

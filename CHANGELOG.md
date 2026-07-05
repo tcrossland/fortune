@@ -8,6 +8,18 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## UK tax
 
+- **`reconcile-uk-tax` — cross-check the computed return against Pictet's own
+  UK Tax Report.** Parses Pictet's annual GBP, Section-104 "Income and capital
+  gains UK" report (`pictet_uk_tax_extract.py`: capital-gain overview + per-
+  security detail + overseas-income totals) and diffs it against the computed
+  SA108 / SA106 — the machine version of an adviser-schedule comparison.
+  Aggregates are tolerance-matched (Pictet's average FX + per-account pooling
+  won't tie to the penny); each security's *presence* is exact, and only a
+  **missing disposal** (a security Pictet booked that the pipeline lacks) is
+  material / build-failing — the FX-independent bug signal. ERI income is folded
+  into the pipeline's interest/dividend totals to match Pictet's overseas totals.
+  Read-only — never fed to the tax pipeline. (`pictet_uk_tax_extract.py`,
+  `cli/tax.py`)
 - **ECB daily FX rate source** — a second `GbpRateSource` (`gbp_rate_source =
   "ecb-daily"`, `--rate-source ecb-daily`) reading the ECB daily euro reference
   rates, a **daily spot proxy** closer to trade-date spot than the HMRC monthly
