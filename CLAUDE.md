@@ -227,10 +227,14 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-**Active:** none — pick the next from [docs/backlog.md](docs/backlog.md)
-(FIG-relevant direction: FIG-window multi-year projection, then the
-FIG-reframed disposal/rebasing advisor; the ERI correction's deferred
-audit-line remainder is moot until relieved-year ERI lands).
+**Active:** [FIG-window multi-year projection](docs/plans/fig-window-projection.md)
+— scoping. Quantify deferring vs. crystallising foreign unrealised gains across
+the remaining FIG window (consumes the situs-split's
+`total_unrealised_foreign_gbp`), tied to the window-expiry deadline. Plan
+scoped, **modelling decisions settled** (--income band stacking; upper-bound +
+flag disposal model; growth-free MVP) — ready to build on approval. Next after:
+the FIG-reframed disposal/rebasing advisor (gated on this proving the gap
+material).
 
 - Last shipped: **FIG-aware ERI base-cost correction** (core) — the section 104
   ERI base-cost uplift is suppressed for ERI relieved under a FIG claim (never

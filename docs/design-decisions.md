@@ -497,7 +497,7 @@ whole net tranche is dropped for a relieved year.
 and both holdings call sites pass the configured claim set. It is **inert on
 current data** (the configured claim years and the `eri.toml` years don't yet
 overlap) and corrects future filings once relieved-year ERI is entered. Staged
-history: [plans/fig-eri-basecost-correction.md](plans/fig-eri-basecost-correction.md).
+history: [archive/fig-eri-basecost-correction.md](archive/fig-eri-basecost-correction.md).
 Still not tax advice — the record of the adviser's view lives with the user,
 not in the repo.
 
@@ -555,7 +555,7 @@ changes CGT figures, so it is applied through the staged plan (with tests and a
 reviewed golden), never silently.
 
 Implementation brief (now unblocked):
-[plans/fig-eri-basecost-correction.md](plans/fig-eri-basecost-correction.md).
+[archive/fig-eri-basecost-correction.md](archive/fig-eri-basecost-correction.md).
 
 ## Reconcile-holdings is overkill: the portal reconciliation is complete without it
 

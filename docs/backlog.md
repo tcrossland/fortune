@@ -9,8 +9,10 @@ paradigm. Shipped features are recorded in
 
 A handful of these ideas have graduated from a one-line menu entry to a
 full implementation brief in [plans/](plans/) — designed but not yet
-built. **No active brief right now** — the two most recent (the FIG situs-split
-and the FIG-aware ERI base-cost correction) have both **shipped** (see the
+built. **Active brief: the [FIG-window multi-year
+projection](plans/fig-window-projection.md)** (scoped, modelling decisions
+settled — ready to build on approval). The two before it (the FIG situs-split and the FIG-aware
+ERI base-cost correction) have both **shipped** (see the
 [CHANGELOG](../CHANGELOG.md) and `archive/`). When a plan ships, its line moves
 to the CHANGELOG and the plan moves to `archive/`.
 
@@ -60,53 +62,42 @@ not tax advice" framing. Ordered FIG-first (see the profile note above).
 
 ### FIG-relevant (the active direction)
 
-- **FIG situs-split in `holdings` — ✅ shipped.** Each holding is annotated
-  foreign (FIG-relievable) / UK-situs (taxable) / unclassified and the
-  unrealised total split on that axis (presentation layer; pool untouched).
-  This was the unblocker for the items below — the per-holding situs they
-  reason over is now on the report. See the [CHANGELOG](../CHANGELOG.md) and
-  [archive/fig-situs-split.md](archive/fig-situs-split.md).
-- **FIG-window multi-year projection.** Extend `tax-forecast` forward across
-  the remaining claim years, **tied to the FIG window expiry so the cost of
-  deferring vs. crystallising is visible**. For a mid-window holder the key
-  move is often to **crystallise foreign gains while they are relieved to
-  nil** (resetting the base cost upward), then face smaller taxable gains
-  after the window closes — the *inverse* of AEA harvesting. Builds on
-  `fig-advice` + `tax-forecast`. (Previously filed under "Financial planning
-  & budgeting"; it is the strategic tool for this profile, so it lives here
-  now.)
-- **FIG-reframed disposal / rebasing advisor.** Not the AEA-harvesting
-  version below — a *"which foreign lots to crystallise-and-rebase during the
-  window"* advisor over the same holdings substrate as the situs-split. Only
-  worth building once the projection shows the deferral-vs-crystallise gap is
-  material. Depends on the situs-split (to scope to foreign holdings) and on
-  settling the ERI question below (base cost feeds the rebasing sums).
-- **FIG-aware ERI base-cost correction — ✅ core landed (correctness).**
-  The ERI section 104 base-cost uplift is now suppressed for ERI relieved under
-  a FIG claim (never charged → no reg 99 uplift), for foreign holdings, across
-  the tax pipeline and both holdings call sites. Signed off by the user's tax
-  adviser (2026-07); **inert on current data** (configured claim years and the
-  `eri.toml` years don't yet overlap) — it corrects future filings once
-  relieved-year ERI is entered. Plan:
-  [plans/fig-eri-basecost-correction.md](plans/fig-eri-basecost-correction.md);
-  rationale (reg 99 / IFM13373):
-  [design-decisions.md](design-decisions.md#fig-relieved-eri-does-not-uplift-the-uk-base-cost).
-  - *Remaining (deferred): the audit-surfacing line* — a "N ERI tranche(s)
-    (£X) suppressed as FIG-relieved" note in `tax-report` `summary.txt` and the
-    holdings report. Needs the suppressed-tranches return plumbed through
-    `cumulative_base_cost_adjustments` → the report models. Deferred as polish
-    (the effect is already visible via the holdings `of which ERI` column) and
-    moot until relieved-year ERI exists — pick up when 2025-26 ERI lands.
-  - *Deferred (Stage 3 (a)): forecast per-scenario pool re-match* — the
-    forecast uses the configured-claims pool for both claim/no-claim scenarios
-    (exact for prior years; a nil-in-practice approximation only for a same-year
-    disposal after a same-year foreign ERI event). Revisit only if a real case
-    shows the delta matters.
+(Shipped this direction — see the [CHANGELOG](../CHANGELOG.md) / `archive/`:
+the **FIG situs-split** and the **FIG-aware ERI base-cost correction** core.)
+
+- **FIG-window multi-year projection — active brief
+  ([plans/fig-window-projection.md](plans/fig-window-projection.md)).** Quantify
+  the **cost of deferring vs. crystallising** foreign unrealised gains across the
+  remaining FIG window, tied to the window-expiry deadline. `fig-advice` already
+  optimises *which years to claim* on realised actuals; this is the forward
+  layer — it takes the **foreign** unrealised gain the situs-split now surfaces
+  (`total_unrealised_foreign_gbp`) and prices "realise it in a claimed window
+  year (relieved to nil) vs. let it be taxed on a later post-window disposal",
+  surfacing the saving and the act-by date. Builds on `fig-advice` +
+  `tax-forecast` + the holdings situs data.
+- **FIG-reframed disposal / rebasing advisor.** The tactical follow-on to the
+  projection: *which foreign lots* to crystallise-and-rebase during the window,
+  with the 30-day bed-and-breakfast check. Only worth building once the
+  projection shows the deferral-vs-crystallise gap is material. The situs-split
+  dependency is now **satisfied** (foreign lots are labelled); still gated on
+  the projection proving it worthwhile.
 - **`tax-forecast` "what-if" delta calculator.** Given a hypothetical action
   — sell £X of holding Y, take £W of dividends — recompute the forecast and
   report the *marginal* tax delta. A thin layer over the existing forecast
-  engine. Neutral, but doubly useful here as the "what does crystallising
-  this foreign lot cost/save" primitive the projection wants.
+  engine. Neutral, but doubly useful here as the "what does crystallising this
+  foreign lot cost/save" primitive the projection wants.
+- **Deferred remainders of the FIG-aware ERI base-cost correction** (core
+  **shipped** — [CHANGELOG](../CHANGELOG.md) /
+  [archive/fig-eri-basecost-correction.md](archive/fig-eri-basecost-correction.md);
+  both moot until relieved-year ERI lands):
+  - *audit-surfacing line* — a "N ERI tranche(s) (£X) suppressed as
+    FIG-relieved" note in `tax-report` `summary.txt` and the holdings report;
+    needs the suppressed-tranches return plumbed through
+    `cumulative_base_cost_adjustments` → the report models.
+  - *Stage 3(a) forecast per-scenario pool re-match* — the forecast uses the
+    configured-claims pool for both claim/no-claim scenarios (exact for prior
+    years; a nil-in-practice approximation only for a same-year disposal after a
+    same-year foreign ERI event). Revisit only if a real case shows it matters.
 
 ### Deprioritised by the profile
 
@@ -197,24 +188,11 @@ not tax advice" framing. Ordered FIG-first (see the profile note above).
     qty cross-check source. A few lines here (parse the Holdings CSV — same
     `parse_cash_statement_csv` pattern, cp1252, bare `Account nr.` →
     `lettered_portfolio_map`), not a new command.
-  - *FIG-awareness — ✅ shipped
-    ([archive/fig-situs-split.md](archive/fig-situs-split.md)).* The report used
-    to compute one undifferentiated UK section-104 unrealised P&L, ignoring
-    situs. Under a **FIG claim** (`fig_claim_years`), foreign (non-UK-situs)
-    gains are relieved to nil, the CGT AEA is forfeited, and foreign losses are
-    disallowed — so the CGT-harvesting rationale for the exact basis is void
-    for foreign holdings in a claim year, and the unrealised P&L needs reading
-    in that light. It now annotates / splits each row **foreign
-    (FIG-relievable) vs UK-situs (taxable)** using
-    `CommodityMetadata.resolved_uk_situs`, a presentation/labelling layer (the
-    pool is FIG-untouched). The related **ERI-uplift-in-relieved-years**
-    question the ERI cumulative fix flagged — whether relieved-year ERI should
-    uplift a UK base cost at all — is now investigated and tracked as its own
-    correctness item (see *FIG-aware ERI base-cost correction* under Tax
-    planning & advice, and
-    [design-decisions.md](design-decisions.md#fig-relieved-eri-does-not-uplift-the-uk-base-cost));
-    the situs-split deliberately does **not** touch it (it changes filed
-    figures), but adds the exact situs signal that correction will consume.
+  - *FIG-awareness (foreign vs UK-situs split) and the relieved-year ERI
+    correction — both ✅ shipped* (see the [CHANGELOG](../CHANGELOG.md) and
+    `archive/`). The report now labels each row foreign / UK-situs /
+    unclassified and splits the unrealised total; the section 104 pool no longer
+    uplifts base cost for FIG-relieved ERI.
 - **Unrealised-P&L source options (decide before the EUR lens / `pnl` report).**
   Three ways to get a non-UK / management-view cost basis + unrealised P&L,
   weighed:
