@@ -36,11 +36,19 @@ _ZERO = Decimal(0)
 
 @dataclass(frozen=True)
 class FigProjectionHolding:
-    """One foreign holding's unrealised gain/loss (GBP, may be negative)."""
+    """One foreign holding's cost basis, unrealised gain/loss and market value.
+
+    ``cost_basis_gbp + unrealised_gbp == market_value_gbp``. ``market_value_gbp``
+    is the current mark — and, for a winner, the base cost it would reset *to*
+    after crystallising, so it is what future (post-window) CGT is then measured
+    from (the reset lifts the basis from ``cost_basis_gbp`` to it).
+    """
 
     key: str
     name: str
-    unrealised_gbp: Decimal
+    unrealised_gbp: Decimal  # may be negative
+    market_value_gbp: Decimal = Decimal(0)
+    cost_basis_gbp: Decimal = Decimal(0)
 
 
 @dataclass(frozen=True)
@@ -60,6 +68,11 @@ class FigProjection:
     crystallisable_gain_gbp: Decimal
     net_foreign_unrealised_gbp: Decimal
     deferred_cgt_gbp: Decimal
+    # The winners' base cost *after* crystallising (= their current market
+    # value): the uplift over their old cost equals ``crystallisable_gain_gbp``
+    # — the permanently sheltered gain — and post-window CGT then applies only
+    # to growth beyond this figure.
+    reset_base_cost_gbp: Decimal
     holdings: list[FigProjectionHolding]  # foreign holdings, by gain desc
     income_gbp: Decimal
     rate_year: str  # the tax year whose bands/rates priced the gain
@@ -88,6 +101,11 @@ def project_fig_window(
         (h.unrealised_gbp for h in holdings if h.unrealised_gbp > _ZERO), _ZERO
     )
     net = sum((h.unrealised_gbp for h in holdings), _ZERO)
+    # Only winners are crystallised, so the post-reset base cost is the sum of
+    # *their* market values; the uplift over their old cost is ``crystallisable``.
+    reset_base_cost = sum(
+        (h.market_value_gbp for h in holdings if h.unrealised_gbp > _ZERO), _ZERO
+    )
 
     # CGT on the crystallisable gain if instead deferred to a taxable
     # post-window disposal: stack it above the assumed income at the CGT rates.
@@ -113,6 +131,7 @@ def project_fig_window(
         crystallisable_gain_gbp=crystallisable,
         net_foreign_unrealised_gbp=net,
         deferred_cgt_gbp=deferred_cgt,
+        reset_base_cost_gbp=reset_base_cost,
         holdings=sorted(
             holdings, key=lambda h: h.unrealised_gbp, reverse=True
         ),

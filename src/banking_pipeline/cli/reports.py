@@ -339,9 +339,14 @@ def _foreign_holdings(
     comparison downstream)."""
 
     return [
-        fig_projection_mod.FigProjectionHolding(r.key, r.name, r.unrealised_gbp)
+        fig_projection_mod.FigProjectionHolding(
+            key=r.key, name=r.name, unrealised_gbp=r.unrealised_gbp,
+            market_value_gbp=r.market_value_gbp, cost_basis_gbp=r.cost_basis_gbp,
+        )
         for r in rows
-        if r.uk_situs is False and r.unrealised_gbp is not None
+        if r.uk_situs is False
+        and r.unrealised_gbp is not None
+        and r.cost_basis_gbp is not None
     ]
 
 
@@ -380,14 +385,31 @@ def _render_fig_projection_md(
             "Net foreign unrealised P&L (winners and losers): "
             f"{gbp(p.net_foreign_unrealised_gbp)}.",
             "",
+            "After crystallising, the winners' base cost resets from "
+            f"{gbp(p.reset_base_cost_gbp - p.crystallisable_gain_gbp)} to "
+            f"{gbp(p.reset_base_cost_gbp)} (today's market) — the "
+            f"{gbp(p.crystallisable_gain_gbp)} embedded gain is permanently "
+            "sheltered, and any post-window CGT then applies only to growth "
+            f"beyond {gbp(p.reset_base_cost_gbp)}.",
+            "",
         ]
     if p.holdings:
         lines += [
             "## Foreign holdings",
             "",
-            "| Holding | Unrealised (GBP) |",
-            "| --- | ---: |",
-            *[f"| {h.name} ({h.key}) | {gbp(h.unrealised_gbp)} |" for h in p.holdings],
+            "Each row reads **cost + unrealised = market**. For a **winner**, "
+            "that market value is also its base cost *after* crystallising "
+            "(future CGT is measured from it — the reset lifts the basis from "
+            "the cost column to the market column); a **loser** isn't "
+            "crystallised, so its pool basis is unchanged.",
+            "",
+            "| Holding | Cost (GBP) | Unrealised (GBP) | Market value (GBP) |",
+            "| --- | ---: | ---: | ---: |",
+            *[
+                f"| {h.name} ({h.key}) | {gbp(h.cost_basis_gbp)} | "
+                f"{gbp(h.unrealised_gbp)} | {gbp(h.market_value_gbp)} |"
+                for h in p.holdings
+            ],
             "",
         ]
     lines += [
@@ -413,9 +435,14 @@ def _render_fig_projection_md(
 def _fig_projection_csv_rows(
     projection: fig_projection_mod.FigProjection,
 ) -> list[list[str]]:
-    rows = [["key", "name", "unrealised_gbp"]]
+    rows = [
+        ["key", "name", "cost_basis_gbp", "unrealised_gbp", "market_value_gbp"]
+    ]
     for h in projection.holdings:
-        rows.append([h.key, h.name, f"{h.unrealised_gbp:.2f}"])
+        rows.append([
+            h.key, h.name, f"{h.cost_basis_gbp:.2f}", f"{h.unrealised_gbp:.2f}",
+            f"{h.market_value_gbp:.2f}",
+        ])
     return rows
 
 

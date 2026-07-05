@@ -852,11 +852,13 @@ usage examples; this is the behavioural reference.
   (from the holdings report's situs-split) during the remaining FIG window.
   The CGT that deferring would cost (the crystallisable gain stacked above
   `--income` at the `--year` rates, reusing `compute_liability`) is the
-  crystallise-now saving; the act-by date is the window's close. An
-  upper-bound estimate (ignores the AEA and post-death CGT uplift; flags the
-  30-day bed-and-breakfast mechanic but doesn't pick lots). Pure core in
-  `tax/uk/fig_projection.py`; writes `fig-projection.md` + `.csv`. Not a
-  rebuild step (needs a per-run `--income`) — an on-demand planning query.
+  crystallise-now saving; the act-by date is the window's close. Also shows
+  each winner's **post-reset base cost** (its current market value — what
+  future post-window CGT is measured from). An upper-bound estimate (ignores
+  the AEA and post-death CGT uplift; flags the 30-day bed-and-breakfast
+  mechanic but doesn't pick lots). Pure core in `tax/uk/fig_projection.py`;
+  writes `fig-projection.md` + `.csv`. Not a rebuild step (needs a per-run
+  `--income`) — an on-demand planning query.
 
 ## Configuration reference
 

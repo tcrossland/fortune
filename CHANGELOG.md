@@ -123,8 +123,10 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
   claim*): it takes the **foreign** unrealised gains from the holdings report
   (situs-split) and prices the CGT you'd avoid by crystallising them in a
   claimed window year (relieved to nil, base cost reset) versus deferring to a
-  taxable post-window disposal — surfacing the saving and the **act-by date**
-  (the window's close). Priced by stacking the gain above `--income`
+  taxable post-window disposal — surfacing the saving, the **act-by date**
+  (the window's close), and the **post-reset base cost** (each winner's current
+  market, what future post-window CGT is then measured from). Priced by stacking
+  the gain above `--income`
   (`compute_liability` reuse); an upper bound (ignores the AEA and post-death
   CGT uplift), flagging the 30-day bed-and-breakfast mechanic without picking
   lots. Only the winners are crystallisable (a FIG-relieved loss is disallowed).

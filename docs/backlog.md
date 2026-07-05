@@ -66,12 +66,30 @@ not tax advice" framing. Ordered FIG-first (see the profile note above).
 the **FIG situs-split**, the **FIG-aware ERI base-cost correction** core, and
 the **FIG-window projection** (`fig-projection`).)
 
-- **FIG-reframed disposal / rebasing advisor.** The tactical follow-on to the
-  projection: *which foreign lots* to crystallise-and-rebase during the window,
-  with the 30-day bed-and-breakfast check. Only worth building once the
-  projection shows the deferral-vs-crystallise gap is material. The situs-split
-  dependency is now **satisfied** (foreign lots are labelled); still gated on
-  the projection proving it worthwhile.
+- **FIG-reframed disposal / rebasing advisor — retired (no tax value for this
+  profile).** Scoped as a harvesting-style "which foreign lots to
+  crystallise-and-rebase" optimiser, but that assumes a *selection* problem
+  that this profile doesn't have: (1) a FIG claim relieves **all** foreign
+  gains in the year to nil *uniformly* — no allowance to pack, no rate boundary,
+  no AEA (it's forfeited) — so there is no tax-driven reason to prefer one
+  holding over another; (2) section 104 pools **per ISIN**, so there are no
+  intra-holding lots to choose between (unlike FIFO); (3) the holdings are
+  **all foreign**, so there isn't even a foreign-vs-UK subset to carve out —
+  the candidate set is the whole book, which `fig-projection` already lists.
+  So `fig-projection` answers every question that has a tax answer. The only
+  residual is *execution*, not analysis — the 30-day bed-and-breakfast rule
+  (rebuy the same fund within 30 days and the disposal matches the repurchase:
+  ~nil gain relieved **and** the pool untouched, so the crystallisation
+  achieves nothing — you need a >30-day gap or a non-identical fund), which the
+  report already flags as a caveat. A static execution checklist, not a
+  command. Revisit only if the profile changes (a UK-situs sleeve appears, or a
+  non-claim year returns).
+- **`fig-projection` post-reset base-cost line (small enhancement).** The one
+  forward thing the projection doesn't yet show: after crystallising, each
+  holding's base cost resets to today's market, so only *future* growth is
+  taxable post-window. Surface the post-reset base cost (= current market) and
+  the residual post-window CGT exposure it implies, so the crystallise decision
+  shows both sides. A few lines on the existing report, not a new command.
 - **`tax-forecast` "what-if" delta calculator.** Given a hypothetical action
   — sell £X of holding Y, take £W of dividends — recompute the forecast and
   report the *marginal* tax delta. A thin layer over the existing forecast

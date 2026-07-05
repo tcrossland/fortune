@@ -29,6 +29,17 @@ YEAR = "2026-27"
 ACT_BY = date(2027, 4, 5)
 
 
+_COST = D(100000)  # module-level so the _hold default isn't a call (ruff B008)
+
+
+def _hold(
+    key: str, name: str, gain: Decimal, *, cost: Decimal = _COST
+) -> FigProjectionHolding:
+    """A realistic holding row where cost + gain = market."""
+
+    return FigProjectionHolding(key, name, gain, cost + gain, cost)
+
+
 def _project(
     holdings: list[FigProjectionHolding],
     *,
@@ -49,16 +60,14 @@ def _project(
 def test_prices_deferred_cgt_by_band_stacking_at_zero_income() -> None:
     # £50k gain, no income: 37,700 of basic band @ 18% + 12,300 @ 24%
     # = 6,786 + 2,952 = £9,738.
-    p = _project([FigProjectionHolding("A", "Fund A", D(50000))])
+    p = _project([_hold("A", "Fund A", D(50000))])
     assert p.crystallisable_gain_gbp == D(50000)
     assert p.deferred_cgt_gbp == D("9738.00")
 
 
 def test_higher_income_pushes_the_gain_into_the_higher_cgt_rate() -> None:
     # Income fills the basic-rate band, so the whole gain is taxed at 24%.
-    p = _project(
-        [FigProjectionHolding("A", "Fund A", D(50000))], income=D(60000)
-    )
+    p = _project([_hold("A", "Fund A", D(50000))], income=D(60000))
     assert p.deferred_cgt_gbp == D("12000.00")  # 50,000 × 0.24
 
 
@@ -66,8 +75,8 @@ def test_foreign_losers_excluded_from_crystallisable_but_shown_in_net() -> None:
     # A FIG-relieved loss carries no benefit, so only the winners are priced;
     # the net (winners + losers) is reported for context.
     p = _project([
-        FigProjectionHolding("A", "Winner", D(50000)),
-        FigProjectionHolding("B", "Loser", D(-10000)),
+        _hold("A", "Winner", D(50000)),
+        _hold("B", "Loser", D(-10000)),
     ])
     assert p.crystallisable_gain_gbp == D(50000)
     assert p.net_foreign_unrealised_gbp == D(40000)
@@ -75,17 +84,14 @@ def test_foreign_losers_excluded_from_crystallisable_but_shown_in_net() -> None:
 
 
 def test_no_positive_gains_gives_a_nil_saving() -> None:
-    p = _project([FigProjectionHolding("B", "Loser", D(-10000))])
+    p = _project([_hold("B", "Loser", D(-10000))])
     assert p.crystallisable_gain_gbp == D(0)
     assert p.deferred_cgt_gbp == D(0)
 
 
 def test_holdings_sorted_by_gain_desc_and_window_passthrough() -> None:
     p = _project(
-        [
-            FigProjectionHolding("A", "Small", D(1000)),
-            FigProjectionHolding("B", "Big", D(9000)),
-        ],
+        [_hold("A", "Small", D(1000)), _hold("B", "Big", D(9000))],
         window=["2025-26", "2026-27"],
     )
     assert [h.key for h in p.holdings] == ["B", "A"]
@@ -97,8 +103,9 @@ def test_holdings_sorted_by_gain_desc_and_window_passthrough() -> None:
 
 
 def test_render_shows_headline_actby_and_caveats() -> None:
+    # £150k cost + £50k gain = £200k market; the reset lifts £150k → £200k.
     md = _render_fig_projection_md(
-        _project([FigProjectionHolding("A", "Fund A", D(50000))]),
+        _project([_hold("A", "Fund A", D(50000), cost=D(150000))]),
         as_of=date(2026, 4, 1),
     )
     assert "Crystallisable foreign gains: £50,000.00" in md
@@ -106,13 +113,26 @@ def test_render_shows_headline_actby_and_caveats() -> None:
     assert "Act by 2027-04-05" in md
     assert "bed-and-breakfast" in md
     assert "not tax advice" in md.lower()
-    assert "| Fund A (A) | £50,000.00 |" in md
+    assert "resets from £150,000.00 to £200,000.00" in md
+    # cost | unrealised | market
+    assert "| Fund A (A) | £150,000.00 | £50,000.00 | £200,000.00 |" in md
+
+
+def test_reset_base_cost_is_the_winners_market_value() -> None:
+    # Winner (gain 50k on 200k mark) + loser (excluded); reset = winner's mark.
+    p = _project([
+        _hold("A", "Winner", D(50000), cost=D(150000)),  # market 200k
+        _hold("B", "Loser", D(-10000), cost=D(50000)),   # market 40k, excluded
+    ])
+    assert p.reset_base_cost_gbp == D(200000)  # winner only
+    # The uplift over old cost equals the sheltered gain.
+    assert p.reset_base_cost_gbp - p.crystallisable_gain_gbp == D(150000)
 
 
 def test_render_window_closed_variant() -> None:
     closed = project_fig_window(
         window=[], act_by=None,
-        holdings=[FigProjectionHolding("A", "Fund A", D(50000))],
+        holdings=[_hold("A", "Fund A", D(50000))],
         income=_ZERO, rate_year=YEAR, bands=BANDS[YEAR], cgt_rates=CGT[YEAR],
     )
     md = _render_fig_projection_md(closed, as_of=None)
@@ -123,13 +143,15 @@ def test_render_window_closed_variant() -> None:
 def test_csv_rows_sorted_by_gain() -> None:
     rows = _fig_projection_csv_rows(
         _project([
-            FigProjectionHolding("A", "Fund A", D(50000)),
-            FigProjectionHolding("B", "Loser", D(-100)),
+            _hold("A", "Fund A", D(50000), cost=D(150000)),  # market 200k
+            _hold("B", "Loser", D(-100), cost=D(1000)),      # market 900
         ])
     )
-    assert rows[0] == ["key", "name", "unrealised_gbp"]
-    assert rows[1] == ["A", "Fund A", "50000.00"]
-    assert rows[2] == ["B", "Loser", "-100.00"]
+    assert rows[0] == [
+        "key", "name", "cost_basis_gbp", "unrealised_gbp", "market_value_gbp",
+    ]
+    assert rows[1] == ["A", "Fund A", "150000.00", "50000.00", "200000.00"]
+    assert rows[2] == ["B", "Loser", "1000.00", "-100.00", "900.00"]
 
 
 def test_cli_rejects_non_numeric_income() -> None:
@@ -160,11 +182,17 @@ def test_remaining_window_boundary() -> None:
     assert act_closed is None
 
 
-def _row(key: str, situs: bool | None, unrealised: Decimal | None) -> HoldingRow:
+def _row(
+    key: str,
+    situs: bool | None,
+    unrealised: Decimal | None,
+    market: Decimal = _ZERO,
+) -> HoldingRow:
     return HoldingRow(
         key=key, name=key, currency="GBP", quantity=D(1),
-        market_value_gbp=D(0),
-        cost_basis_gbp=None if unrealised is None else D(0),
+        market_value_gbp=market,
+        # cost + unrealised = market (None when there's no matched basis).
+        cost_basis_gbp=None if unrealised is None else market - unrealised,
         unrealised_gbp=unrealised, basis_qty=None, eri_uplift_gbp=None,
         uk_situs=situs,
     )
@@ -172,7 +200,7 @@ def _row(key: str, situs: bool | None, unrealised: Decimal | None) -> HoldingRow
 
 def test_foreign_holdings_filter() -> None:
     rows = [
-        _row("F", False, D(100)),   # foreign + basis → included
+        _row("F", False, D(100), market=D(700)),  # foreign + basis → included
         _row("U", True, D(50)),     # UK-situs → excluded
         _row("N", None, D(30)),     # unclassified → excluded
         _row("FB", False, None),    # foreign but no matched basis → excluded
@@ -180,3 +208,5 @@ def test_foreign_holdings_filter() -> None:
     out = _foreign_holdings(rows)
     assert [h.key for h in out] == ["F"]
     assert out[0].unrealised_gbp == D(100)
+    assert out[0].market_value_gbp == D(700)  # market value flows through
+    assert out[0].cost_basis_gbp == D(600)  # cost (700 − 100) flows through

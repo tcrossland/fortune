@@ -424,8 +424,10 @@ Where `fig-advice` optimises the *realised* facts, `fig-projection --income
 <gbp>` is the forward companion: it takes the **foreign** unrealised gains from
 the holdings report and prices the CGT you'd avoid by **crystallising** them in
 a claimed window year (relieved to nil, resetting the base cost) versus
-**deferring** to a taxable post-window disposal — surfacing the saving and the
-**act-by date** (the window's close). An upper bound (the saving is only real
+**deferring** to a taxable post-window disposal — surfacing the saving, the
+**act-by date** (the window's close), and the base cost each winner would reset
+to (its current market), so the post-window position is visible too. An upper
+bound (the saving is only real
 if you eventually dispose; CGT is uplifted on death), priced by stacking the
 gain above `--income`; it flags the 30-day bed-and-breakfast mechanic but does
 not pick lots. Writes `fig-projection.md` + `.csv`. Planning aid, not advice.
