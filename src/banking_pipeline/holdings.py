@@ -86,6 +86,11 @@ class HoldingRow:
     # the section 104 cost differ from a broker's book cost on a reporting
     # fund. ``None`` when the lens has no entry; ``0`` when it has no ERI.
     eri_uplift_gbp: Decimal | None
+    # UK situs for the FIG regime: ``True`` = UK-situs (a gain is always
+    # taxable), ``False`` = foreign (a gain is relievable under a FIG claim,
+    # a loss disallowed), ``None`` = unclassified (no commodity metadata — an
+    # ISA ticker line or an unmapped ISIN; surfaced, not silently taxed).
+    uk_situs: bool | None
 
 
 @dataclass(frozen=True)
@@ -115,6 +120,14 @@ class HoldingsReport:
     total_cost_gbp: Decimal  # holdings with a matched basis only
     total_unrealised_gbp: Decimal  # holdings with a matched basis only
     total_eri_gbp: Decimal  # ERI portion of total_cost_gbp (base-cost uplift)
+    # Unrealised P&L split by situs (matched-basis holdings only, so the three
+    # sum to ``total_unrealised_gbp``). Under a FIG claim the *foreign* slice is
+    # relievable (gains to nil, losses disallowed) and the *uk* slice taxable;
+    # *unclassified* is holdings with no metadata, kept separate so an unmapped
+    # foreign holding isn't silently counted as taxable.
+    total_unrealised_foreign_gbp: Decimal
+    total_unrealised_uk_gbp: Decimal
+    total_unrealised_unclassified_gbp: Decimal
     # Statement quantity vs section 104 pool quantity disagreements.
     qty_drifts: tuple[QtyDrift, ...]
     # ISINs the lens still holds (qty > 0) that no current statement marks.
@@ -179,6 +192,7 @@ def join_holdings(
     basis: dict[str, HoldingBasis],
     *,
     movement: dict[str, Decimal] | None = None,
+    situs: dict[str, bool] | None = None,
 ) -> HoldingsReport:
     """Join valued securities with per-ISIN cost basis into the report (the
     testable core). Securities are consolidated by key first (see
@@ -188,9 +202,15 @@ def join_holdings(
     ``movement`` maps ISIN → net signed quantity of ingested trades settling
     after that ISIN's statement date (see :func:`_post_statement_movement`);
     it classifies each quantity drift / unmatched-basis holding timing vs gap.
-    Omitted (``None``) → every disagreement is a gap (nothing to explain it)."""
+    Omitted (``None``) → every disagreement is a gap (nothing to explain it).
+
+    ``situs`` maps key → UK-situs verdict (``CommodityMetadata.resolved_uk_situs``);
+    a key absent from it is unclassified (``uk_situs`` ``None``). Omitted →
+    every row unclassified. Static per holding, so it takes a resolved bool map
+    rather than metadata — this core stays free of tax semantics."""
 
     movement = movement or {}
+    situs = situs or {}
     aggregated = _aggregate_by_key(valuation.securities)
     keys = sorted(aggregated, key=lambda k: aggregated[k].value_gbp, reverse=True)
 
@@ -232,6 +252,7 @@ def join_holdings(
                 unrealised_gbp=unrealised,
                 basis_qty=basis_qty,
                 eri_uplift_gbp=eri_uplift,
+                uk_situs=situs.get(key),
             )
         )
 
@@ -245,6 +266,15 @@ def join_holdings(
     total_eri = sum(
         (r.eri_uplift_gbp for r in rows if r.eri_uplift_gbp is not None), _ZERO
     )
+    # Split the unrealised total by situs (matched-basis rows only, so the three
+    # partition total_unrealised exactly). ``is`` against the tri-state flag.
+    def _situs_unrealised(want: bool | None) -> Decimal:
+        return sum(
+            (r.unrealised_gbp for r in rows
+             if r.unrealised_gbp is not None and r.uk_situs is want),
+            _ZERO,
+        )
+
     unmatched = tuple(sorted(k for k in basis if k not in matched))
     # An unmatched holding: the pool holds it (qty > 0), no statement marks it
     # (statement qty 0), so the drift is the whole pool qty. Timing when a
@@ -259,6 +289,9 @@ def join_holdings(
         total_cost_gbp=total_cost,
         total_unrealised_gbp=total_unrealised,
         total_eri_gbp=total_eri,
+        total_unrealised_foreign_gbp=_situs_unrealised(False),
+        total_unrealised_uk_gbp=_situs_unrealised(True),
+        total_unrealised_unclassified_gbp=_situs_unrealised(None),
         qty_drifts=tuple(drifts),
         unmatched_basis=unmatched,
         unmatched_kind=unmatched_kind,
@@ -348,7 +381,10 @@ def build_report(
             statement_date[r.key] = r.on_date if prior is None else max(prior, r.on_date)
         latest_date = r.on_date if latest_date is None else max(latest_date, r.on_date)
     movement = _post_statement_movement(transactions or [], statement_date, latest_date)
-    return join_holdings(valuation, basis.basis_for(), movement=movement)
+    situs = {isin: meta.resolved_uk_situs for isin, meta in commodities.items()}
+    return join_holdings(
+        valuation, basis.basis_for(), movement=movement, situs=situs
+    )
 
 
 # --- rendering --------------------------------------------------------------
@@ -356,6 +392,37 @@ def build_report(
 
 def _amount(value: Decimal | None) -> str:
     return gbp(value) if value is not None else "—"
+
+
+def _situs_label(uk_situs: bool | None) -> str:
+    """Display form of the tri-state situs flag."""
+
+    if uk_situs is None:
+        return "—"
+    return "UK" if uk_situs else "foreign"
+
+
+def _situs_split_lines(report: HoldingsReport) -> list[str]:
+    """The unrealised-P&L split by situs plus the FIG framing note. Covers
+    matched-basis holdings only (the three totals partition
+    ``total_unrealised_gbp``)."""
+
+    split = (
+        "**Unrealised P&L by situs:** foreign (FIG-relievable) "
+        f"{gbp(report.total_unrealised_foreign_gbp)} · UK-situs (taxable) "
+        f"{gbp(report.total_unrealised_uk_gbp)}"
+    )
+    if report.total_unrealised_unclassified_gbp != _ZERO:
+        split += f" · unclassified {gbp(report.total_unrealised_unclassified_gbp)}"
+    return [
+        split,
+        "",
+        "Under a FIG claim, foreign unrealised **gains** are relieved to nil "
+        "and foreign **losses** disallowed, so the CGT-harvesting rationale is "
+        "void for foreign holdings; the UK-situs slice is the taxable one. "
+        "Reporting aid, not advice.",
+        "",
+    ]
 
 
 def render_markdown(report: HoldingsReport) -> str:
@@ -368,23 +435,28 @@ def render_markdown(report: HoldingsReport) -> str:
         "value is the statement mark converted to GBP. The **ERI** column is "
         "the excess-reportable-income uplift already inside the cost basis "
         "(what a reporting fund adds to the pool, and the main reason the "
-        "section 104 cost differs from a broker's book cost). ISA holdings "
+        "section 104 cost differs from a broker's book cost). The **Situs** "
+        "column marks each holding **foreign** (a gain relievable under a FIG "
+        "claim), **UK** (always taxable), or **—** when it has no commodity "
+        "metadata (unclassified — split out separately below, not assumed "
+        "taxable). ISA holdings "
         "appear but are UK-tax-exempt (a Spanish-resident lens would tax them) "
         "and, keyed by ticker not ISIN, carry no section 104 cost basis here. "
         "Reporting aid, not advice.",
         "",
-        "| Holding | Qty | Market (GBP) | Cost (GBP) | of which ERI | "
+        "| Holding | Situs | Qty | Market (GBP) | Cost (GBP) | of which ERI | "
         "Unrealised (GBP) |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        "| --- | :--- | ---: | ---: | ---: | ---: | ---: |",
     ]
     for r in report.rows:
         lines.append(
-            f"| {r.name} ({r.key}) | {money(r.quantity)} | "
+            f"| {r.name} ({r.key}) | {_situs_label(r.uk_situs)} | "
+            f"{money(r.quantity)} | "
             f"{gbp(r.market_value_gbp)} | {_amount(r.cost_basis_gbp)} | "
             f"{_amount(r.eri_uplift_gbp)} | {_amount(r.unrealised_gbp)} |"
         )
     lines += [
-        f"| **Total** | | {gbp(report.total_market_gbp)} | "
+        f"| **Total** | | | {gbp(report.total_market_gbp)} | "
         f"{gbp(report.total_cost_gbp)} | {gbp(report.total_eri_gbp)} | "
         f"{gbp(report.total_unrealised_gbp)} |",
         "",
@@ -392,6 +464,26 @@ def render_markdown(report: HoldingsReport) -> str:
         "section 104 basis; the market-value total covers every holding.",
         "",
     ]
+    lines += _situs_split_lines(report)
+
+    unclassified = [
+        r for r in report.rows
+        if r.uk_situs is None and r.cost_basis_gbp is not None
+    ]
+    if unclassified:
+        lines += [
+            "## ⚠️ Unclassified situs",
+            "",
+            "These holdings have a section 104 cost basis but no commodity "
+            "metadata, so their situs is unknown — shown `—` above and split "
+            "out separately (neither foreign-relievable nor UK-taxable), never "
+            "assumed taxable. If any is actually foreign its gain would be "
+            "**FIG-relievable**, so it belongs in the foreign slice — set "
+            "`uk_situs` / `domicile` in `data/commodities.toml`:",
+            "",
+            *[f"- {r.name} (`{r.key}`)" for r in unclassified],
+            "",
+        ]
 
     if report.qty_drifts:
         gaps = [d for d in report.qty_drifts if d.kind == _GAP]
@@ -460,6 +552,7 @@ def render_csv_rows(report: HoldingsReport) -> list[list[str]]:
     rows = [[
         "key", "name", "currency", "quantity", "market_value_gbp",
         "cost_basis_gbp", "eri_uplift_gbp", "unrealised_gbp", "pool_qty",
+        "uk_situs",
     ]]
     for r in report.rows:
         rows.append([
@@ -469,5 +562,6 @@ def render_csv_rows(report: HoldingsReport) -> list[list[str]]:
             money(r.eri_uplift_gbp) if r.eri_uplift_gbp is not None else "",
             money(r.unrealised_gbp) if r.unrealised_gbp is not None else "",
             money(r.basis_qty) if r.basis_qty is not None else "",
+            "" if r.uk_situs is None else ("uk" if r.uk_situs else "foreign"),
         ])
     return rows

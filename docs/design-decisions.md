@@ -404,6 +404,14 @@ mismatch would produce. Cost basis reads the JSONL sidecars, never the ledger,
 and is never fed back to the tax pipeline — it is a management view, not a
 return figure.
 
+Each row is also **situs-annotated** (foreign / UK / unclassified) and the
+unrealised total split on that axis, so the report reads in the light of a FIG
+claim — under which a foreign gain is relieved and a foreign loss disallowed,
+voiding the CGT-harvesting rationale for the exact figure on foreign holdings.
+This is a presentation layer over `CommodityMetadata.resolved_uk_situs` (the
+same signal `gain_is_foreign` uses); the pool is untouched. A holding with no
+metadata is surfaced as unclassified, never silently counted as taxable.
+
 ERI base-cost uplift is folded into the pool via
 `cumulative_base_cost_adjustments` (eri.py), which runs `compute_eri` for every
 tax year the `eri` table spans and merges the adjustments. This matters because
@@ -477,6 +485,73 @@ date is on/after arrival. (Applied when back-filling FY23-24 ERI: the 30 Jun 202
 entries were excluded, the 30 Sep 2023 / 31 Mar 2024 entries kept — arrival
 2023-07-14.) Equalisation, a return of capital, is netted off the uplift
 regardless of residence.
+
+## FIG-relieved ERI does not uplift the UK base cost
+
+**Status: confirmed by the user's tax adviser (2026-07); not yet implemented.**
+The treatment below is settled — a FIG-relieved ERI tranche gives no base-cost
+uplift, and for accumulation units the equalisation element does **not** reduce
+base cost independently, so the whole net tranche is dropped for a relieved
+year. The code still applies the uplift unconditionally; the fix is staged in
+[plans/fig-eri-basecost-correction.md](plans/fig-eri-basecost-correction.md)
+(now unblocked). Still not tax advice — the record of the adviser's view lives
+with the user, not in the repo.
+
+The section 104 base-cost uplift for excess reportable income exists only as
+anti-double-tax relief: the ERI was *already charged to income tax*, so adding
+it to the base cost stops a later disposal taxing it a second time. This is
+explicit in the offshore-funds rules — reg 99(2) of the Offshore Funds (Tax)
+Regulations 2009 treats reported income *charged* under reg 94 as allowable
+expenditure, and HMRC's own worked example spells out the predicate: *"As Liz
+has already been charged to tax on those sums, and in order to avoid a
+potential double charge to tax…"* (IFM13373). No charge → no uplift.
+
+The non-resident corollary above already applies this: pre-arrival ERI isn't
+UK-taxable, so it must not enter `eri.toml`. **A FIG claim is the same
+principle** — a FIG-claimed year relieves the foreign ERI income to nil, so it
+was never charged, so under reg 99 it should not uplift the base cost. But it
+**cannot** be handled by the same `eri.toml` data discipline, for two reasons:
+
+1. **The claim is elective and per-year** (`fig_claim_years`). The *same*
+   fund's ERI uplifts the pool in a non-claim year and (under this reading)
+   must not in a claim year — you can't decide by omitting the row, because
+   whether it uplifts depends on a decision variable, not a fixed fact.
+2. **`tax-forecast` evaluates both scenarios** (`_run_scenario(True/False)`)
+   to recommend claim-vs-no-claim. A correct with-claim scenario needs the
+   uplift *suppressed*; the no-claim scenario needs it *applied*. One
+   pre-computed, FIG-blind `cumulative_base_cost_adjustments` (fed to the pool
+   before `_partition_fig_relief` runs) can't be both.
+
+So this needs **code**, not data: the ERI base-cost adjustment must become
+FIG- and situs-aware — suppress the uplift for ERI whose deemed-income date
+falls in a claimed year *for a foreign holding* (`gain_is_foreign`), and do so
+**cumulatively** (the suppression is permanent for that tranche, since a
+post-window taxable disposal must still not see it).
+
+**Scope of impact.** It only bites a **post-window taxable disposal of a
+foreign holding that accrued relieved ERI** — a within-window disposal has its
+whole gain relieved anyway, so the base cost is moot there. Direction: the
+current unconditional uplift **overstates cost → understates the future
+taxable gain → under-declares CGT** on those post-window disposals. It also
+overstates the cost (understates unrealised gain) for those holdings in the
+`holdings` report **today**, though that figure is informational only.
+
+**Equalisation (resolved).** An ERI tranche carries `gross − equalisation`,
+where equalisation is a return of capital on units bought mid-period. The
+adviser confirmed that for **accumulation units** the equalisation element
+does *not* independently reduce base cost once the ERI itself is relieved — so
+the whole **net** tranche is suppressed for a relieved year, not just the gross
+part. This is the simple path the plan already defaulted to.
+
+**Why the reading holds.** The reg 99 "charged to tax" condition is
+well-established for ordinary ERI (IFM13373); the FIG regime is new (FA 2025)
+and does not preserve or rebase the uplift for relieved income, so the
+conservative application — no charge, no uplift — is the correct one. It still
+changes CGT figures, so it is applied through the staged plan (with tests and a
+reviewed golden), never silently.
+
+Implementation brief (now unblocked):
+[plans/fig-eri-basecost-correction.md](plans/fig-eri-basecost-correction.md).
 
 ## Reconcile-holdings is overkill: the portal reconciliation is complete without it
 

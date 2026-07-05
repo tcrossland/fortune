@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 
 from banking_pipeline import cli
 from banking_pipeline.basis_lens import BasisLens, HoldingBasis
+from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import NullSource
 from banking_pipeline.holdings import (
     _post_statement_movement,
@@ -234,6 +235,109 @@ def test_unrealised_can_be_a_loss() -> None:
     assert report.rows[0].unrealised_gbp == D("-300")
 
 
+# --- FIG situs-split -------------------------------------------------------
+
+_FGN, _UK, _UNC = "IE00FOREIGN01", "GB00UKSITUS01", "LU00UNCLASS01"
+
+
+def _three_situs_report(situs: dict[str, bool]) -> object:
+    # Foreign +50, UK-situs −50, unclassified +80 unrealised.
+    valuation = _value([
+        _sec(_FGN, D("10"), D("20")),  # market 200, cost 150 → +50
+        _sec(_UK, D("10"), D("20")),   # market 200, cost 250 → −50
+        _sec(_UNC, D("10"), D("20")),  # market 200, cost 120 → +80
+    ])
+    return join_holdings(
+        valuation,
+        {
+            _FGN: _basis(_FGN, D("10"), D("150")),
+            _UK: _basis(_UK, D("10"), D("250")),
+            _UNC: _basis(_UNC, D("10"), D("120")),
+        },
+        situs=situs,
+    )
+
+
+def test_join_stamps_situs_and_partitions_unrealised() -> None:
+    report = _three_situs_report({_FGN: False, _UK: True})  # _UNC absent → None
+    by_key = {r.key: r for r in report.rows}
+    assert by_key[_FGN].uk_situs is False
+    assert by_key[_UK].uk_situs is True
+    assert by_key[_UNC].uk_situs is None
+    assert report.total_unrealised_foreign_gbp == D("50")
+    assert report.total_unrealised_uk_gbp == D("-50")
+    assert report.total_unrealised_unclassified_gbp == D("80")
+    # The three situs buckets partition the combined unrealised total exactly.
+    assert (
+        report.total_unrealised_foreign_gbp
+        + report.total_unrealised_uk_gbp
+        + report.total_unrealised_unclassified_gbp
+    ) == report.total_unrealised_gbp
+
+
+def test_join_without_situs_is_all_unclassified() -> None:
+    # Omitting the situs map (existing callers) → every row unclassified, so
+    # the whole unrealised total lands in the unclassified bucket. Regression
+    # guard for the default.
+    report = _three_situs_report({})
+    assert all(r.uk_situs is None for r in report.rows)
+    assert report.total_unrealised_unclassified_gbp == report.total_unrealised_gbp
+    assert report.total_unrealised_foreign_gbp == D("0")
+    assert report.total_unrealised_uk_gbp == D("0")
+
+
+def test_render_markdown_shows_situs_column_and_split() -> None:
+    md = render_markdown(_three_situs_report({_FGN: False, _UK: True}))
+    assert "| Holding | Situs | Qty | Market (GBP) |" in md
+    assert "| foreign |" in md
+    assert "| UK |" in md
+    assert "Unrealised P&L by situs:" in md
+    assert "foreign (FIG-relievable)" in md
+    assert "relieved to nil" in md  # the FIG framing note
+
+
+def test_render_markdown_unclassified_situs_callout() -> None:
+    # A matched-basis holding with no situs is called out (it defaults to
+    # taxable and would miss relief if actually foreign).
+    md = render_markdown(_three_situs_report({_FGN: False, _UK: True}))
+    assert "## ⚠️ Unclassified situs" in md
+    assert _UNC in md
+    assert "commodities.toml" in md
+    # The callout must describe the actual treatment (split out, not folded
+    # into taxable) — guards the reviewer-caught prose/computation mismatch.
+    assert "never assumed taxable" in md
+    assert "default to UK-situs" not in md
+
+
+def test_render_csv_situs_column() -> None:
+    rows = render_csv_rows(_three_situs_report({_FGN: False, _UK: True}))
+    assert rows[0][-1] == "uk_situs"
+    by_key = {r[0]: r for r in rows[1:]}
+    assert by_key[_FGN][-1] == "foreign"
+    assert by_key[_UK][-1] == "uk"
+    assert by_key[_UNC][-1] == ""  # unclassified → blank
+
+
+def test_build_report_resolves_situs_from_commodities() -> None:
+    # build_report derives situs from the commodity metadata it already holds
+    # (resolved_uk_situs), even for rows with no matched basis.
+    text = _VANGUARD.read_text(encoding="utf-8")
+    meta = CommodityMetadata(
+        isin="VMIG", name="Vanguard FTSE All-World", domicile="IE",
+        reporting_status="reporting", asset_class="equity-etf",
+        first_acquired=date(2020, 1, 1),
+    )
+    report = build_report(
+        [(text, "vg.txt")],
+        commodities={"VMIG": meta},
+        rate_source=NullSource(),
+        basis=_StubLens({}),
+    )
+    by_key = {r.key: r for r in report.rows}
+    assert by_key["VMIG"].uk_situs is False  # IE domicile → foreign
+    assert by_key["VGVA"].uk_situs is None   # no metadata → unclassified
+
+
 def test_render_markdown_shows_amounts_and_blank_cost() -> None:
     held = "IE00B3VWN518"
     isa = "VMIG"
@@ -275,6 +379,7 @@ def test_render_csv_blank_cells_for_unmatched_basis() -> None:
     assert rows[0] == [
         "key", "name", "currency", "quantity", "market_value_gbp",
         "cost_basis_gbp", "eri_uplift_gbp", "unrealised_gbp", "pool_qty",
+        "uk_situs",
     ]
     by_key = {r[0]: r for r in rows[1:]}
     # cost, eri (0 — the stub basis has no adjustment), unrealised, pool.

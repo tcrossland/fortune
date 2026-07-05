@@ -9,11 +9,12 @@ paradigm. Shipped features are recorded in
 
 A handful of these ideas have graduated from a one-line menu entry to a
 full implementation brief in [plans/](plans/) — designed but not yet
-built. None is in flight right now; the one open brief is the **Revolut
-contra-leg reclass** (a bookkeeping tidy-up). When a plan ships, its line
-moves to the CHANGELOG and the plan moves to `archive/`. (Most recently
-shipped: the **statement-completeness** transaction cross-check — see the
-CHANGELOG and `archive/statement-completeness.md`.)
+built. **Active brief: the [FIG-aware ERI base-cost
+correction](plans/fig-eri-basecost-correction.md)** (signed off; suppress the
+relieved-year ERI uplift). The FIG situs-split that preceded it has **shipped**
+— see the [CHANGELOG](../CHANGELOG.md) and
+[archive/fig-situs-split.md](archive/fig-situs-split.md). When a plan ships,
+its line moves to the CHANGELOG and the plan moves to `archive/`.
 
 For the *correctness and robustness* gaps in the reporting subsystems
 (both tax reporting-status and the analytical reports) — as distinct from
@@ -25,8 +26,19 @@ future correctness items graduate into this backlog.
 The backward-looking tax-*reporting* area is feature-complete but carries
 the correctness caveats the audit catalogues. The active *new-feature*
 direction is forward-looking **tax planning & advice** (below), built on
-the same sidecar substrate; what remains in reporting is FIG presentation
-polish plus the broader (and weaker-fit) reporting ideas.
+the same sidecar substrate.
+
+**Taxpayer profile drives the ordering (2026-07).** The user holds **no
+ISA**, has **no UK income**, and **will claim FIG** (the 4-year Foreign
+Income & Gains regime). That re-points the whole tax-planning direction:
+allowance / AEA optimisation is largely moot (no income to shelter; the CGT
+annual exempt amount is *forfeited* by a FIG claim), and standard CGT
+loss-harvesting is void for foreign holdings in a claim year (their gains
+are relieved to nil, losses disallowed). What matters instead is **FIG-window
+timing** — which holdings are foreign (relievable) vs UK-situs (taxable),
+and when to crystallise before the window closes. The items below are
+ordered on that basis; each is flagged **[FIG-relevant]**,
+**[deprioritised: profile]**, or neutral.
 
 ## Tax reporting
 
@@ -46,37 +58,74 @@ polish plus the broader (and weaker-fit) reporting ideas.
 Forward-looking, but a strong fit: each reuses an engine already built
 (the section 104 pool, `prices`, the `liability` / `rates` stacking, the
 `tax-forecast` machinery). All would carry the existing "planning aid,
-not tax advice" framing.
+not tax advice" framing. Ordered FIG-first (see the profile note above).
 
-- **CGT year-end harvesting advisor.** Combine the section 104 pool with
-  current `prices` to compute *unrealised* gain/loss per lot, then —
-  against the remaining AEA and the year's realised gains — advise how
-  much more could be realised tax-free and which loss-making lots to
-  crystallise to offset gains. Flag any repurchase that would trip the
-  30-day bed-and-breakfast rule and undo a harvested loss. *Foundation:* the
-  per-holding unrealised table this needs is the
-  [holdings cost-basis report](archive/holdings-cost-basis-report.md)
-  (shipped) — build on it: this is the headroom query +
-  advice + prospective bed-and-breakfast check layered on top.
-- **Allowance-utilisation dashboard.** From year-to-date actuals, show
-  used-vs-remaining for each statutory headroom: dividend allowance,
-  personal savings allowance + starting-rate band, the CGT AEA, and the
-  £100k–£125,140 personal-allowance taper ("60% trap") zone — to time
-  income / pension contributions before 5 April. Statutory values come
-  from config, as `rates.py` already does.
-- **`tax-forecast` "what-if" delta calculator.** Given a hypothetical
-  action — sell £X of holding Y, contribute £Z to a pension, take £W of
-  dividends — recompute the forecast and report the *marginal* tax delta.
-  A thin layer over the existing forecast engine that turns the estimate
-  into a planning tool.
-- **Pension (SIPP) annual-allowance planner.** Model contribution
-  headroom against the £60k annual allowance, the high-earner taper, and
-  3-year carry-forward of unused allowance, plus the relief obtained.
-  (Distinct from the SIPP *wrapper* item, which is only the tax-exempt
-  choke point.)
-- **ISA subscription tracker.** Track the £20k annual subscription limit
-  against the Vanguard ISA contributions already ingested
-  (`Equity:Vgd:ISA:Contributions`). Small and self-contained.
+### FIG-relevant (the active direction)
+
+- **FIG situs-split in `holdings` — ✅ shipped.** Each holding is annotated
+  foreign (FIG-relievable) / UK-situs (taxable) / unclassified and the
+  unrealised total split on that axis (presentation layer; pool untouched).
+  This was the unblocker for the items below — the per-holding situs they
+  reason over is now on the report. See the [CHANGELOG](../CHANGELOG.md) and
+  [archive/fig-situs-split.md](archive/fig-situs-split.md).
+- **FIG-window multi-year projection.** Extend `tax-forecast` forward across
+  the remaining claim years, **tied to the FIG window expiry so the cost of
+  deferring vs. crystallising is visible**. For a mid-window holder the key
+  move is often to **crystallise foreign gains while they are relieved to
+  nil** (resetting the base cost upward), then face smaller taxable gains
+  after the window closes — the *inverse* of AEA harvesting. Builds on
+  `fig-advice` + `tax-forecast`. (Previously filed under "Financial planning
+  & budgeting"; it is the strategic tool for this profile, so it lives here
+  now.)
+- **FIG-reframed disposal / rebasing advisor.** Not the AEA-harvesting
+  version below — a *"which foreign lots to crystallise-and-rebase during the
+  window"* advisor over the same holdings substrate as the situs-split. Only
+  worth building once the projection shows the deferral-vs-crystallise gap is
+  material. Depends on the situs-split (to scope to foreign holdings) and on
+  settling the ERI question below (base cost feeds the rebasing sums).
+- **FIG-aware ERI base-cost correction (correctness — signed off, ready to
+  build).** Today the ERI section 104 base-cost uplift is applied
+  **unconditionally** in both the tax pipeline and the holdings lens —
+  including for ERI relieved under a FIG claim, which was never charged to tax,
+  so under reg 99 it should not uplift the base cost. This **overstates cost →
+  understates a post-window taxable gain → under-declares CGT**. It can't be
+  fixed by `eri.toml` data discipline (the way pre-residence ERI is) because a
+  FIG claim is elective and per-year, and `tax-forecast` evaluates both claim
+  scenarios — so it needs code (a FIG-/situs-aware, *cumulative* suppression of
+  the uplift). The treatment is **signed off by the user's tax adviser (2026-07)
+  — no uplift for a relieved year, and the equalisation element does not survive
+  for accumulation units, so the whole net tranche is dropped.** Still landed
+  through the staged plan (tests + reviewed golden), never silently.
+  Implementation brief: [plans/fig-eri-basecost-correction.md](plans/fig-eri-basecost-correction.md).
+  Full analysis and the reg 99 / IFM13373 basis:
+  [design-decisions.md](design-decisions.md#fig-relieved-eri-does-not-uplift-the-uk-base-cost).
+- **`tax-forecast` "what-if" delta calculator.** Given a hypothetical action
+  — sell £X of holding Y, take £W of dividends — recompute the forecast and
+  report the *marginal* tax delta. A thin layer over the existing forecast
+  engine. Neutral, but doubly useful here as the "what does crystallising
+  this foreign lot cost/save" primitive the projection wants.
+
+### Deprioritised by the profile
+
+- **[deprioritised: profile] CGT year-end harvesting advisor.** The standard
+  version — realise loss-making lots against the AEA + realised gains, with a
+  30-day bed-and-breakfast check. Void for this profile: under a FIG claim
+  foreign gains are relieved to nil and foreign losses disallowed, and the
+  AEA is forfeited, so there is no tax-free headroom to harvest into. The
+  FIG-reframed advisor above replaces it. Revisit only if the FIG window
+  closes / a non-claim year returns. *Foundation, if resurrected:* the
+  [holdings cost-basis report](archive/holdings-cost-basis-report.md).
+- **[deprioritised: profile] Allowance-utilisation dashboard.** Dividend
+  allowance, PSA + starting-rate band, and the £100k–£125,140 personal-
+  allowance taper all key off UK income the user doesn't have; the CGT AEA
+  panel is forfeited under a FIG claim. Little left to show. Revisit if UK
+  income returns.
+- **[deprioritised: profile] ISA subscription tracker.** No ISA held —
+  nothing to track. Drop until one is opened.
+- **[deprioritised: profile] Pension (SIPP) annual-allowance planner.** No
+  SIPP held, and with no relevant UK earnings the annual-allowance headroom
+  is minimal. (Distinct from the SIPP *wrapper* item, which is only the
+  tax-exempt choke point.)
 
 ## Bookkeeping (ingest quality)
 
@@ -145,21 +194,24 @@ not tax advice" framing.
     qty cross-check source. A few lines here (parse the Holdings CSV — same
     `parse_cash_statement_csv` pattern, cp1252, bare `Account nr.` →
     `lettered_portfolio_map`), not a new command.
-  - *FIG-awareness (enhancement).* The report computes one undifferentiated
-    UK section-104 unrealised P&L; it ignores situs. Under a **FIG claim**
-    (`fig_claim_years`), foreign (non-UK-situs) gains are relieved to nil, the
-    CGT AEA is forfeited, and foreign losses are disallowed — so the
-    CGT-harvesting rationale for the exact basis is void for foreign holdings
-    in a claim year, and the unrealised P&L needs reading in that light.
-    Annotate / split each row **foreign (FIG-relievable) vs UK-situs
-    (taxable)** using `CommodityMetadata.resolved_uk_situs` — already in the
-    lens's `commodities` and used by the tax pipeline (`gain_is_foreign`), so
-    the data is in hand. The pool itself is FIG-untouched (only the taxable
-    *output* is residence-filtered), so nothing in the basis changes — this is
-    a presentation/labelling layer. Related open question the ERI cumulative
-    fix already flagged: whether **relieved-year ERI** should uplift a UK base
-    cost at all (a rebasing question); the lens applies ERI uplift
-    unconditionally, so it inherits whatever the pipeline settles.
+  - *FIG-awareness — ✅ shipped
+    ([archive/fig-situs-split.md](archive/fig-situs-split.md)).* The report used
+    to compute one undifferentiated UK section-104 unrealised P&L, ignoring
+    situs. Under a **FIG claim** (`fig_claim_years`), foreign (non-UK-situs)
+    gains are relieved to nil, the CGT AEA is forfeited, and foreign losses are
+    disallowed — so the CGT-harvesting rationale for the exact basis is void
+    for foreign holdings in a claim year, and the unrealised P&L needs reading
+    in that light. It now annotates / splits each row **foreign
+    (FIG-relievable) vs UK-situs (taxable)** using
+    `CommodityMetadata.resolved_uk_situs`, a presentation/labelling layer (the
+    pool is FIG-untouched). The related **ERI-uplift-in-relieved-years**
+    question the ERI cumulative fix flagged — whether relieved-year ERI should
+    uplift a UK base cost at all — is now investigated and tracked as its own
+    correctness item (see *FIG-aware ERI base-cost correction* under Tax
+    planning & advice, and
+    [design-decisions.md](design-decisions.md#fig-relieved-eri-does-not-uplift-the-uk-base-cost));
+    the situs-split deliberately does **not** touch it (it changes filed
+    figures), but adds the exact situs signal that correction will consume.
 - **Unrealised-P&L source options (decide before the EUR lens / `pnl` report).**
   Three ways to get a non-UK / management-view cost basis + unrealised P&L,
   weighed:
@@ -302,10 +354,11 @@ cautiously.
 - **Income/expense run-rate** from historical sidecars: trailing-12
   cashflow by category, projected forward. Low effort, reuses existing
   data.
-- **Multi-year liability & cashflow projection.** Extend `tax-forecast`
-  forward across several years with simple assumptions, tied to the FIG
-  window expiry so the cost of deferring vs. claiming is visible. Builds
-  on `fig-advice` + `tax-forecast`; forward-looking, so a firm "planning
-  aid, not advice" framing.
+- **Multi-year liability & cashflow projection — promoted to
+  [FIG-relevant].** Extend `tax-forecast` forward across several years, tied
+  to the FIG window expiry so the cost of deferring vs. crystallising is
+  visible. Now tracked as **FIG-window multi-year projection** under Tax
+  planning & advice above (the profile makes it strategic, not a
+  weak-fit budgeting aside).
 - **Full budgeting** (envelopes, targets) is deprioritised — a different
   product, and the substrate isn't built for it.

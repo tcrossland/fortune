@@ -101,6 +101,22 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Reporting
 
+- **`holdings` splits the report by FIG situs** — each holding is marked
+  **foreign** (a gain relievable under a FIG claim), **UK-situs** (always
+  taxable), or **unclassified** (no commodity metadata — shown `—`, split out
+  separately, never assumed taxable), and the unrealised total is partitioned
+  on that axis. Derived from `CommodityMetadata.resolved_uk_situs` (the same
+  signal the tax pipeline's `gain_is_foreign` uses); a presentation layer only
+  — the section 104 pool and cost basis are untouched. Adds a **Situs** column,
+  an "Unrealised P&L by situs" footer with the FIG note, an unclassified-situs
+  callout, and a `uk_situs` CSV column. Re-points the report for a holder
+  claiming FIG, under which a foreign gain is relieved and a foreign loss
+  disallowed (voiding the CGT-harvesting rationale for the exact figure on
+  foreign holdings). Plan:
+  [docs/archive/fig-situs-split.md](docs/archive/fig-situs-split.md). Rationale
+  folded into
+  [design-decisions.md](docs/design-decisions.md#cost-basis-is-a-pluggable-per-jurisdiction-lens).
+  (`holdings.py`)
 - **Faster statement discovery for the valuation reports** — the ad-hoc
   `holdings` / `net-worth` / `concentration` / `allocation` /
   `portfolio-allocation` CLIs no longer text-extract the whole Pictet archive

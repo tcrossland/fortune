@@ -199,7 +199,12 @@ basis: it joins each holding's statement market value with its UK section 104
 pooled cost and reports the unrealised gain/loss, cross-checking the statement
 quantity against the pool. The cost basis is a UK-tax lens (`--basis uk`; an
 `es` EUR/Spanish lens is reserved but not yet built) — not equal to Pictet's
-own figures and never fed to the tax pipeline.
+own figures and never fed to the tax pipeline. Each holding is marked
+**foreign** or **UK-situs** (from `data/commodities.toml`) and the unrealised
+total is split on that axis, so the report reads in the light of a FIG claim
+(under which foreign gains are relievable and foreign losses disallowed); a
+holding with no metadata is flagged as unclassified rather than silently
+treated as taxable.
 
 **Ledger** — queried via `bean-query` (default `main.beancount`); a missing
 `bean-query` binary is a warning, not an error (`uv tool install beancount`):

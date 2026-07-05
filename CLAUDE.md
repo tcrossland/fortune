@@ -227,8 +227,21 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-**Active:** none — pick the next from [docs/backlog.md](docs/backlog.md).
+**Active:** [FIG-aware ERI base-cost correction](docs/plans/fig-eri-basecost-correction.md)
+— suppress the section 104 ERI base-cost uplift for ERI relieved under a FIG
+claim (reg 99 keys on income *charged* to tax; FIG-relieved ERI isn't charged).
+**Signed off by the user's tax adviser (2026-07)**; changes filed CGT, so it
+lands through the staged plan (tests + reviewed golden). Not started.
+Rationale: [design-decisions.md](docs/design-decisions.md#fig-relieved-eri-does-not-uplift-the-uk-base-cost).
+Re-pointed by the taxpayer profile (no ISA, no UK income, claiming FIG) — see
+the [backlog](docs/backlog.md) profile note.
 
+- Last shipped: **FIG situs-split** in `holdings` — each holding annotated
+  foreign (FIG-relievable) / UK-situs (taxable) / unclassified, the unrealised
+  total split on that axis (presentation layer; section 104 pool untouched).
+  Added a Situs column, a by-situs footer + FIG note, an unclassified callout,
+  and a `uk_situs` CSV column. Re-points the report for a FIG claimant. Plan:
+  [docs/archive/fig-situs-split.md](docs/archive/fig-situs-split.md). (`holdings.py`)
 - Last shipped (feat, no plan): `holdings` **decomposes the ERI base-cost
   uplift** — an `of which ERI` column (`eri_uplift_gbp`) splits out the ERI
   portion inside each section-104 cost (the main reason the UK basis differs
