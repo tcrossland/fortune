@@ -9,12 +9,10 @@ paradigm. Shipped features are recorded in
 
 A handful of these ideas have graduated from a one-line menu entry to a
 full implementation brief in [plans/](plans/) — designed but not yet
-built. **Active brief: the [FIG-aware ERI base-cost
-correction](plans/fig-eri-basecost-correction.md)** (signed off; suppress the
-relieved-year ERI uplift). The FIG situs-split that preceded it has **shipped**
-— see the [CHANGELOG](../CHANGELOG.md) and
-[archive/fig-situs-split.md](archive/fig-situs-split.md). When a plan ships,
-its line moves to the CHANGELOG and the plan moves to `archive/`.
+built. **No active brief right now** — the two most recent (the FIG situs-split
+and the FIG-aware ERI base-cost correction) have both **shipped** (see the
+[CHANGELOG](../CHANGELOG.md) and `archive/`). When a plan ships, its line moves
+to the CHANGELOG and the plan moves to `archive/`.
 
 For the *correctness and robustness* gaps in the reporting subsystems
 (both tax reporting-status and the analytical reports) — as distinct from
@@ -83,22 +81,27 @@ not tax advice" framing. Ordered FIG-first (see the profile note above).
   worth building once the projection shows the deferral-vs-crystallise gap is
   material. Depends on the situs-split (to scope to foreign holdings) and on
   settling the ERI question below (base cost feeds the rebasing sums).
-- **FIG-aware ERI base-cost correction (correctness — signed off, ready to
-  build).** Today the ERI section 104 base-cost uplift is applied
-  **unconditionally** in both the tax pipeline and the holdings lens —
-  including for ERI relieved under a FIG claim, which was never charged to tax,
-  so under reg 99 it should not uplift the base cost. This **overstates cost →
-  understates a post-window taxable gain → under-declares CGT**. It can't be
-  fixed by `eri.toml` data discipline (the way pre-residence ERI is) because a
-  FIG claim is elective and per-year, and `tax-forecast` evaluates both claim
-  scenarios — so it needs code (a FIG-/situs-aware, *cumulative* suppression of
-  the uplift). The treatment is **signed off by the user's tax adviser (2026-07)
-  — no uplift for a relieved year, and the equalisation element does not survive
-  for accumulation units, so the whole net tranche is dropped.** Still landed
-  through the staged plan (tests + reviewed golden), never silently.
-  Implementation brief: [plans/fig-eri-basecost-correction.md](plans/fig-eri-basecost-correction.md).
-  Full analysis and the reg 99 / IFM13373 basis:
+- **FIG-aware ERI base-cost correction — ✅ core landed (correctness).**
+  The ERI section 104 base-cost uplift is now suppressed for ERI relieved under
+  a FIG claim (never charged → no reg 99 uplift), for foreign holdings, across
+  the tax pipeline and both holdings call sites. Signed off by the user's tax
+  adviser (2026-07); **inert on current data** (configured claim years and the
+  `eri.toml` years don't yet overlap) — it corrects future filings once
+  relieved-year ERI is entered. Plan:
+  [plans/fig-eri-basecost-correction.md](plans/fig-eri-basecost-correction.md);
+  rationale (reg 99 / IFM13373):
   [design-decisions.md](design-decisions.md#fig-relieved-eri-does-not-uplift-the-uk-base-cost).
+  - *Remaining (deferred): the audit-surfacing line* — a "N ERI tranche(s)
+    (£X) suppressed as FIG-relieved" note in `tax-report` `summary.txt` and the
+    holdings report. Needs the suppressed-tranches return plumbed through
+    `cumulative_base_cost_adjustments` → the report models. Deferred as polish
+    (the effect is already visible via the holdings `of which ERI` column) and
+    moot until relieved-year ERI exists — pick up when 2025-26 ERI lands.
+  - *Deferred (Stage 3 (a)): forecast per-scenario pool re-match* — the
+    forecast uses the configured-claims pool for both claim/no-claim scenarios
+    (exact for prior years; a nil-in-practice approximation only for a same-year
+    disposal after a same-year foreign ERI event). Revisit only if a real case
+    shows the delta matters.
 - **`tax-forecast` "what-if" delta calculator.** Given a hypothetical action
   — sell £X of holding Y, take £W of dividends — recompute the forecast and
   report the *marginal* tax delta. A thin layer over the existing forecast

@@ -218,7 +218,9 @@ def holdings(
     )
     # ERI base-cost uplift (excess reportable income already taxed) raises the
     # section 104 pool cost — accumulated across the whole history, since the
-    # pool is cumulative and this is a current cost basis.
+    # pool is cumulative and this is a current cost basis. ERI relieved under a
+    # FIG claim was never charged, so its uplift is suppressed (mirrors the tax
+    # pipeline; see design-decisions).
     eri_path = settings.eri_path
     eri_entries = (
         load_eri(eri_path) if eri_path is not None and eri_path.is_file() else {}
@@ -226,6 +228,7 @@ def holdings(
     adjustments, eri_gaps = cumulative_base_cost_adjustments(
         txns, eri_entries=eri_entries, commodities=commodities_map,
         source=rates, opening_positions=opening,
+        fig_claim_years=settings.fig_claim_years,
     )
     lens = UkSection104Lens(
         transactions=txns, commodities=commodities_map, source=rates,

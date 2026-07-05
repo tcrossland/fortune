@@ -227,15 +227,21 @@ advice — verify against HMRC guidance.
 
 ## Active plan
 
-**Active:** [FIG-aware ERI base-cost correction](docs/plans/fig-eri-basecost-correction.md)
-— suppress the section 104 ERI base-cost uplift for ERI relieved under a FIG
-claim (reg 99 keys on income *charged* to tax; FIG-relieved ERI isn't charged).
-**Signed off by the user's tax adviser (2026-07)**; changes filed CGT, so it
-lands through the staged plan (tests + reviewed golden). Not started.
-Rationale: [design-decisions.md](docs/design-decisions.md#fig-relieved-eri-does-not-uplift-the-uk-base-cost).
-Re-pointed by the taxpayer profile (no ISA, no UK income, claiming FIG) — see
-the [backlog](docs/backlog.md) profile note.
+**Active:** none — pick the next from [docs/backlog.md](docs/backlog.md)
+(FIG-relevant direction: FIG-window multi-year projection, then the
+FIG-reframed disposal/rebasing advisor; the ERI correction's deferred
+audit-line remainder is moot until relieved-year ERI lands).
 
+- Last shipped: **FIG-aware ERI base-cost correction** (core) — the section 104
+  ERI base-cost uplift is suppressed for ERI relieved under a FIG claim (never
+  charged → no reg 99 uplift), for foreign holdings, across the tax pipeline and
+  both holdings call sites. Adviser-signed-off (2026-07). Inert on current data
+  (configured claim years vs `eri.toml` years don't yet overlap); corrects
+  future filings once relieved-year ERI is entered. Deferred: the audit-line +
+  Stage 3(a) forecast re-match (backlog). Plan:
+  [docs/archive/fig-eri-basecost-correction.md](docs/archive/fig-eri-basecost-correction.md).
+  Rationale: [design-decisions.md](docs/design-decisions.md#fig-relieved-eri-does-not-uplift-the-uk-base-cost).
+  (`tax/uk/eri.py`, `cli/tax.py`, `cli/reports.py`, `cli/rebuild.py`)
 - Last shipped: **FIG situs-split** in `holdings` — each holding annotated
   foreign (FIG-relievable) / UK-situs (taxable) / unclassified, the unrealised
   total split on that axis (presentation layer; section 104 pool untouched).

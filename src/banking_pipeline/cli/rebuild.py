@@ -906,6 +906,7 @@ def _run_rebuild_reports(
         adjustments, eri_gaps = cumulative_base_cost_adjustments(
             hld_txns, eri_entries=eri_entries, commodities=commodities_map,
             source=rates, opening_positions=opening,
+            fig_claim_years=settings.fig_claim_years,
         )
         if eri_gaps:
             err_console.print(

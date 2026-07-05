@@ -9,6 +9,7 @@ from pathlib import Path
 from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.models import DocumentType, Transaction
 from banking_pipeline.opening_positions import OpeningLot
+from banking_pipeline.tax.uk.eri import EriEntry, cumulative_base_cost_adjustments
 from banking_pipeline.tax.uk.sa108 import compute_sa108
 from banking_pipeline.tax.uk.section_104 import PoolCostAdjustment
 
@@ -224,6 +225,55 @@ def test_eri_base_cost_uplift_reduces_gain() -> None:
     )
     assert report.rows[0].cost_gbp == Decimal("1400.00")
     assert report.rows[0].gain_gbp == Decimal("200.00")
+
+
+def test_fig_relieved_eri_uplift_dropped_raises_later_disposal_gain() -> None:
+    # End-to-end (ERI → SA108): a foreign reporting fund accrues ERI in a
+    # FIG-claimed year (2025-26) and is disposed the next, taxable year
+    # (2026-27). Claiming the ERI year suppresses its base-cost uplift (never
+    # charged → no reg 99 uplift), so the disposal gain is higher than if the
+    # uplift stood — the correction's whole point on a post-relief disposal.
+    isin = "IE00B3VWN518"
+    txs = [
+        _tx(doc_type=DocumentType.BUY_ETF, isin=isin, qty=Decimal("1000"),
+            amount=Decimal("-1000"), on=date(2023, 1, 10)),
+        _tx(doc_type=DocumentType.SELL_ETF, isin=isin, qty=Decimal("-1000"),
+            amount=Decimal("1600"), on=date(2026, 5, 1)),
+    ]
+    commodities = {isin: _reporting(isin)}  # IE / reporting → foreign situs
+    entries = {isin: [EriEntry(
+        isin=isin, period_end=date(2025, 6, 30),
+        fund_distribution_date=date(2025, 12, 30),  # 2025-26
+        income_type="interest", eri_per_unit=Decimal("0.50"),
+        equalisation_per_unit=Decimal("0.10"), currency="GBP",
+    )]}
+
+    # No claim → £400 uplift applies → cost £1,400 → gain £200.
+    adj_open, _ = cumulative_base_cost_adjustments(
+        txs, eri_entries=entries, commodities=commodities,
+    )
+    open_year = compute_sa108(
+        txs, tax_year_label="2026-27", commodities=commodities,
+        cost_adjustments=adj_open,
+    )
+    assert open_year.rows[0].cost_gbp == Decimal("1400.00")
+    assert open_year.rows[0].gain_gbp == Decimal("200.00")
+
+    # Claim 2025-26 → the foreign uplift is suppressed → cost £1,000 → gain
+    # £600; the delta is exactly the dropped uplift.
+    adj_claim, _ = cumulative_base_cost_adjustments(
+        txs, eri_entries=entries, commodities=commodities,
+        fig_claim_years=frozenset({"2025-26"}),
+    )
+    claimed = compute_sa108(
+        txs, tax_year_label="2026-27", commodities=commodities,
+        cost_adjustments=adj_claim,
+    )
+    assert claimed.rows[0].cost_gbp == Decimal("1000.00")
+    assert claimed.rows[0].gain_gbp == Decimal("600.00")
+    assert (
+        claimed.rows[0].gain_gbp - open_year.rows[0].gain_gbp == Decimal("400.00")
+    )
 
 
 def test_disposal_outside_year_excluded() -> None:

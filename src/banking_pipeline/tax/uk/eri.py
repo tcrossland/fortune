@@ -55,6 +55,7 @@ from banking_pipeline.fx.gbp_rates import GbpRateSource
 from banking_pipeline.models import Transaction
 from banking_pipeline.opening_positions import OpeningLot
 from banking_pipeline.tax.uk.currency import RateGap, to_gbp_all
+from banking_pipeline.tax.uk.residence import gain_is_foreign
 from banking_pipeline.tax.uk.section_104 import PoolCostAdjustment
 from banking_pipeline.tax.uk.tax_year import (
     date_to_tax_year,
@@ -166,6 +167,7 @@ def cumulative_base_cost_adjustments(
     commodities: dict[str, CommodityMetadata],
     opening_positions: dict[str, list[OpeningLot]] | None = None,
     source: GbpRateSource | None = None,
+    fig_claim_years: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, list[PoolCostAdjustment]], list[RateGap]]:
     """Section 104 base-cost adjustments from ERI across the **full** history.
 
@@ -176,6 +178,18 @@ def cumulative_base_cost_adjustments(
     the per-ISIN adjustment lists, so the holdings lens can uplift the pool by
     the whole accumulated ERI. Returns the merged adjustments and any GBP-rate
     gaps encountered (so the caller can surface an incomplete uplift).
+
+    ``fig_claim_years`` suppresses the uplift for ERI relieved under a FIG
+    claim. The uplift exists only to prevent a double charge — reg 99 of the
+    Offshore Funds (Tax) Regulations 2009 adds *charged* income to the base
+    cost — but ERI in a claimed year is relieved to nil, so it is never charged
+    and must not uplift the base cost (else a later taxable disposal's gain is
+    understated). A tranche is dropped iff its year is claimed **and** the
+    holding is foreign (``gain_is_foreign`` — a UK-situs holding's income isn't
+    FIG-relievable). Adviser-confirmed; see
+    [design-decisions](../../../docs/design-decisions.md). Default empty →
+    no suppression (every current caller's behaviour is unchanged until it
+    passes the claim set).
     """
 
     years = sorted(
@@ -196,8 +210,18 @@ def cumulative_base_cost_adjustments(
             opening_positions=opening_positions,
             source=source,
         )
+        claimed = year in fig_claim_years
         for isin, adjustments in result.base_cost_adjustments.items():
+            # FIG-relieved ERI (claimed year + foreign holding) was never
+            # charged to tax, so it gives no base-cost uplift. The equalisation
+            # element (already netted into each tranche) does not survive
+            # independently for accumulation units, so the whole tranche drops.
+            if claimed and gain_is_foreign(commodities.get(isin)):
+                continue
             merged[isin].extend(adjustments)
+        # Rate gaps are left unfiltered: a missing rate on a suppressed tranche
+        # still affects that year's FIG-designation income figure, so the
+        # warning stays actionable (it over-reports, never under-reports).
         gaps.extend(result.missing_rates)
     return dict(merged), gaps
 

@@ -146,9 +146,15 @@ def _compute_tax_year(
         txns, tax_year_label=year, eri_entries=eri_entries,
         commodities=commodities_map, opening_positions=opening, source=rates,
     )
+    # Suppress the base-cost uplift for ERI relieved under a FIG claim (never
+    # charged to tax → no reg 99 uplift; see design-decisions). Report/pack use
+    # the configured claim set. NB the forecast shares this ``comp`` and only
+    # re-runs the loss chain per scenario, so its pool reflects the configured
+    # claims, not the toggled year — the (documented) Stage-3 approximation.
     cost_adjustments, eri_adj_gaps = cumulative_base_cost_adjustments(
         txns, eri_entries=eri_entries, commodities=commodities_map,
         opening_positions=opening, source=rates,
+        fig_claim_years=settings.fig_claim_years,
     )
     sa108 = compute_sa108(
         txns, tax_year_label=year, commodities=commodities_map, source=rates,

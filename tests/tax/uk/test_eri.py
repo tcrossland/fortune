@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from banking_pipeline.commodities_metadata import CommodityMetadata
 from banking_pipeline.fx.gbp_rates import HmrcMonthlyAverageSource
 from banking_pipeline.models import DocumentType, Transaction
 from banking_pipeline.tax.uk.eri import (
@@ -46,6 +47,15 @@ def _entry(isin: str, **kw: object) -> EriEntry:
     return EriEntry(**base)  # type: ignore[arg-type]
 
 
+def _meta(isin: str, *, foreign: bool) -> CommodityMetadata:
+    # Situs set explicitly so the test doesn't depend on domicile derivation.
+    return CommodityMetadata(
+        isin=isin, name="Fund", domicile="IE", reporting_status="reporting",
+        asset_class="bond", first_acquired=date(2020, 1, 1),
+        uk_situs=not foreign,
+    )
+
+
 def test_cumulative_adjustments_merge_across_tax_years() -> None:
     # The pool is cumulative, so a current cost basis needs every year's ERI
     # uplift — not one year's, which is all a single compute_eri returns.
@@ -73,6 +83,104 @@ def test_cumulative_adjustments_merge_across_tax_years() -> None:
         txs, tax_year_label="2023-24", eri_entries=entries, commodities={},
     )
     assert len(single.base_cost_adjustments[isin]) == 1
+
+
+# --- FIG-relieved ERI: no base-cost uplift ---------------------------------
+
+_ISIN = "IE00B3VWN518"
+
+
+def _one_year_entries(year_dist: date) -> dict[str, list[EriEntry]]:
+    # A single ERI tranche whose deemed date lands in the given tax year;
+    # units are measured six months before, so period_end is set to match.
+    return {
+        _ISIN: [_entry(
+            _ISIN,
+            period_end=date(year_dist.year, 6, 30),
+            fund_distribution_date=year_dist,
+        )]
+    }
+
+
+def test_fig_claim_suppresses_foreign_eri_uplift() -> None:
+    # ERI relieved under a FIG claim was never charged to tax, so reg 99 gives
+    # no base-cost uplift for a foreign holding in that year.
+    txs = [_buy(_ISIN, "1000", date(2023, 1, 10))]
+    entries = _one_year_entries(date(2025, 12, 30))  # 2025-26
+    commodities = {_ISIN: _meta(_ISIN, foreign=True)}
+
+    kept, _ = cumulative_base_cost_adjustments(
+        txs, eri_entries=entries, commodities=commodities,
+    )
+    assert sum((a.cost_gbp for a in kept[_ISIN]), Decimal(0)) == Decimal("400")
+
+    dropped, _ = cumulative_base_cost_adjustments(
+        txs, eri_entries=entries, commodities=commodities,
+        fig_claim_years=frozenset({"2025-26"}),
+    )
+    assert _ISIN not in dropped  # the only tranche was suppressed
+
+
+def test_fig_claim_keeps_uk_situs_eri_uplift() -> None:
+    # A UK-situs holding's income isn't FIG-relievable, so its uplift stands
+    # even in a claimed year.
+    txs = [_buy(_ISIN, "1000", date(2023, 1, 10))]
+    entries = _one_year_entries(date(2025, 12, 30))
+    commodities = {_ISIN: _meta(_ISIN, foreign=False)}
+
+    adj, _ = cumulative_base_cost_adjustments(
+        txs, eri_entries=entries, commodities=commodities,
+        fig_claim_years=frozenset({"2025-26"}),
+    )
+    assert sum((a.cost_gbp for a in adj[_ISIN]), Decimal(0)) == Decimal("400")
+
+
+def test_fig_claim_keeps_non_claimed_year_foreign_eri() -> None:
+    # A foreign tranche in a year that isn't claimed still uplifts.
+    txs = [_buy(_ISIN, "1000", date(2023, 1, 10))]
+    entries = _one_year_entries(date(2024, 12, 30))  # 2024-25
+    commodities = {_ISIN: _meta(_ISIN, foreign=True)}
+
+    adj, _ = cumulative_base_cost_adjustments(
+        txs, eri_entries=entries, commodities=commodities,
+        fig_claim_years=frozenset({"2025-26"}),
+    )
+    assert sum((a.cost_gbp for a in adj[_ISIN]), Decimal(0)) == Decimal("400")
+
+
+def test_fig_claim_suppresses_only_the_claimed_year_tranche() -> None:
+    # Two foreign tranches, only 2025-26 claimed: the 2024-25 one survives, and
+    # it survives *permanently* — a later taxable disposal still won't see the
+    # suppressed 2025-26 uplift (the suppression is baked into the merged set).
+    txs = [_buy(_ISIN, "1000", date(2023, 1, 10))]
+    entries = {_ISIN: [
+        _entry(_ISIN, period_end=date(2024, 6, 30),
+               fund_distribution_date=date(2024, 12, 30)),  # 2024-25
+        _entry(_ISIN, period_end=date(2025, 6, 30),
+               fund_distribution_date=date(2025, 12, 30)),  # 2025-26 (claimed)
+    ]}
+    commodities = {_ISIN: _meta(_ISIN, foreign=True)}
+
+    adj, _ = cumulative_base_cost_adjustments(
+        txs, eri_entries=entries, commodities=commodities,
+        fig_claim_years=frozenset({"2025-26"}),
+    )
+    assert len(adj[_ISIN]) == 1
+    assert adj[_ISIN][0].date == date(2024, 12, 30)
+    assert adj[_ISIN][0].cost_gbp == Decimal("400")
+
+
+def test_default_no_claim_leaves_foreign_eri_unchanged() -> None:
+    # Regression guard: the default (empty claim set) suppresses nothing, so
+    # every existing caller's behaviour is unchanged until it passes claims.
+    txs = [_buy(_ISIN, "1000", date(2023, 1, 10))]
+    entries = _one_year_entries(date(2025, 12, 30))
+    commodities = {_ISIN: _meta(_ISIN, foreign=True)}
+
+    adj, _ = cumulative_base_cost_adjustments(
+        txs, eri_entries=entries, commodities=commodities,
+    )
+    assert sum((a.cost_gbp for a in adj[_ISIN]), Decimal(0)) == Decimal("400")
 
 
 def test_measurement_date_derived_from_distribution() -> None:

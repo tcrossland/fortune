@@ -488,14 +488,18 @@ regardless of residence.
 
 ## FIG-relieved ERI does not uplift the UK base cost
 
-**Status: confirmed by the user's tax adviser (2026-07); not yet implemented.**
-The treatment below is settled — a FIG-relieved ERI tranche gives no base-cost
-uplift, and for accumulation units the equalisation element does **not** reduce
-base cost independently, so the whole net tranche is dropped for a relieved
-year. The code still applies the uplift unconditionally; the fix is staged in
-[plans/fig-eri-basecost-correction.md](plans/fig-eri-basecost-correction.md)
-(now unblocked). Still not tax advice — the record of the adviser's view lives
-with the user, not in the repo.
+**Status: confirmed by the user's tax adviser (2026-07); implemented.** A
+FIG-relieved ERI tranche gives no base-cost uplift, and for accumulation units
+the equalisation element does **not** reduce base cost independently, so the
+whole net tranche is dropped for a relieved year.
+`cumulative_base_cost_adjustments` suppresses the uplift for a foreign holding
+(`gain_is_foreign`) whose ERI year is in `fig_claim_years`; the tax pipeline
+and both holdings call sites pass the configured claim set. It is **inert on
+current data** (the configured claim years and the `eri.toml` years don't yet
+overlap) and corrects future filings once relieved-year ERI is entered. Staged
+history: [plans/fig-eri-basecost-correction.md](plans/fig-eri-basecost-correction.md).
+Still not tax advice — the record of the adviser's view lives with the user,
+not in the repo.
 
 The section 104 base-cost uplift for excess reportable income exists only as
 anti-double-tax relief: the ERI was *already charged to income tax*, so adding

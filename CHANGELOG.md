@@ -8,6 +8,23 @@ decisions is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## UK tax
 
+- **FIG-relieved ERI gives no base-cost uplift (correction)** — ERI relieved
+  under a 4-year FIG claim was never charged to income tax, so under reg 99 of
+  the Offshore Funds (Tax) Regulations 2009 it must not uplift the section 104
+  base cost (else a later taxable disposal's gain is understated).
+  `cumulative_base_cost_adjustments` now suppresses the uplift for a **foreign**
+  holding (`gain_is_foreign`) whose ERI year is in `fig_claim_years`; the tax
+  pipeline (`tax-report` / `tax-pack` / forecast) and both holdings call sites
+  pass the configured claim set. For accumulation units the equalisation element
+  does not survive independently, so the whole net tranche drops (adviser-
+  confirmed). **Inert on current data** — the configured claim years and the
+  `eri.toml` years don't yet overlap — so it corrects future filings once
+  relieved-year ERI is entered; no figure moves today. Pre-residence ERI stays
+  handled by `eri.toml` data discipline. Plan:
+  [docs/archive/fig-eri-basecost-correction.md](docs/archive/fig-eri-basecost-correction.md);
+  rationale (reg 99 / IFM13373):
+  [design-decisions.md](docs/design-decisions.md#fig-relieved-eri-does-not-uplift-the-uk-base-cost).
+  (`tax/uk/eri.py`, `cli/tax.py`, `cli/reports.py`, `cli/rebuild.py`)
 - **ERI base-cost uplift is cumulative in the tax pipeline (correction)** —
   `tax-report` / `tax-forecast` / `tax-pack` now feed the **cumulative**
   section 104 base-cost adjustments (every ERI year the `eri.toml` spans) to
